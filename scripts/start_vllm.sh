@@ -20,7 +20,7 @@
 #   VLLM_PORT        Port to listen on (default: 8000)
 #   VLLM_DTYPE       Torch dtype: bfloat16 | float16 (default: bfloat16)
 #   VLLM_MAX_LEN     Max context length in tokens (default: 8192)
-#   VLLM_LIMIT_MM    Multimodal limits (default: image=0,audio=0 for text-only)
+#   VLLM_LIMIT_MM    Multimodal limits JSON (default: {"image":0,"audio":0})
 #
 # For LoRA adapter switching, add to the vllm serve call:
 #   --enable-lora --lora-modules pii-lora=./adapters/pii
@@ -36,7 +36,7 @@ MODEL="${VLLM_MODEL:-${GEMMA_MODEL_ID:-google/gemma-4-E2B-it}}"
 PORT="${VLLM_PORT:-8000}"
 DTYPE="${VLLM_DTYPE:-bfloat16}"
 MAX_LEN="${VLLM_MAX_LEN:-8192}"
-LIMIT_MM="${VLLM_LIMIT_MM:-image=0,audio=0}"
+LIMIT_MM="${VLLM_LIMIT_MM:-{\"image\":0,\"audio\":0}}"
 
 if [[ -z "${VLLM_API_KEY:-}" ]]; then
     echo "ERROR: VLLM_API_KEY is not set."
@@ -83,10 +83,17 @@ echo "    mm      : $LIMIT_MM"
 echo "    vllm    : $VLLM_BIN"
 echo ""
 
-env -u VLLM_BASE_URL -u VLLM_MODEL "$VLLM_BIN" serve "$MODEL" \
-    --host 0.0.0.0 \
-    --port "$PORT" \
-    --api-key "$VLLM_API_KEY" \
-    --dtype "$DTYPE" \
-    --max-model-len "$MAX_LEN" \
-    --limit-mm-per-prompt "$LIMIT_MM"
+args=(
+    serve "$MODEL"
+    --host 0.0.0.0
+    --port "$PORT"
+    --api-key "$VLLM_API_KEY"
+    --dtype "$DTYPE"
+    --max-model-len "$MAX_LEN"
+)
+
+if [[ -n "$LIMIT_MM" ]]; then
+    args+=(--limit-mm-per-prompt "$LIMIT_MM")
+fi
+
+env -u VLLM_BASE_URL -u VLLM_MODEL "$VLLM_BIN" "${args[@]}"
