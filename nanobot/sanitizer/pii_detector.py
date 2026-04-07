@@ -208,13 +208,13 @@ def _parse_response(raw: str, prompt: str) -> list[DetectedEntity]:
             context_reason = str(item["context_reason"])
             should_sanitize = bool(item["should_sanitize"])
         except (KeyError, ValueError):
-            logger.debug("PiiDetector: skipping malformed entity: %s", item)
+            logger.debug("PiiDetector: skipping malformed entity: {}", item)
             continue
 
         if text in seen:
             continue
         if prompt.find(text) == -1:
-            logger.debug("PiiDetector: entity '%s' not found in prompt; skipping", text)
+            logger.debug("PiiDetector: entity '{}' not found in prompt; skipping", text)
             continue
 
         seen.add(text)
@@ -274,8 +274,8 @@ class PiiDetector:
         latency_ms = (time.perf_counter() - t0) * 1000
         entities = _parse_response(raw_output, prompt)
 
-        logger.info(
-            "PiiDetector: %d entities found (%d to sanitize) in %.0f ms",
+        logger.debug(
+            "PiiDetector: {} entities found ({} to sanitize) in {:.0f} ms",
             len(entities),
             sum(1 for e in entities if e.should_sanitize),
             latency_ms,

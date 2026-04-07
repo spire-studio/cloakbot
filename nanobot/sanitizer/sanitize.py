@@ -215,7 +215,7 @@ async def sanitize_input(
 
     if modified:
         _save_map(session_key, smap)
-        logger.info(
+        logger.debug(
             "sanitizer: {} placeholder(s) applied (session={})",
             len(detection.sensitive_entities),
             session_key,
@@ -235,6 +235,6 @@ async def remap_response(text: str, session_key: str) -> str:
     result = _remap(text, smap)
 
     if result != text:
-        logger.info("sanitizer: response remapped (session={})", session_key)
+        logger.debug("sanitizer: response remapped (session={})", session_key)
 
     return result
