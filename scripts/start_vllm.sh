@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Start the vLLM server using uv.
+# Start the vLLM server from the project virtualenv.
 #
 # First-time setup on the Ubuntu server:
 #   uv sync --extra vllm
@@ -9,7 +9,7 @@
 #     --index-strategy unsafe-best-match
 #   uv pip install transformers==5.5.0
 #
-# Then run this script (or just run it — uv sync is idempotent):
+# Then run this script:
 #   bash scripts/start_vllm.sh
 #
 # Env overrides:
@@ -41,14 +41,25 @@ if [[ -z "${VLLM_API_KEY:-}" ]]; then
     exit 1
 fi
 
-echo "==> Starting vLLM server (via uv)"
+VLLM_BIN="${VLLM_BIN:-.venv/bin/vllm}"
+if [[ ! -x "$VLLM_BIN" ]]; then
+    VLLM_BIN="$(command -v vllm || true)"
+fi
+if [[ -z "$VLLM_BIN" ]]; then
+    echo "ERROR: vllm executable not found."
+    echo "  Run the setup commands above, or activate the venv before starting."
+    exit 1
+fi
+
+echo "==> Starting vLLM server"
 echo "    model   : $MODEL"
 echo "    port    : $PORT"
 echo "    dtype   : $DTYPE"
 echo "    max_len : $MAX_LEN"
+echo "    vllm    : $VLLM_BIN"
 echo ""
 
-env -u VLLM_BASE_URL -u VLLM_MODEL uv run vllm serve "$MODEL" \
+env -u VLLM_BASE_URL -u VLLM_MODEL "$VLLM_BIN" serve "$MODEL" \
     --host 0.0.0.0 \
     --port "$PORT" \
     --api-key "$VLLM_API_KEY" \
