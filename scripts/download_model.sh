@@ -5,14 +5,14 @@
 # Prerequisites:
 #   pip install "huggingface_hub[cli]"
 #   huggingface-cli login
-#     (Gemma models are gated — accept the license at hf.co/google/gemma-4-e2b-it first)
+#     (Gemma models are gated — accept the license at hf.co/google/gemma-4-E2B-it first)
 #
 # Override the model ID via env var if Google changes the HF path:
-#   GEMMA_MODEL_ID=google/gemma-4-e2b-it bash scripts/download_model.sh
+#   GEMMA_MODEL_ID=google/gemma-4-E2B-it bash scripts/download_model.sh
 
 set -euo pipefail
 
-MODEL_ID="${GEMMA_MODEL_ID:-google/gemma-4-e2b-it}"
+MODEL_ID="${GEMMA_MODEL_ID:-google/gemma-4-E2B-it}"
 LOCAL_DIR="${GEMMA_LOCAL_DIR:-./models/gemma-4-e2b}"
 
 echo "==> Downloading $MODEL_ID to $LOCAL_DIR ..."

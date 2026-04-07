@@ -13,7 +13,7 @@ Required variables:
   VLLM_API_KEY    Bearer token (must match --api-key on the vLLM server)
 
 Optional:
-  VLLM_MODEL      Model name / LoRA alias (default: google/gemma-4-e2b-it)
+  VLLM_MODEL      Model name / LoRA alias (default: google/gemma-4-E2B-it)
 """
 
 from __future__ import annotations
@@ -35,7 +35,7 @@ class VllmSettings(BaseSettings):
 
     base_url: str = Field(alias="VLLM_BASE_URL")
     api_key: str = Field(alias="VLLM_API_KEY")
-    model: str = Field(default="google/gemma-4-e2b-it", alias="VLLM_MODEL")
+    model: str = Field(default="google/gemma-4-E2B-it", alias="VLLM_MODEL")
 
 
 @lru_cache

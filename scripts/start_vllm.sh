@@ -3,12 +3,17 @@
 #
 # First-time setup on the Ubuntu server:
 #   uv sync --extra vllm
+#   uv pip install -U vllm --pre \
+#     --extra-index-url https://wheels.vllm.ai/nightly/cu129 \
+#     --extra-index-url https://download.pytorch.org/whl/cu129 \
+#     --index-strategy unsafe-best-match
+#   uv pip install transformers==5.5.0
 #
 # Then run this script (or just run it — uv sync is idempotent):
 #   bash scripts/start_vllm.sh
 #
 # Env overrides:
-#   GEMMA_MODEL_ID   HuggingFace model ID (default: google/gemma-4-e2b-it)
+#   GEMMA_MODEL_ID   HuggingFace model ID (default: google/gemma-4-E2B-it)
 #   VLLM_API_KEY     Bearer token clients must send (required)
 #   VLLM_PORT        Port to listen on (default: 8000)
 #   VLLM_DTYPE       Torch dtype: bfloat16 | float16 (default: bfloat16)
@@ -24,7 +29,7 @@ if [[ -f .env ]]; then
     set -a && source .env && set +a
 fi
 
-MODEL="${VLLM_MODEL:-${GEMMA_MODEL_ID:-google/gemma-4-e2b-it}}"
+MODEL="${VLLM_MODEL:-${GEMMA_MODEL_ID:-google/gemma-4-E2B-it}}"
 PORT="${VLLM_PORT:-8000}"
 DTYPE="${VLLM_DTYPE:-bfloat16}"
 MAX_LEN="${VLLM_MAX_LEN:-8192}"
@@ -43,7 +48,7 @@ echo "    dtype   : $DTYPE"
 echo "    max_len : $MAX_LEN"
 echo ""
 
-uv run vllm serve "$MODEL" \
+env -u VLLM_BASE_URL -u VLLM_MODEL uv run vllm serve "$MODEL" \
     --host 0.0.0.0 \
     --port "$PORT" \
     --api-key "$VLLM_API_KEY" \
