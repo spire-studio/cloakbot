@@ -32,6 +32,7 @@ from nanobot.bus.queue import MessageBus
 from nanobot.config.schema import AgentDefaults
 from nanobot.providers.base import LLMProvider
 from nanobot.session.manager import Session, SessionManager
+from nanobot.sanitizer import remap_response, sanitize_input
 from nanobot.utils.helpers import image_placeholder_text, truncate_text
 from nanobot.utils.runtime import EMPTY_FINAL_RESPONSE_MESSAGE
 
@@ -569,10 +570,22 @@ class AgentLoop:
             if isinstance(message_tool, MessageTool):
                 message_tool.start_turn()
 
+        # ── Sanitization middleware ────────────────────────────────────────────
+        # Runs before build_messages so the remote LLM never sees raw PII.
+        # fail_open=True: if vLLM is unreachable the message passes through.
+        sanitized_content, was_sanitized, redacted_entities = await sanitize_input(
+            msg.content, key, fail_open=True
+        )
+        if was_sanitized:
+            logger.info(
+                "sanitizer: input redacted for session {} (original len={} sanitized len={})",
+                key, len(msg.content), len(sanitized_content),
+            )
+
         history = session.get_history(max_messages=0)
         initial_messages = self.context.build_messages(
             history=history,
-            current_message=msg.content,
+            current_message=sanitized_content,
             media=msg.media if msg.media else None,
             channel=msg.channel, chat_id=msg.chat_id,
         )
@@ -585,11 +598,43 @@ class AgentLoop:
                 channel=msg.channel, chat_id=msg.chat_id, content=content, metadata=meta,
             ))
 
+        if was_sanitized:
+            entity_summary = ", ".join(
+                f'"{e.text}" [{e.entity_type.value}]' for e in redacted_entities
+            )
+            _notify = on_progress or _bus_progress
+            await _notify(f"🔒 Redacted before sending to AI: {entity_summary}")
+
+        # ── Stream buffering for remap ─────────────────────────────────────
+        # When input was sanitized and the response is streamed token-by-token,
+        # buffer the raw tokens so we can remap placeholders before the user
+        # sees them.  Without buffering, {{PERSON_1}} would appear on screen
+        # before remap_response runs.
+        _stream_buf: list[str] = []
+
+        if was_sanitized and on_stream is not None:
+            async def _buffered_stream(delta: str) -> None:
+                _stream_buf.append(delta)
+
+            async def _buffered_stream_end(*, resuming: bool = False) -> None:
+                remapped = await remap_response("".join(_stream_buf), key)
+                chunk = 32
+                for i in range(0, len(remapped), chunk):
+                    await on_stream(remapped[i : i + chunk])
+                if on_stream_end is not None:
+                    await on_stream_end(resuming=resuming)
+
+            effective_stream: Callable[[str], Awaitable[None]] | None = _buffered_stream
+            effective_stream_end: Callable[..., Awaitable[None]] | None = _buffered_stream_end
+        else:
+            effective_stream = on_stream
+            effective_stream_end = on_stream_end
+
         final_content, _, all_msgs = await self._run_agent_loop(
             initial_messages,
             on_progress=on_progress or _bus_progress,
-            on_stream=on_stream,
-            on_stream_end=on_stream_end,
+            on_stream=effective_stream,
+            on_stream_end=effective_stream_end,
             session=session,
             channel=msg.channel, chat_id=msg.chat_id,
             message_id=msg.metadata.get("message_id"),
@@ -597,6 +642,10 @@ class AgentLoop:
 
         if final_content is None or not final_content.strip():
             final_content = EMPTY_FINAL_RESPONSE_MESSAGE
+
+        # ── Remap final_content (covers non-streaming path + response.content)
+        if was_sanitized:
+            final_content = await remap_response(final_content, key)
 
         self._save_turn(session, all_msgs, 1 + len(history))
         self._clear_runtime_checkpoint(session)

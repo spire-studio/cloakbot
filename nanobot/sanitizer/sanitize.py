@@ -33,7 +33,7 @@ from typing import Any
 
 from loguru import logger
 
-from nanobot.sanitizer.pii_detector import ENTITY_TAG, DetectionResult, PiiDetector
+from nanobot.sanitizer.pii_detector import ENTITY_TAG, DetectedEntity, DetectionResult, PiiDetector
 
 
 # ---------------------------------------------------------------------------
@@ -180,7 +180,7 @@ async def sanitize_input(
     session_key: str,
     *,
     fail_open: bool = True,
-) -> tuple[str, bool]:
+) -> tuple[str, bool, list[DetectedEntity]]:
     """
     Detect PII in *text* and rewrite with placeholders.
 
@@ -197,7 +197,9 @@ async def sanitize_input(
 
     Returns
     -------
-    (sanitized_text, was_modified)
+    (sanitized_text, was_modified, redacted_entities)
+        redacted_entities: entities that were actually substituted this turn.
+        Empty list when nothing was modified or on fail-open.
     """
     try:
         detection = await _detector.detect(text)
@@ -207,7 +209,7 @@ async def sanitize_input(
                 "sanitizer: local LLM unavailable — passing message through unsanitized "
                 "(session={})", session_key
             )
-            return text, False
+            return text, False, []
         raise
 
     smap = _load_map(session_key)
@@ -221,7 +223,7 @@ async def sanitize_input(
             session_key,
         )
 
-    return sanitized, modified
+    return sanitized, modified, detection.sensitive_entities if modified else []
 
 
 async def remap_response(text: str, session_key: str) -> str:

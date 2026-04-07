@@ -133,6 +133,9 @@ ignore = ["E501"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+markers = [
+    "integration: requires a running vLLM server (deselect with -m 'not integration')",
+]
 
 [tool.coverage.run]
 source = ["nanobot"]
