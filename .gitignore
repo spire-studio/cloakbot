@@ -24,3 +24,11 @@ botpy.log
 nano.*.save
 .DS_Store
 uv.lock
+
+# Local model downloads (can be large)
+models/
+*.gguf
+vllm_server.log
+
+# Sanitizer session maps (contain PII placeholders, stay local)
+~/.nanobot/sanitizer_maps/
