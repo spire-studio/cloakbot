@@ -1,5 +1,5 @@
 """
-Tests for nanobot/sanitizer/
+Tests for cloakbot/sanitizer/
 
 Unit tests (no LLM, pure Python):
   - PII detector response parser
@@ -20,14 +20,17 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from nanobot.sanitizer.pii_detector import (
+from cloakbot.sanitizer.pii_detector import (
     DetectedEntity,
     DetectionResult,
     EntityType,
+    MathPlan,
+    MathVariable,
     PiiDetector,
+    _parse_math_plan,
     _parse_response,
 )
-from nanobot.sanitizer.sanitize import (
+from cloakbot.sanitizer.sanitize import (
     _SessionMap,
     _load_map,
     _remap,
@@ -35,6 +38,7 @@ from nanobot.sanitizer.sanitize import (
     _save_map,
     remap_response,
     sanitize_input,
+    sanitize_input_with_detection,
 )
 
 
@@ -133,6 +137,130 @@ class TestParseResponse:
         assert len(result) == 1
         assert result[0].should_sanitize is False
 
+    def test_should_sanitize_false_string_is_preserved(self):
+        raw = json.dumps({"entities": [
+            {"text": "Apple", "entity_type": "org",
+             "context_reason": "public company", "should_sanitize": "false"},
+        ]})
+        result = _parse_response(raw, "Apple released a product")
+        assert len(result) == 1
+        assert result[0].should_sanitize is False
+
+
+class TestParseMathPlan:
+    def test_parses_math_plan(self):
+        raw = json.dumps({
+            "entities": [],
+            "math": {
+                "is_math_task": True,
+                "intent": "calculate gross margin",
+                "variables": [
+                    {
+                        "name": "v1",
+                        "description": "revenue",
+                        "source_text": "$100",
+                        "value": 100,
+                        "is_sensitive": True,
+                    },
+                    {
+                        "name": "v2",
+                        "description": "cost",
+                        "source_text": "$65",
+                        "value": "65",
+                        "is_sensitive": "true",
+                    },
+                ],
+            },
+        })
+        prompt = "Revenue is $100 and cost is $65. What's gross margin?"
+        plan = _parse_math_plan(raw, prompt)
+        assert isinstance(plan, MathPlan)
+        assert plan.is_math_task is True
+        assert len(plan.variables) == 2
+        assert plan.variables[0].name == "V1"
+        assert plan.variables[0].value == 100
+        assert plan.variables[1].name == "V2"
+        assert plan.variables[1].value == 65
+
+    def test_non_math_returns_disabled_plan(self):
+        raw = json.dumps({
+            "entities": [],
+            "math": {
+                "is_math_task": False,
+                "intent": "",
+                "variables": [],
+            },
+        })
+        plan = _parse_math_plan(raw, "Hello world")
+        assert plan.enabled is False
+        assert plan.variables == []
+
+    def test_math_plan_numeric_fallback_when_source_text_missing(self):
+        raw = json.dumps({
+            "entities": [],
+            "math": {
+                "is_math_task": True,
+                "intent": "percentage transfer",
+                "variables": [
+                    {
+                        "name": "v1",
+                        "description": "friend balance",
+                        "source_text": "",
+                        "value": 100000,
+                        "is_sensitive": True,
+                    },
+                ],
+            },
+        })
+        prompt = "Laurie has $100,000 dollars."
+        plan = _parse_math_plan(raw, prompt)
+        assert len(plan.variables) == 1
+        assert plan.variables[0].source_text == "$100,000"
+
+    def test_math_plan_prefers_source_text_value_over_model_value(self):
+        raw = json.dumps({
+            "entities": [],
+            "math": {
+                "is_math_task": True,
+                "intent": "percentage transfer",
+                "variables": [
+                    {
+                        "name": "v1",
+                        "description": "friend salary",
+                        "source_text": "$100,000",
+                        "value": 1000,
+                        "is_sensitive": True,
+                    },
+                ],
+            },
+        })
+        prompt = "Laurie has month salary $100,000 dollars."
+        plan = _parse_math_plan(raw, prompt)
+        assert len(plan.variables) == 1
+        assert plan.variables[0].value == 100000
+
+    def test_math_plan_parses_source_text_with_units(self):
+        raw = json.dumps({
+            "entities": [],
+            "math": {
+                "is_math_task": True,
+                "intent": "percentage transfer",
+                "variables": [
+                    {
+                        "name": "v1",
+                        "description": "friend salary",
+                        "source_text": "$100,000 dollars",
+                        "value": 1000,
+                        "is_sensitive": True,
+                    },
+                ],
+            },
+        })
+        prompt = "Laurie has month salary $100,000 dollars."
+        plan = _parse_math_plan(raw, prompt)
+        assert len(plan.variables) == 1
+        assert plan.variables[0].value == 100000
+
 
 # ---------------------------------------------------------------------------
 # Rewrite — pure Python
@@ -205,6 +333,60 @@ class TestRewrite:
         assert "张伟明" not in text
         assert "张伟" not in text
 
+    def test_math_sensitive_variable_is_redacted(self):
+        det = _detection("Laurie has $100,000.", [])
+        det.math_plan = MathPlan(
+            is_math_task=True,
+            intent="percentage transfer",
+            variables=[
+                MathVariable(
+                    name="V1",
+                    value=100000.0,
+                    description="friend balance",
+                    source_text="$100,000",
+                    is_sensitive=True,
+                ),
+            ],
+        )
+        smap = _empty_map()
+        text, modified = _rewrite(det, smap)
+        assert modified is True
+        assert "$100,000" not in text
+        assert "{{AMOUNT_1}}" in text
+
+    def test_math_variable_redacted_even_when_is_sensitive_false(self):
+        det = _detection("Laurie gives me 10%.", [])
+        det.math_plan = MathPlan(
+            is_math_task=True,
+            intent="percentage transfer",
+            variables=[
+                MathVariable(
+                    name="V1",
+                    value=10.0,
+                    description="transfer ratio",
+                    source_text="10%",
+                    is_sensitive=False,
+                ),
+            ],
+        )
+        smap = _empty_map()
+        text, modified = _rewrite(det, smap)
+        assert modified is True
+        assert "10%" not in text
+
+    def test_math_numeric_literals_fallback_redacted_when_variables_missing(self):
+        det = _detection("Laurie has $100,000 and gives 10%.", [])
+        det.math_plan = MathPlan(
+            is_math_task=True,
+            intent="percentage transfer",
+            variables=[],
+        )
+        smap = _empty_map()
+        text, modified = _rewrite(det, smap)
+        assert modified is True
+        assert "$100,000" not in text
+        assert "10%" not in text
+
 
 # ---------------------------------------------------------------------------
 # Remap — pure Python
@@ -258,7 +440,7 @@ class TestSessionMap:
             counters={"PERSON": 1},
         )
         with patch(
-            "nanobot.sanitizer.sanitize._map_path",
+            "cloakbot.sanitizer.sanitize._map_path",
             return_value=tmp_path / "test.json",
         ):
             _save_map("test:session", smap)
@@ -270,7 +452,7 @@ class TestSessionMap:
 
     def test_missing_file_returns_empty_map(self, tmp_path: Path):
         with patch(
-            "nanobot.sanitizer.sanitize._map_path",
+            "cloakbot.sanitizer.sanitize._map_path",
             return_value=tmp_path / "nonexistent.json",
         ):
             loaded = _load_map("no:session")
@@ -280,7 +462,7 @@ class TestSessionMap:
         bad = tmp_path / "bad.json"
         bad.write_text("not json", encoding="utf-8")
         with patch(
-            "nanobot.sanitizer.sanitize._map_path",
+            "cloakbot.sanitizer.sanitize._map_path",
             return_value=bad,
         ):
             loaded = _load_map("bad:session")
@@ -296,7 +478,7 @@ def _mock_detection(entities_json: list[dict]) -> AsyncMock:
     mock = AsyncMock()
 
     def _build_result(prompt: str) -> DetectionResult:
-        from nanobot.sanitizer.pii_detector import _parse_response
+        from cloakbot.sanitizer.pii_detector import _parse_response
         raw = json.dumps({"entities": entities_json})
         entities = _parse_response(raw, prompt)
         return DetectionResult(
@@ -318,7 +500,7 @@ def session_key(tmp_path: Path):
     """Isolated session key that writes maps to tmp_path."""
     key = "test:isolated"
     with patch(
-        "nanobot.sanitizer.sanitize._map_path",
+        "cloakbot.sanitizer.sanitize._map_path",
         side_effect=lambda k: tmp_path / f"{k.replace(':', '_')}.json",
     ):
         yield key
@@ -355,6 +537,29 @@ class TestSanitizeInput:
 
         assert modified is False
         assert text == "What time is it?"
+
+    async def test_with_detection_returns_math_plan(self, session_key: str):
+        with patch.object(PiiDetector, "detect", new_callable=AsyncMock) as mock_detect:
+            mock_detect.return_value = DetectionResult(
+                original_prompt="Revenue is 100, cost is 60, margin?",
+                entities=[],
+                llm_raw_output="",
+                latency_ms=1.0,
+                math_plan=MathPlan(
+                    is_math_task=True,
+                    intent="calculate margin",
+                    variables=[],
+                ),
+            )
+            text, modified, _entities, detection = await sanitize_input_with_detection(
+                "Revenue is 100, cost is 60, margin?",
+                session_key,
+            )
+
+        assert modified is False
+        assert text == "Revenue is 100, cost is 60, margin?"
+        assert detection is not None
+        assert detection.math_plan.is_math_task is True
 
     async def test_fail_open_on_llm_error(self, session_key: str):
         with patch.object(PiiDetector, "detect", new_callable=AsyncMock) as mock_detect:

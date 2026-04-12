@@ -4,7 +4,7 @@ import pytest
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from nanobot.agent.memory import Consolidator, MemoryStore
+from cloakbot.agent.memory import Consolidator, MemoryStore
 
 
 @pytest.fixture

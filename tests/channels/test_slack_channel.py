@@ -8,10 +8,10 @@ try:
 except ImportError:
     pytest.skip("Slack dependencies not installed (slack-sdk)", allow_module_level=True)
 
-from nanobot.bus.events import OutboundMessage
-from nanobot.bus.queue import MessageBus
-from nanobot.channels.slack import SlackChannel
-from nanobot.channels.slack import SlackConfig
+from cloakbot.bus.events import OutboundMessage
+from cloakbot.bus.queue import MessageBus
+from cloakbot.channels.slack import SlackChannel
+from cloakbot.channels.slack import SlackConfig
 
 
 class _FakeAsyncWebClient:

@@ -3,7 +3,7 @@
 Surrogate characters in CLI input must not crash history file writes.
 """
 
-from nanobot.cli.commands import SafeFileHistory
+from cloakbot.cli.commands import SafeFileHistory
 
 
 class TestSafeFileHistory:
@@ -25,9 +25,9 @@ class TestSafeFileHistory:
 
     def test_emoji_preserved(self, tmp_path):
         hist = SafeFileHistory(str(tmp_path / "history"))
-        hist.store_string("hello 🐈 nanobot")
+        hist.store_string("hello 🐈 cloakbot")
         entries = list(hist.load_history_strings())
-        assert entries[0] == "hello 🐈 nanobot"
+        assert entries[0] == "hello 🐈 cloakbot"
 
     def test_mixed_unicode_preserved(self, tmp_path):
         """CJK + emoji + latin should all pass through cleanly."""

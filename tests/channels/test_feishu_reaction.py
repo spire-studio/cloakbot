@@ -4,8 +4,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from nanobot.bus.queue import MessageBus
-from nanobot.channels.feishu import FeishuChannel, FeishuConfig, _FeishuStreamBuf
+from cloakbot.bus.queue import MessageBus
+from cloakbot.channels.feishu import FeishuChannel, FeishuConfig, _FeishuStreamBuf
 
 
 def _make_channel() -> FeishuChannel:

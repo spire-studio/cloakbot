@@ -1,11 +1,11 @@
-from nanobot.agent.context import ContextBuilder
-from nanobot.agent.loop import AgentLoop
-from nanobot.session.manager import Session
+from cloakbot.agent.context import ContextBuilder
+from cloakbot.agent.loop import AgentLoop
+from cloakbot.session.manager import Session
 
 
 def _mk_loop() -> AgentLoop:
     loop = AgentLoop.__new__(AgentLoop)
-    from nanobot.config.schema import AgentDefaults
+    from cloakbot.config.schema import AgentDefaults
 
     loop.max_tool_result_chars = AgentDefaults().max_tool_result_chars
     return loop

@@ -8,9 +8,9 @@ from unittest.mock import AsyncMock
 import pytest
 import httpx
 
-import nanobot.channels.weixin as weixin_mod
-from nanobot.bus.queue import MessageBus
-from nanobot.channels.weixin import (
+import cloakbot.channels.weixin as weixin_mod
+from cloakbot.bus.queue import MessageBus
+from cloakbot.channels.weixin import (
     ITEM_IMAGE,
     ITEM_TEXT,
     MESSAGE_TYPE_BOT,
@@ -28,7 +28,7 @@ def _make_channel() -> tuple[WeixinChannel, MessageBus]:
         WeixinConfig(
             enabled=True,
             allow_from=["*"],
-            state_dir=tempfile.mkdtemp(prefix="nanobot-weixin-test-"),
+            state_dir=tempfile.mkdtemp(prefix="cloakbot-weixin-test-"),
         ),
         bus,
     )

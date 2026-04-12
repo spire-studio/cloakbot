@@ -7,10 +7,10 @@ from types import SimpleNamespace
 import pytest
 discord = pytest.importorskip("discord")
 
-from nanobot.bus.events import OutboundMessage
-from nanobot.bus.queue import MessageBus
-from nanobot.channels.discord import DiscordBotClient, DiscordChannel, DiscordConfig
-from nanobot.command.builtin import build_help_text
+from cloakbot.bus.events import OutboundMessage
+from cloakbot.bus.queue import MessageBus
+from cloakbot.channels.discord import DiscordBotClient, DiscordChannel, DiscordConfig
+from cloakbot.command.builtin import build_help_text
 
 
 # Minimal Discord client test double used to control startup/readiness behavior.
@@ -178,7 +178,7 @@ async def test_start_returns_when_discord_dependency_missing(monkeypatch) -> Non
         DiscordConfig(enabled=True, token="token", allow_from=["*"]),
         MessageBus(),
     )
-    monkeypatch.setattr("nanobot.channels.discord.DISCORD_AVAILABLE", False)
+    monkeypatch.setattr("cloakbot.channels.discord.DISCORD_AVAILABLE", False)
 
     await channel.start()
 
@@ -197,7 +197,7 @@ async def test_start_handles_client_construction_failure(monkeypatch) -> None:
     def _boom(owner, *, intents):
         raise RuntimeError("bad client")
 
-    monkeypatch.setattr("nanobot.channels.discord.DiscordBotClient", _boom)
+    monkeypatch.setattr("cloakbot.channels.discord.DiscordBotClient", _boom)
 
     await channel.start()
 
@@ -215,7 +215,7 @@ async def test_start_handles_client_start_failure(monkeypatch) -> None:
 
     _FakeDiscordClient.instances.clear()
     _FakeDiscordClient.start_error = RuntimeError("connect failed")
-    monkeypatch.setattr("nanobot.channels.discord.DiscordBotClient", _FakeDiscordClient)
+    monkeypatch.setattr("cloakbot.channels.discord.DiscordBotClient", _FakeDiscordClient)
 
     await channel.start()
 
@@ -344,7 +344,7 @@ async def test_on_message_downloads_attachments(tmp_path, monkeypatch) -> None:
         handled.append(kwargs)
 
     channel._handle_message = capture_handle  # type: ignore[method-assign]
-    monkeypatch.setattr("nanobot.channels.discord.get_media_dir", lambda _name: tmp_path)
+    monkeypatch.setattr("cloakbot.channels.discord.get_media_dir", lambda _name: tmp_path)
 
     await channel._on_message(
         _make_message(
@@ -368,7 +368,7 @@ async def test_on_message_marks_failed_attachment_download(tmp_path, monkeypatch
         handled.append(kwargs)
 
     channel._handle_message = capture_handle  # type: ignore[method-assign]
-    monkeypatch.setattr("nanobot.channels.discord.get_media_dir", lambda _name: tmp_path)
+    monkeypatch.setattr("cloakbot.channels.discord.get_media_dir", lambda _name: tmp_path)
 
     await channel._on_message(
         _make_message(

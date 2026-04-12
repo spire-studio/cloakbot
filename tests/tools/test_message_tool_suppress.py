@@ -5,11 +5,11 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from nanobot.agent.loop import AgentLoop
-from nanobot.agent.tools.message import MessageTool
-from nanobot.bus.events import InboundMessage, OutboundMessage
-from nanobot.bus.queue import MessageBus
-from nanobot.providers.base import LLMResponse, ToolCallRequest
+from cloakbot.agent.loop import AgentLoop
+from cloakbot.agent.tools.message import MessageTool
+from cloakbot.bus.events import InboundMessage, OutboundMessage
+from cloakbot.bus.queue import MessageBus
+from cloakbot.providers.base import LLMResponse, ToolCallRequest
 
 
 def _make_loop(tmp_path: Path) -> AgentLoop:

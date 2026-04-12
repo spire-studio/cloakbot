@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from nanobot.providers.anthropic_provider import AnthropicProvider
-from nanobot.providers.openai_compat_provider import OpenAICompatProvider
+from cloakbot.providers.anthropic_provider import AnthropicProvider
+from cloakbot.providers.openai_compat_provider import OpenAICompatProvider
 
 
 def _openai_tools(*names: str) -> list[dict[str, Any]]:

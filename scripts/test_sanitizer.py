@@ -13,8 +13,8 @@ from pathlib import Path
 # Allow running from project root without installing the package
 sys.path.insert(0, str(Path(__file__).parents[1]))
 
-from nanobot.sanitizer import remap_response, sanitize_input
-from nanobot.providers.vllm import get_vllm_model, _settings
+from cloakbot.sanitizer import remap_response, sanitize_input
+from cloakbot.providers.vllm import get_vllm_model, _settings
 
 TEST_CASES = [
     {
@@ -60,7 +60,7 @@ async def main() -> None:
             print(f"  Restored : {restored}")
 
     print("\n" + "=" * 60)
-    print("Done. Check ~/.nanobot/sanitizer_maps/ for session JSON.")
+    print("Done. Check ~/.cloakbot/sanitizer_maps/ for session JSON.")
 
 
 if __name__ == "__main__":

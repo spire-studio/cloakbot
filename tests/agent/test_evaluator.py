@@ -1,7 +1,7 @@
 import pytest
 
-from nanobot.utils.evaluator import evaluate_response
-from nanobot.providers.base import LLMProvider, LLMResponse, ToolCallRequest
+from cloakbot.utils.evaluator import evaluate_response
+from cloakbot.providers.base import LLMProvider, LLMResponse, ToolCallRequest
 
 
 class DummyProvider(LLMProvider):

@@ -3,6 +3,7 @@
 .docs
 .env
 .web
+CLAUDE.md
 *.pyc
 dist/
 build/
@@ -31,4 +32,4 @@ models/
 vllm_server.log
 
 # Sanitizer session maps (contain PII placeholders, stay local)
-~/.nanobot/sanitizer_maps/
+~/.cloakbot/sanitizer_maps/

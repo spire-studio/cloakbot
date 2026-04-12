@@ -1,6 +1,6 @@
 # CloakBot — Privacy-Preserving AI Assistant
 
-> Built on [nanobot](https://github.com/HKUDS/nanobot) · Submitted to the **Gemma 4 Good Hackathon** (Kaggle, May 2026)
+> Built on [cloakbot](https://github.com/HKUDS/cloakbot) · Submitted to the **Gemma 4 Good Hackathon** (Kaggle, May 2026)
 
 CloakBot adds a **local privacy layer** between you and any remote LLM. Before your message leaves your device, a local Gemma 4 model detects and redacts personally identifiable information (PII) and sensitive business data — replacing them with typed placeholders. After the remote LLM responds, the placeholders are restored, so you read the original names and values in the reply.
 
@@ -45,7 +45,7 @@ Detection is context-aware and bilingual (English + Chinese). Public figures and
 
 ```
 cloakbot/
-├── nanobot/
+├── cloakbot/
 │   ├── sanitizer/          ← CloakBot's core contribution
 │   │   ├── pii_detector.py     Gemma 4 NER via vLLM
 │   │   └── sanitize.py         Session-level mapping + rewrite/remap
@@ -59,7 +59,7 @@ cloakbot/
     └── test_sanitizer.py   Smoke test
 ```
 
-Session-level placeholder mappings are persisted as JSON under `~/.nanobot/sanitizer_maps/`, so the same entity always maps to the same placeholder across all turns in a conversation.
+Session-level placeholder mappings are persisted as JSON under `~/.cloakbot/sanitizer_maps/`, so the same entity always maps to the same placeholder across all turns in a conversation.
 
 ## Setup
 
@@ -68,7 +68,7 @@ Session-level placeholder mappings are persisted as JSON under `~/.nanobot/sanit
 ```bash
 git clone <this-repo> cloakbot && cd cloakbot
 curl -Ls https://astral.sh/uv/install.sh | sh   # install uv if needed
-uv sync                                           # install nanobot dependencies
+uv sync                                           # install cloakbot dependencies
 ```
 
 ### 2. Configure
@@ -81,7 +81,7 @@ cp .env.example .env
 #   VLLM_MODEL=google/gemma-4-E2B-it
 ```
 
-Set up the remote LLM (Claude, GPT, etc.) in `~/.nanobot/config.json` as usual for nanobot.
+Set up the remote LLM (Claude, GPT, etc.) in `~/.cloakbot/config.json` as usual for cloakbot.
 
 ### 3. Start the vLLM server (Ubuntu / GPU machine)
 
@@ -105,7 +105,7 @@ uv run python scripts/test_sanitizer.py
 ### 5. Chat
 
 ```bash
-uv run python -m nanobot agent --config ~/.nanobot/config.json
+uv run python -m cloakbot agent --config ~/.cloakbot/config.json
 ```
 
 ## Running Tests
@@ -126,7 +126,7 @@ uv run --extra dev pytest tests/sanitizer/ -m integration -v
 
 **Streaming-safe remap** — the CLI streams tokens. When sanitization happens, the stream is buffered internally until the LLM finishes, then remapped and re-emitted. The user never sees raw placeholders.
 
-**No nanobot core changes** — the sanitizer is a self-contained module. Integration is two hooks in `loop.py` (one before the LLM call, one after). Easy to remove or disable.
+**No cloakbot core changes** — the sanitizer is a self-contained module. Integration is two hooks in `loop.py` (one before the LLM call, one after). Easy to remove or disable.
 
 ## Hackathon Tracks
 
@@ -135,7 +135,7 @@ uv run --extra dev pytest tests/sanitizer/ -m integration -v
 
 ## Credits
 
-Built on [nanobot](https://github.com/HKUDS/nanobot) (MIT license) by HKUDS. The channel integrations, session management, memory system, and CLI are from nanobot unchanged. CloakBot's contribution is entirely in `nanobot/sanitizer/` and the two hooks in `nanobot/agent/loop.py`.
+Built on [cloakbot](https://github.com/HKUDS/cloakbot) (MIT license) by HKUDS. The channel integrations, session management, memory system, and CLI are from cloakbot unchanged. CloakBot's contribution is entirely in `cloakbot/sanitizer/` and the two hooks in `cloakbot/agent/loop.py`.
 
 ## License
 
