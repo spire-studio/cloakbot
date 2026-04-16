@@ -52,6 +52,14 @@ async def test_analyze_user_intent_falls_back_to_chat_on_invalid_json() -> None:
     assert await analyzer.analyze("anything") is Intent.CHAT
 
 
+@pytest.mark.asyncio
+async def test_analyze_user_intent_falls_back_to_chat_when_local_model_unavailable() -> None:
+    analyzer = UserIntentAnalyzer()
+    analyzer._runner.complete = AsyncMock(side_effect=RuntimeError("missing vllm config"))
+
+    assert await analyzer.analyze("anything") is Intent.CHAT
+
+
 def test_intent_prompt_prioritizes_math_for_mixed_intent() -> None:
     assert 'choose "math"' in _INTENT_SYSTEM_PROMPT.lower()
     assert "both explanation/chat and a concrete numeric calculation task" in _INTENT_SYSTEM_PROMPT

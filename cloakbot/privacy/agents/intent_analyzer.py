@@ -34,7 +34,11 @@ class UserIntentAnalyzer:
         self._runner = JsonCompletionRunner(temperature=temperature)
 
     async def analyze(self, text: str) -> Intent:
-        raw_output, _latency_ms = await self._runner.complete(_INTENT_SYSTEM_PROMPT, text)
+        try:
+            raw_output, _latency_ms = await self._runner.complete(_INTENT_SYSTEM_PROMPT, text)
+        except Exception:
+            logger.warning("IntentAnalyzer: local model unavailable, fallback to chat")
+            return Intent.CHAT
         data = load_json_object(raw_output)
         if not data:
             logger.warning("IntentAnalyzer: empty/invalid response, fallback to chat")
