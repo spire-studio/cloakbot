@@ -1,86 +1,113 @@
 from __future__ import annotations
 
+from unittest.mock import patch
+
 import pytest
 
-from cloakbot.sanitizer.pii_detector import MathPlan, MathVariable
-from cloakbot.sanitizer.privacy_math import (
+from cloakbot.privacy.core.math_executer import (
     apply_privacy_math,
-    build_privacy_math_instruction,
+    build_math_execution_instruction,
+)
+from cloakbot.privacy.core.math_helpers import (
     execute_privacy_math,
     extract_python_snippet,
-    has_privacy_math,
+    extract_python_snippets,
 )
+from cloakbot.privacy.core.vault import _SessionMap
 
 
-def _plan() -> MathPlan:
-    return MathPlan(
-        is_math_task=True,
-        intent="calculate profit margin",
-        variables=[
-            MathVariable(
-                name="V1",
-                value=100.0,
-                description="revenue",
-                source_text="$100",
-                is_sensitive=True,
-            ),
-            MathVariable(
-                name="V2",
-                value=60.0,
-                description="cost",
-                source_text="$60",
-                is_sensitive=True,
-            ),
-        ],
+def test_build_instruction_contains_numeric_tokens() -> None:
+    text = build_math_execution_instruction(
+        "salary <<FINANCE_1>>, percentage <<PERCENTAGE_1>>, person <<PERSON_1>>"
     )
+    assert "PRIVACY MODE ENABLED" in text
+    assert "FINANCE_1" in text
+    assert "PERCENTAGE_1" in text
+    assert "PERCENTAGE_* are percent/share values" in text
+    assert "PERSON_1" not in text
 
 
-def test_has_privacy_math():
-    assert has_privacy_math(_plan()) is True
-    assert has_privacy_math(None) is False
-
-
-def test_build_instruction_contains_variables():
-    text = build_privacy_math_instruction(_plan())
-    assert "PRIVACY_MATH_MODE" in text
-    assert "V1" in text
-    assert "V2" in text
-
-
-def test_extract_python_snippet():
-    text = "answer\n<python_snippet_1>\nresult = (V1 - V2) / V1\n</python_snippet_1>"
+def test_extract_python_snippet() -> None:
+    text = "answer\n<python_snippet_1>\nresult = (A + B) / C\n</python_snippet_1>"
     snippet = extract_python_snippet(text)
     assert snippet is not None
     assert "result =" in snippet
 
 
-def test_execute_privacy_math():
-    execution = execute_privacy_math("result = (V1 - V2) / V1", _plan())
-    assert execution.expression == "(V1 - V2) / V1"
+def test_execute_privacy_math() -> None:
+    execution = execute_privacy_math("result = (A - B) / A", {"A": 100.0, "B": 60.0})
+    assert execution.snippet_index == 1
+    assert execution.expression == "(A - B) / A"
     assert abs(execution.result - 0.4) < 1e-12
 
 
-async def test_apply_privacy_math_replaces_snippet():
+@pytest.mark.asyncio
+async def test_apply_privacy_math_replaces_snippet() -> None:
     text = (
         "Your margin is below.\n"
         "<python_snippet_1>\n"
-        "result = (V1 - V2) / V1\n"
+        "result = AMOUNT_1 - AMOUNT_2\n"
         "</python_snippet_1>"
     )
-    out = await apply_privacy_math(text, _plan())
+    smap = _SessionMap(
+        original_to_placeholder={"$100": "<<AMOUNT_1>>", "$60": "<<AMOUNT_2>>"},
+        placeholder_to_original={"<<AMOUNT_1>>": "$100", "<<AMOUNT_2>>": "$60"},
+        placeholder_to_value={"<<AMOUNT_1>>": 100, "<<AMOUNT_2>>": 60},
+        counters={"AMOUNT": 2},
+    )
+
+    with patch("cloakbot.privacy.core.math_executer.get_map", return_value=smap):
+        out = await apply_privacy_math(text, "cli:test")
+
     assert "python_snippet_1" not in out
-    assert "local" in out.lower()
+    assert "100 - 60 = 40" in out
+
+
+def test_extract_python_snippets_multiple() -> None:
+    text = (
+        "<python_snippet_1>\nresult = A\n</python_snippet_1>\n"
+        "<python_snippet_2>\nresult = B\n</python_snippet_2>"
+    )
+    assert extract_python_snippets(text) == [
+        (1, "result = A"),
+        (2, "result = B"),
+    ]
 
 
 @pytest.mark.asyncio
-async def test_apply_privacy_math_replaces_symbolic_variables():
+async def test_apply_privacy_math_executes_multiple_snippets() -> None:
     text = (
-        "Computed with V1 and V2. Formula: \\text{V1} * \\text{V2} / 100.\n"
+        "Scenario summaries.\n"
         "<python_snippet_1>\n"
-        "result = V1 * V2 / 100\n"
-        "</python_snippet_1>"
+        "result = FINANCE_1 * PERCENTAGE_1\n"
+        "</python_snippet_1>\n"
+        "<python_snippet_2>\n"
+        "result = FINANCE_1 * PERCENTAGE_2\n"
+        "</python_snippet_2>"
     )
-    out = await apply_privacy_math(text, _plan())
-    assert "V1" not in out
-    assert "V2" not in out
-    assert "\\text{V1}" not in out
+    smap = _SessionMap(
+        original_to_placeholder={
+            "$100": "<<FINANCE_1>>",
+            "10%": "<<PERCENTAGE_1>>",
+            "20%": "<<PERCENTAGE_2>>",
+        },
+        placeholder_to_original={
+            "<<FINANCE_1>>": "$100",
+            "<<PERCENTAGE_1>>": "10%",
+            "<<PERCENTAGE_2>>": "20%",
+        },
+        placeholder_to_value={
+            "<<FINANCE_1>>": 100,
+            "<<PERCENTAGE_1>>": 0.1,
+            "<<PERCENTAGE_2>>": 0.2,
+        },
+        counters={"FINANCE": 1, "PERCENTAGE": 2},
+    )
+
+    with patch("cloakbot.privacy.core.math_executer.get_map", return_value=smap):
+        out = await apply_privacy_math(text, "cli:test")
+
+    assert "python_snippet_1" not in out
+    assert "python_snippet_2" not in out
+    assert "1. 100 * 0.1 = 10." in out
+    assert "2. 100 * 0.2 = 20." in out

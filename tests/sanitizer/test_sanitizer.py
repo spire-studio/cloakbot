@@ -1,5 +1,5 @@
 """
-Tests for cloakbot/sanitizer/
+Tests for the privacy sanitization modules.
 
 Unit tests (no LLM, pure Python):
   - PII detector response parser
@@ -14,31 +14,31 @@ Integration tests (require vLLM, skipped by default):
 from __future__ import annotations
 
 import json
-import tempfile
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from cloakbot.sanitizer.pii_detector import (
-    DetectedEntity,
-    DetectionResult,
-    EntityType,
-    MathPlan,
-    MathVariable,
-    PiiDetector,
-    _parse_math_plan,
-    _parse_response,
-)
-from cloakbot.sanitizer.sanitize import (
-    _SessionMap,
-    _load_map,
-    _remap,
-    _rewrite,
-    _save_map,
+from cloakbot.privacy.core.detector import PiiDetector
+from cloakbot.privacy.core.general_detector import parse_general_entities
+from cloakbot.privacy.core.handler import apply_tokens as _rewrite
+from cloakbot.privacy.core.restorer import restore_tokens as _remap
+from cloakbot.privacy.core.sanitize import (
     remap_response,
     sanitize_input,
     sanitize_input_with_detection,
+)
+from cloakbot.privacy.core.vault import (
+    _SessionMap,
+    _load_map,
+    _save_map,
+    clear_cache,
+)
+from cloakbot.privacy.core.types import (
+    ComputableEntity,
+    DetectedEntity,
+    DetectionResult,
+    GeneralEntity,
 )
 
 
@@ -55,13 +55,12 @@ def _detection(prompt: str, entities: list[DetectedEntity]) -> DetectionResult:
     )
 
 
-def _entity(text: str, etype: EntityType, sanitize: bool = True) -> DetectedEntity:
-    return DetectedEntity(
-        text=text,
-        entity_type=etype,
-        context_reason="test",
-        should_sanitize=sanitize,
-    )
+def _entity(text: str, entity_type: str) -> GeneralEntity:
+    return GeneralEntity(text=text, entity_type=entity_type)
+
+
+def _computable(text: str, entity_type: str, value: int | float | str) -> ComputableEntity:
+    return ComputableEntity(text=text, entity_type=entity_type, value=value)
 
 
 def _empty_map() -> _SessionMap:
@@ -79,187 +78,48 @@ def _empty_map() -> _SessionMap:
 class TestParseResponse:
     def test_parses_valid_json(self):
         raw = json.dumps({"entities": [
-            {"text": "Alice", "entity_type": "person",
-             "context_reason": "name", "should_sanitize": True},
+            {"text": "Alice", "entity_type": "person"},
         ]})
-        result = _parse_response(raw, "Hello Alice")
+        result = parse_general_entities(raw, "Hello Alice")
         assert len(result) == 1
         assert result[0].text == "Alice"
-        assert result[0].entity_type == EntityType.PERSON
-        assert result[0].should_sanitize is True
+        assert result[0].entity_type == "person"
 
     def test_strips_markdown_fences(self):
         raw = '```json\n{"entities": []}\n```'
-        result = _parse_response(raw, "anything")
+        result = parse_general_entities(raw, "anything")
         assert result == []
 
     def test_strips_think_block(self):
         raw = '<think>reasoning</think>\n{"entities": []}'
-        result = _parse_response(raw, "anything")
+        result = parse_general_entities(raw, "anything")
         assert result == []
 
     def test_returns_empty_on_invalid_json(self):
-        result = _parse_response("not json at all", "prompt")
+        result = parse_general_entities("not json at all", "prompt")
         assert result == []
 
     def test_skips_entity_not_in_prompt(self):
         raw = json.dumps({"entities": [
-            {"text": "Bob", "entity_type": "person",
-             "context_reason": "name", "should_sanitize": True},
+            {"text": "Bob", "entity_type": "person"},
         ]})
-        result = _parse_response(raw, "Hello Alice")  # Bob not in prompt
+        result = parse_general_entities(raw, "Hello Alice")  # Bob not in prompt
         assert result == []
 
     def test_deduplicates_same_text(self):
         raw = json.dumps({"entities": [
-            {"text": "Alice", "entity_type": "person",
-             "context_reason": "first", "should_sanitize": True},
-            {"text": "Alice", "entity_type": "person",
-             "context_reason": "duplicate", "should_sanitize": False},
+            {"text": "Alice", "entity_type": "person"},
+            {"text": "Alice", "entity_type": "person"},
         ]})
-        result = _parse_response(raw, "Hello Alice and Alice")
+        result = parse_general_entities(raw, "Hello Alice and Alice")
         assert len(result) == 1
 
     def test_skips_unknown_entity_type(self):
         raw = json.dumps({"entities": [
-            {"text": "Alice", "entity_type": "unknown_type",
-             "context_reason": "?", "should_sanitize": True},
+            {"text": "Alice", "entity_type": "unknown_type"},
         ]})
-        result = _parse_response(raw, "Hello Alice")
+        result = parse_general_entities(raw, "Hello Alice")
         assert result == []
-
-    def test_should_sanitize_false_is_preserved(self):
-        raw = json.dumps({"entities": [
-            {"text": "Apple", "entity_type": "org",
-             "context_reason": "public company", "should_sanitize": False},
-        ]})
-        result = _parse_response(raw, "Apple released a product")
-        assert len(result) == 1
-        assert result[0].should_sanitize is False
-
-    def test_should_sanitize_false_string_is_preserved(self):
-        raw = json.dumps({"entities": [
-            {"text": "Apple", "entity_type": "org",
-             "context_reason": "public company", "should_sanitize": "false"},
-        ]})
-        result = _parse_response(raw, "Apple released a product")
-        assert len(result) == 1
-        assert result[0].should_sanitize is False
-
-
-class TestParseMathPlan:
-    def test_parses_math_plan(self):
-        raw = json.dumps({
-            "entities": [],
-            "math": {
-                "is_math_task": True,
-                "intent": "calculate gross margin",
-                "variables": [
-                    {
-                        "name": "v1",
-                        "description": "revenue",
-                        "source_text": "$100",
-                        "value": 100,
-                        "is_sensitive": True,
-                    },
-                    {
-                        "name": "v2",
-                        "description": "cost",
-                        "source_text": "$65",
-                        "value": "65",
-                        "is_sensitive": "true",
-                    },
-                ],
-            },
-        })
-        prompt = "Revenue is $100 and cost is $65. What's gross margin?"
-        plan = _parse_math_plan(raw, prompt)
-        assert isinstance(plan, MathPlan)
-        assert plan.is_math_task is True
-        assert len(plan.variables) == 2
-        assert plan.variables[0].name == "V1"
-        assert plan.variables[0].value == 100
-        assert plan.variables[1].name == "V2"
-        assert plan.variables[1].value == 65
-
-    def test_non_math_returns_disabled_plan(self):
-        raw = json.dumps({
-            "entities": [],
-            "math": {
-                "is_math_task": False,
-                "intent": "",
-                "variables": [],
-            },
-        })
-        plan = _parse_math_plan(raw, "Hello world")
-        assert plan.enabled is False
-        assert plan.variables == []
-
-    def test_math_plan_numeric_fallback_when_source_text_missing(self):
-        raw = json.dumps({
-            "entities": [],
-            "math": {
-                "is_math_task": True,
-                "intent": "percentage transfer",
-                "variables": [
-                    {
-                        "name": "v1",
-                        "description": "friend balance",
-                        "source_text": "",
-                        "value": 100000,
-                        "is_sensitive": True,
-                    },
-                ],
-            },
-        })
-        prompt = "Laurie has $100,000 dollars."
-        plan = _parse_math_plan(raw, prompt)
-        assert len(plan.variables) == 1
-        assert plan.variables[0].source_text == "$100,000"
-
-    def test_math_plan_prefers_source_text_value_over_model_value(self):
-        raw = json.dumps({
-            "entities": [],
-            "math": {
-                "is_math_task": True,
-                "intent": "percentage transfer",
-                "variables": [
-                    {
-                        "name": "v1",
-                        "description": "friend salary",
-                        "source_text": "$100,000",
-                        "value": 1000,
-                        "is_sensitive": True,
-                    },
-                ],
-            },
-        })
-        prompt = "Laurie has month salary $100,000 dollars."
-        plan = _parse_math_plan(raw, prompt)
-        assert len(plan.variables) == 1
-        assert plan.variables[0].value == 100000
-
-    def test_math_plan_parses_source_text_with_units(self):
-        raw = json.dumps({
-            "entities": [],
-            "math": {
-                "is_math_task": True,
-                "intent": "percentage transfer",
-                "variables": [
-                    {
-                        "name": "v1",
-                        "description": "friend salary",
-                        "source_text": "$100,000 dollars",
-                        "value": 1000,
-                        "is_sensitive": True,
-                    },
-                ],
-            },
-        })
-        prompt = "Laurie has month salary $100,000 dollars."
-        plan = _parse_math_plan(raw, prompt)
-        assert len(plan.variables) == 1
-        assert plan.variables[0].value == 100000
 
 
 # ---------------------------------------------------------------------------
@@ -268,12 +128,12 @@ class TestParseMathPlan:
 
 class TestRewrite:
     def test_single_entity_replaced(self):
-        det = _detection("Hello Alice", [_entity("Alice", EntityType.PERSON)])
+        det = _detection("Hello Alice", [_entity("Alice", "person")])
         smap = _empty_map()
         text, modified = _rewrite(det, smap)
         assert modified is True
         assert "Alice" not in text
-        assert "{{PERSON_1}}" in text
+        assert "<<PERSON_1>>" in text
 
     def test_clean_input_unchanged(self):
         det = _detection("What is the capital?", [])
@@ -282,37 +142,27 @@ class TestRewrite:
         assert modified is False
         assert text == "What is the capital?"
 
-    def test_not_sanitize_false_not_replaced(self):
-        det = _detection(
-            "Apple released a product",
-            [_entity("Apple", EntityType.ORG, sanitize=False)],
-        )
-        smap = _empty_map()
-        text, modified = _rewrite(det, smap)
-        assert modified is False
-        assert text == "Apple released a product"
-
     def test_multiple_types_get_own_counters(self):
         det = _detection(
             "Alice alice@acme.com 138-0000-1234",
             [
-                _entity("Alice", EntityType.PERSON),
-                _entity("alice@acme.com", EntityType.EMAIL),
-                _entity("138-0000-1234", EntityType.PHONE),
+                _entity("Alice", "person"),
+                _entity("alice@acme.com", "email"),
+                _entity("138-0000-1234", "phone"),
             ],
         )
         smap = _empty_map()
         text, modified = _rewrite(det, smap)
         assert modified is True
-        assert "{{PERSON_1}}" in text
-        assert "{{EMAIL_1}}" in text
-        assert "{{PHONE_1}}" in text
+        assert "<<PERSON_1>>" in text
+        assert "<<EMAIL_1>>" in text
+        assert "<<PHONE_1>>" in text
 
     def test_same_entity_reuses_existing_placeholder(self):
-        det = _detection("Hello Alice", [_entity("Alice", EntityType.PERSON)])
+        det = _detection("Hello Alice", [_entity("Alice", "person")])
         smap = _empty_map()
-        smap.original_to_placeholder["Alice"] = "{{PERSON_1}}"
-        smap.placeholder_to_original["{{PERSON_1}}"] = "Alice"
+        smap.original_to_placeholder["Alice"] = "<<PERSON_1>>"
+        smap.placeholder_to_original["<<PERSON_1>>"] = "Alice"
         smap.counters["PERSON"] = 1
         _rewrite(det, smap)
         # Counter must not advance — still PERSON_1, no PERSON_2
@@ -323,8 +173,8 @@ class TestRewrite:
         det = _detection(
             "张伟明的电话",
             [
-                _entity("张伟", EntityType.PERSON),
-                _entity("张伟明", EntityType.PERSON),
+                _entity("张伟", "person"),
+                _entity("张伟明", "person"),
             ],
         )
         smap = _empty_map()
@@ -333,61 +183,6 @@ class TestRewrite:
         assert "张伟明" not in text
         assert "张伟" not in text
 
-    def test_math_sensitive_variable_is_redacted(self):
-        det = _detection("Laurie has $100,000.", [])
-        det.math_plan = MathPlan(
-            is_math_task=True,
-            intent="percentage transfer",
-            variables=[
-                MathVariable(
-                    name="V1",
-                    value=100000.0,
-                    description="friend balance",
-                    source_text="$100,000",
-                    is_sensitive=True,
-                ),
-            ],
-        )
-        smap = _empty_map()
-        text, modified = _rewrite(det, smap)
-        assert modified is True
-        assert "$100,000" not in text
-        assert "{{AMOUNT_1}}" in text
-
-    def test_math_variable_redacted_even_when_is_sensitive_false(self):
-        det = _detection("Laurie gives me 10%.", [])
-        det.math_plan = MathPlan(
-            is_math_task=True,
-            intent="percentage transfer",
-            variables=[
-                MathVariable(
-                    name="V1",
-                    value=10.0,
-                    description="transfer ratio",
-                    source_text="10%",
-                    is_sensitive=False,
-                ),
-            ],
-        )
-        smap = _empty_map()
-        text, modified = _rewrite(det, smap)
-        assert modified is True
-        assert "10%" not in text
-
-    def test_math_numeric_literals_fallback_redacted_when_variables_missing(self):
-        det = _detection("Laurie has $100,000 and gives 10%.", [])
-        det.math_plan = MathPlan(
-            is_math_task=True,
-            intent="percentage transfer",
-            variables=[],
-        )
-        smap = _empty_map()
-        text, modified = _rewrite(det, smap)
-        assert modified is True
-        assert "$100,000" not in text
-        assert "10%" not in text
-
-
 # ---------------------------------------------------------------------------
 # Remap — pure Python
 # ---------------------------------------------------------------------------
@@ -395,36 +190,36 @@ class TestRewrite:
 class TestRemap:
     def test_placeholder_restored(self):
         smap = _empty_map()
-        smap.placeholder_to_original["{{PERSON_1}}"] = "Alice"
-        result = _remap("Hello {{PERSON_1}}", smap)
+        smap.placeholder_to_original["<<PERSON_1>>"] = "Alice"
+        result = _remap("Hello <<PERSON_1>>", smap)
         assert result == "Hello Alice"
 
     def test_empty_map_returns_original(self):
         smap = _empty_map()
-        result = _remap("Hello {{PERSON_1}}", smap)
-        assert result == "Hello {{PERSON_1}}"
+        result = _remap("Hello <<PERSON_1>>", smap)
+        assert result == "Hello <<PERSON_1>>"
 
     def test_missing_placeholder_silently_skipped(self):
         smap = _empty_map()
-        smap.placeholder_to_original["{{PERSON_1}}"] = "Alice"
+        smap.placeholder_to_original["<<PERSON_1>>"] = "Alice"
         result = _remap("No placeholders here", smap)
         assert result == "No placeholders here"
 
     def test_longest_placeholder_first(self):
-        # {{PERSON_10}} must not be partially matched by {{PERSON_1}}
+        # <<PERSON_10>> must not be partially matched by <<PERSON_1>>
         smap = _empty_map()
-        smap.placeholder_to_original["{{PERSON_1}}"] = "Alice"
-        smap.placeholder_to_original["{{PERSON_10}}"] = "Bob"
-        result = _remap("{{PERSON_10}} and {{PERSON_1}}", smap)
+        smap.placeholder_to_original["<<PERSON_1>>"] = "Alice"
+        smap.placeholder_to_original["<<PERSON_10>>"] = "Bob"
+        result = _remap("<<PERSON_10>> and <<PERSON_1>>", smap)
         assert result == "Bob and Alice"
 
     def test_multiple_placeholders_all_restored(self):
         smap = _empty_map()
         smap.placeholder_to_original = {
-            "{{PERSON_1}}": "Alice",
-            "{{EMAIL_1}}": "alice@acme.com",
+            "<<PERSON_1>>": "Alice",
+            "<<EMAIL_1>>": "alice@acme.com",
         }
-        result = _remap("{{PERSON_1}} — {{EMAIL_1}}", smap)
+        result = _remap("<<PERSON_1>> — <<EMAIL_1>>", smap)
         assert result == "Alice — alice@acme.com"
 
 
@@ -435,24 +230,24 @@ class TestRemap:
 class TestSessionMap:
     def test_save_and_load_roundtrip(self, tmp_path: Path):
         smap = _SessionMap(
-            original_to_placeholder={"Alice": "{{PERSON_1}}"},
-            placeholder_to_original={"{{PERSON_1}}": "Alice"},
+            original_to_placeholder={"Alice": "<<PERSON_1>>"},
+            placeholder_to_original={"<<PERSON_1>>": "Alice"},
             counters={"PERSON": 1},
         )
         with patch(
-            "cloakbot.sanitizer.sanitize._map_path",
+            "cloakbot.privacy.core.vault._map_path",
             return_value=tmp_path / "test.json",
         ):
             _save_map("test:session", smap)
             loaded = _load_map("test:session")
 
-        assert loaded.original_to_placeholder == {"Alice": "{{PERSON_1}}"}
-        assert loaded.placeholder_to_original == {"{{PERSON_1}}": "Alice"}
+        assert loaded.original_to_placeholder == {"Alice": "<<PERSON_1>>"}
+        assert loaded.placeholder_to_original == {"<<PERSON_1>>": "Alice"}
         assert loaded.counters == {"PERSON": 1}
 
     def test_missing_file_returns_empty_map(self, tmp_path: Path):
         with patch(
-            "cloakbot.sanitizer.sanitize._map_path",
+            "cloakbot.privacy.core.vault._map_path",
             return_value=tmp_path / "nonexistent.json",
         ):
             loaded = _load_map("no:session")
@@ -462,7 +257,7 @@ class TestSessionMap:
         bad = tmp_path / "bad.json"
         bad.write_text("not json", encoding="utf-8")
         with patch(
-            "cloakbot.sanitizer.sanitize._map_path",
+            "cloakbot.privacy.core.vault._map_path",
             return_value=bad,
         ):
             loaded = _load_map("bad:session")
@@ -478,9 +273,8 @@ def _mock_detection(entities_json: list[dict]) -> AsyncMock:
     mock = AsyncMock()
 
     def _build_result(prompt: str) -> DetectionResult:
-        from cloakbot.sanitizer.pii_detector import _parse_response
         raw = json.dumps({"entities": entities_json})
-        entities = _parse_response(raw, prompt)
+        entities = parse_general_entities(raw, prompt)
         return DetectionResult(
             original_prompt=prompt,
             entities=entities,
@@ -500,22 +294,20 @@ def session_key(tmp_path: Path):
     """Isolated session key that writes maps to tmp_path."""
     key = "test:isolated"
     with patch(
-        "cloakbot.sanitizer.sanitize._map_path",
+        "cloakbot.privacy.core.vault._map_path",
         side_effect=lambda k: tmp_path / f"{k.replace(':', '_')}.json",
     ):
+        clear_cache(key)
         yield key
+        clear_cache(key)
 
 
 class TestSanitizeInput:
     async def test_pii_detected_and_redacted(self, session_key: str):
-        entities = [
-            {"text": "Alice", "entity_type": "person",
-             "context_reason": "name", "should_sanitize": True},
-        ]
         with patch.object(PiiDetector, "detect", new_callable=AsyncMock) as mock_detect:
             mock_detect.return_value = DetectionResult(
                 original_prompt="Hello Alice",
-                entities=[_entity("Alice", EntityType.PERSON)],
+                entities=[_entity("Alice", "person")],
                 llm_raw_output="",
                 latency_ms=1.0,
             )
@@ -523,7 +315,7 @@ class TestSanitizeInput:
 
         assert modified is True
         assert "Alice" not in text
-        assert "{{PERSON_1}}" in text
+        assert "<<PERSON_1>>" in text
 
     async def test_clean_input_passes_through(self, session_key: str):
         with patch.object(PiiDetector, "detect", new_callable=AsyncMock) as mock_detect:
@@ -538,28 +330,29 @@ class TestSanitizeInput:
         assert modified is False
         assert text == "What time is it?"
 
-    async def test_with_detection_returns_math_plan(self, session_key: str):
+    async def test_with_detection_returns_detection_payload(self, session_key: str):
         with patch.object(PiiDetector, "detect", new_callable=AsyncMock) as mock_detect:
             mock_detect.return_value = DetectionResult(
                 original_prompt="Revenue is 100, cost is 60, margin?",
-                entities=[],
+                entities=[
+                    _computable("100", "amount", 100),
+                    _computable("60", "amount", 60),
+                ],
                 llm_raw_output="",
                 latency_ms=1.0,
-                math_plan=MathPlan(
-                    is_math_task=True,
-                    intent="calculate margin",
-                    variables=[],
-                ),
             )
             text, modified, _entities, detection = await sanitize_input_with_detection(
                 "Revenue is 100, cost is 60, margin?",
                 session_key,
             )
 
-        assert modified is False
-        assert text == "Revenue is 100, cost is 60, margin?"
+        assert modified is True
+        assert "100" not in text
+        assert "60" not in text
+        assert "<<AMOUNT_1>>" in text
+        assert "<<AMOUNT_2>>" in text
         assert detection is not None
-        assert detection.math_plan.is_math_task is True
+        assert detection.original_prompt == "Revenue is 100, cost is 60, margin?"
 
     async def test_fail_open_on_llm_error(self, session_key: str):
         with patch.object(PiiDetector, "detect", new_callable=AsyncMock) as mock_detect:
@@ -579,7 +372,7 @@ class TestSanitizeInput:
 
     async def test_cross_turn_same_entity_reuses_placeholder(self, session_key: str):
         """Same entity in turn 2 must get the same placeholder as turn 1."""
-        entity = _entity("Alice", EntityType.PERSON)
+        entity = _entity("Alice", "person")
 
         with patch.object(PiiDetector, "detect", new_callable=AsyncMock) as mock_detect:
             mock_detect.return_value = DetectionResult(
@@ -593,30 +386,30 @@ class TestSanitizeInput:
         with patch.object(PiiDetector, "detect", new_callable=AsyncMock) as mock_detect:
             mock_detect.return_value = DetectionResult(
                 original_prompt="Alice again",
-                entities=[_entity("Alice", EntityType.PERSON)],
+                entities=[_entity("Alice", "person")],
                 llm_raw_output="",
                 latency_ms=1.0,
             )
             text2, _, _e = await sanitize_input("Alice again", session_key)
 
-        assert "{{PERSON_1}}" in text1
-        assert "{{PERSON_1}}" in text2
+        assert "<<PERSON_1>>" in text1
+        assert "<<PERSON_1>>" in text2
         # Must not create PERSON_2 for the same name
-        assert "{{PERSON_2}}" not in text2
+        assert "<<PERSON_2>>" not in text2
 
     async def test_remap_response_restores_cross_turn(self, session_key: str):
         """Placeholder written in turn 1 must be restorable in turn 2 response."""
         with patch.object(PiiDetector, "detect", new_callable=AsyncMock) as mock_detect:
             mock_detect.return_value = DetectionResult(
                 original_prompt="I'm Alice",
-                entities=[_entity("Alice", EntityType.PERSON)],
+                entities=[_entity("Alice", "person")],
                 llm_raw_output="",
                 latency_ms=1.0,
             )
             await sanitize_input("I'm Alice", session_key)
 
         # Simulate LLM echoing the placeholder in its response
-        restored = await remap_response("Nice to meet you, {{PERSON_1}}!", session_key)
+        restored = await remap_response("Nice to meet you, <<PERSON_1>>!", session_key)
         assert restored == "Nice to meet you, Alice!"
 
 
@@ -646,10 +439,12 @@ class TestIntegration:
         sanitized, modified, _ = await sanitize_input(text, session, fail_open=False)
 
         assert modified is True
-        assert "TargetCorp" not in sanitized
         assert "$205 million" not in sanitized
+        assert "December 15" not in sanitized
 
         restored = await remap_response(sanitized, session)
+        assert "$205 million" in restored
+        assert "December 15" in restored
         assert "TargetCorp" in restored
 
     async def test_clean_input_no_modification(self):

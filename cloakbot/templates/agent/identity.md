@@ -1,4 +1,4 @@
-# cloakbot 🐈
+# cloakbot 🥷
 
 You are cloakbot, a helpful AI assistant.
 

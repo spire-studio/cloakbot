@@ -1,10 +1,28 @@
-# CloakBot — Privacy-Preserving AI Assistant
+<p align="center">
+  <img src="logo+cloakbot.png" alt="CloakBot" width="320" />
+</p>
 
-> Built on [nanobot](https://github.com/HKUDS/nanobot) · Submitted to the **Gemma 4 Good Hackathon** (Kaggle, May 2026)
+<h1 align="center">Cloakbot: Privacy-Preserving AI Agent</h1>
 
-CloakBot adds a **local, multi-agent privacy layer** between you and any remote LLM. Before your message leaves your device, a local Gemma 4 model detects and tokenizes personally identifiable information (PII) and sensitive business data — replacing them with typed, reversible placeholders. After the remote LLM responds, placeholders are restored so you read original values in the reply. For tasks like math computation and document analysis, sensitive data never leaves your device at all.
+<p align="center">A local multi-agent privacy solution between your data and any remote LLM.</p>
 
-**Your data never reaches the cloud in its raw form.**
+<p align="center">
+  <img src="https://img.shields.io/badge/Privacy-First-0F172A?style=flat-square" alt="Privacy First" />
+  <img src="https://img.shields.io/badge/Gemma%204-Local%20Detection-0F9D58?style=flat-square" alt="Gemma 4 Local Detection" />
+  <img src="https://img.shields.io/badge/vLLM-OpenAI%20Compatible-1F6FEB?style=flat-square" alt="vLLM OpenAI Compatible" />
+  <img src="https://img.shields.io/badge/Multi--Agent-Hybrid-7C3AED?style=flat-square" alt="Hybrid Multi-Agent" />
+  <img src="https://img.shields.io/badge/Remote%20LLM-Claude%20%7C%20GPT%20%7C%20Gemini-8B5CF6?style=flat-square" alt="Remote LLM Claude GPT Gemini" />
+  <img src="https://img.shields.io/badge/Python-3.11%2B-3776AB?style=flat-square" alt="Python 3.11+" />
+  <img src="https://img.shields.io/badge/License-MIT-16A34A?style=flat-square" alt="MIT License" />
+</p>
+
+<p align="center"><strong>English</strong> | <a href="README.zh-CN.md">简体中文</a></p>
+
+<p align="center"><sub>Built on <a href="https://github.com/HKUDS/nanobot">nanobot</a> · Submitted to the <strong>Gemma 4 Good Hackathon</strong> (Kaggle, May 2026)</sub></p>
+
+CloakBot adds a **local privacy pipeline** between your session and any remote LLM. Before a message is sent upstream, a trusted Gemma 4 model served through vLLM runs two local JSON-only detectors: one for general sensitive entities and one for sensitive numeric or temporal values. Matched spans are rewritten into typed, reversible placeholders and stored in a session-scoped Vault. For math turns, the remote LLM is asked for structure only while the real arithmetic happens locally with the original values from the Vault.
+
+After the remote LLM responds, CloakBot restores placeholders locally and appends a per-turn privacy report. Streaming output is buffered until that post-processing completes, so the user does not see raw placeholders.
 
 ---
 
@@ -27,19 +45,20 @@ CloakBot adds a **local, multi-agent privacy layer** between you and any remote 
 
 ```
 User message
-  └─► [Local Gemma 4 via vLLM]
-        • Detect PII & sensitive entities (3 passes: input, output, tool results)
-        • Replace with typed tokens  e.g. "Alice" → <<PERSON_1>>
-        • Build session Vault (token ↔ raw mapping)
+  └─► [pre_llm_hook → PrivacyOrchestrator]
+        • Run GeneralPrivacyDetector + DigitPrivacyDetector locally via vLLM
+        • Replace sensitive spans with typed tokens  e.g. "Alice" → <<PERSON_1>>
+        • Persist session Vault (token ↔ raw mapping, plus numeric values when needed)
+        • Classify intent locally (chat / math / doc)
+        • Route turn to ChatAgent or MathAgent
   └─► [Remote LLM — Claude / GPT / Gemini]
         • Receives sanitized prompt only
-        • Responds referencing placeholders
-        • For math/code tasks: returns reasoning + Python snippet only
-  └─► [Local Post-Processing]
-        • Scan LLM response for hallucinated PII (pass 2)
-        • Execute any code locally with real values from Vault
+        • For math turns: receives an extra contract to emit <python_snippet_N> blocks
+        • Responds using placeholders instead of raw values
+  └─► [post_llm_hook → local post-processing]
+        • Execute arithmetic-only math snippets with real values from Vault
         • Restore <<PERSON_1>> → "Alice"
-        • Emit transparency report
+        • Render per-turn privacy report
   └─► User sees original values in the final reply
 ```
 
@@ -47,22 +66,22 @@ User message
 
 ```
 You:        My name is Alice Chen, email alice@acme.com. What's my name?
-🔒 Masked:  "Alice Chen" [PERSON, medium] → <<PERSON_1>>
-            "alice@acme.com" [EMAIL, medium] → <<EMAIL_1>>
+🔒 Masked:  "Alice Chen" [PERSON, high] → <<PERSON_1>>
+            "alice@acme.com" [EMAIL, high] → <<EMAIL_1>>
 CloakBot:   Your name is Alice Chen.
-📋 Report:  2 entities masked in input · 0 leaked in response · all restored ✓
+📋 Report:  2 entities masked in input · all restored ✓
 ```
 
 **Example — Math**
 
 ```
 You:        My salary is $142,500. What is 18% of it?
-🔒 Masked:  "142500" [NUM, low] → <<NUM_1>> · "18" passes through
-Sent:       "What is 18% of <<NUM_1>>? Give reasoning and a Python snippet."
-Remote:     "Multiply <<NUM_1>> by 0.18. → result = NUM_1 * 0.18"
-Local exec: result = 142500 * 0.18 = 25650.0
+🔒 Masked:  "$142,500" [FINANCE, high] → <<FINANCE_1>> · "18%" passes through
+Sent:       "What is 18% of <<FINANCE_1>>?" + privacy math snippet instructions
+Remote:     "<python_snippet_1>result = FINANCE_1 * 0.18</python_snippet_1>"
+Local exec: result = 142500 * 0.18 = 25650
 CloakBot:   18% of $142,500 is $25,650.00
-📋 Report:  1 entity masked · computed locally · remote saw no real figure ✓
+📋 Report:  1 entity masked · computed locally · all restored ✓
 ```
 
 ---
@@ -71,14 +90,14 @@ CloakBot:   18% of $142,500 is $25,650.00
 
 | Category | Examples | Default Severity |
 |---|---|---|
-| Personal PII | Names, phone numbers, emails, addresses, national IDs | Medium |
-| High-sensitivity PII | SSNs, credit card numbers, medical data, date of birth | High |
-| Business-sensitive | Deal prices, financial figures, M&A targets, headcount, internal dates | High |
-| Network identifiers | IP addresses, MAC addresses | Low |
-| Quasi-identifiers | Combinations that reveal identity even if each item seems harmless | Medium |
-| Numeric (context-sensitive) | Salaries, account balances, medical dosages | Low–High |
+| Personal and contact data | Names, phone numbers, emails, physical addresses | High |
+| Unique or private identifiers | SSNs, passports, account numbers, license plates | High |
+| Secrets and access data | Passwords, API keys, private tokens, sensitive URLs | High |
+| Organization and network context | Company names, school names, IP addresses | High |
+| Medical and private narrative data | PHI, treatments, confidential plans, code names, other sensitive free text | High |
+| Sensitive numeric and temporal data | Money, dates, percentages, counts, measurements, scores, coordinates | High |
 
-Detection is context-aware and bilingual (English + Chinese). Public figures and widely known companies in purely descriptive context are intentionally not redacted.
+The detector is split into two local passes: `GeneralPrivacyDetector` for non-computable text spans and `DigitPrivacyDetector` for numeric or temporal values that may need local computation later. The built-in registry currently marks all shipped entity families as `high` severity.
 
 ### Token Schema
 
@@ -86,12 +105,14 @@ All entities are replaced using the pattern `<<ENTITY_TYPE_INDEX>>`, producing c
 
 | Raw Value | Token | Severity |
 |---|---|---|
-| `Alice Chen` | `<<PERSON_1>>` | Medium |
-| `alice@acme.com` | `<<EMAIL_1>>` | Medium |
-| `555-123-4567` | `<<PHONE_1>>` | Medium |
-| `123-45-6789` | `<<SSN_1>>` | High |
-| `$142,500` | `<<NUM_1>>` | Low |
-| `Stanford Hospital` | `<<ORG_1>>` | Medium |
+| `Alice Chen` | `<<PERSON_1>>` | High |
+| `alice@acme.com` | `<<EMAIL_1>>` | High |
+| `555-123-4567` | `<<PHONE_1>>` | High |
+| `123-45-6789` | `<<ID_1>>` | High |
+| `$142,500` | `<<FINANCE_1>>` | High |
+| `December 15, 2026` | `<<DATE_1>>` | High |
+| `15%` | `<<PERCENTAGE_1>>` | High |
+| `Stanford Hospital` | `<<ORG_1>>` | High |
 | `Metformin 500mg` | `<<MEDICAL_1>>` | High |
 
 Indexed per type so the remote LLM can still track relationships between entities (e.g. `PERSON_1` and `PERSON_2` are different people) without knowing who they are.
@@ -100,7 +121,7 @@ Indexed per type so the remote LLM can still track relationships between entitie
 
 ## Multi-Agent System Design
 
-CloakBot uses a **hybrid multi-agent architecture**: a local Orchestrator coordinates parallel specialist agents, all running on Gemma 4. The remote LLM is treated as an untrusted compute resource — it only ever receives sanitized text.
+CloakBot uses a **hybrid multi-agent architecture** inside the privacy layer: a local Orchestrator coordinates detector, routing, chat, and math behaviors around the remote LLM call. The remote LLM is treated as an untrusted compute resource — it only ever receives sanitized text.
 
 ### Trust Boundary
 
@@ -108,31 +129,28 @@ CloakBot uses a **hybrid multi-agent architecture**: a local Orchestrator coordi
 ┌─────────────────────────────────────────────────────────────────────┐
 │                        LOCAL TRUST ZONE                             │
 │                                                                     │
-│   User ──► [ Input Gate ]                                           │
+│   User ──► [ pre_llm_hook ]                                         │
 │                  │                                                  │
 │                  ▼                                                  │
-│         [ Orchestrator ]  ◄── session state & Vault                 │
-│          /       |       \                                          │
-│         ▼        ▼        ▼                                         │
-│   [Detector]  [Classifier]  [Transparency Logger]                   │
-│       │            │                                                │
-│       ▼            ▼                                                │
-│    [Handler] ──► [Vault]                                            │
-│       │                                                             │
-│       ▼                                                             │
-│   [Task Router]                                                     │
-│    /    |    \                                                      │
-│   ▼     ▼     ▼                                                     │
-│ [Chat] [Math] [Doc/Data]    ← local task agents                     │
-│         │        │                                                  │
-│         ▼        ▼                                                  │
-│    [Local Executor]  (sandboxed Python + Gemma 4)                   │
+│         [ PrivacyOrchestrator ]                                     │
+│            /         |         \                                    │
+│           ▼          ▼          ▼                                   │
+│  [PiiDetector] [IntentAnalyzer] [TurnContext/Vault]                 │
+│      /    \             │             │                             │
+│     ▼      ▼            ▼             ▼                             │
+│ [General] [Digit]   [TaskRouter]   [Handler]                        │
+│    via      via        /   \           │                            │
+│  Gemma 4  Gemma 4     ▼     ▼          ▼                            │
+│   vLLM     vLLM   [Chat] [Math]   [Session Vault]                   │
+│                          │        (JSON-backed placeholder map)     │
+│                          ▼                                          │
+│                 [Local Math Executor]                               │
 │                                                                     │
 └──────────────────┬──────────────────────────────────────────────────┘
-                   │  sanitized payload only — never raw PII
+                   │  sanitized payload only
    ────────────────┼──────────── REMOTE BOUNDARY ─────────────────────
                    ▼
-            [ Remote LLM Proxy ]  (Claude / GPT / Gemini via litellm)
+            [ Remote LLM ]  (Claude / GPT / Gemini APIs)
                    │
    ────────────────┼─────────────────────────────────────────────────
                    │  response re-enters local trust zone
@@ -140,50 +158,46 @@ CloakBot uses a **hybrid multi-agent architecture**: a local Orchestrator coordi
 ┌──────────────────────────────────────────────────────────────────────┐
 │                    POST-RESPONSE LOCAL PIPELINE                      │
 │                                                                      │
-│   [ Detector pass 2 ]  ← scan for hallucinated / leaked PII         │
+│   [ MathAgent ]      ← executes <python_snippet_N> blocks locally    │
 │           │                                                          │
-│   [ Tool Call Interceptor ]  ← if LLM requests tool use             │
-│       /         \                                                    │
-│  [Execute]   [Detector pass 3]  ← mandatory post-tool PII scan      │
-│       \         /                                                    │
-│      [Handler]  ← sanitize tool output before re-entry              │
+│   [ Restorer ]       ← swap tokens back using Vault                  │
 │           │                                                          │
-│      [ Restorer ]  ← swap tokens back using Vault                   │
-│           │                                                          │
-│   [ Transparency Report ]  ← show user what was masked              │
+│   [ Transparency Report ]  ← summarize masked input/tool entities    │
 │           │                                                          │
 └───────────┼──────────────────────────────────────────────────────────┘
             ▼
          Output → User ✓
 ```
 
+`Intent.DOC` already exists in the router, but there is no `DocAgent` yet. Document turns currently fall back to `ChatAgent`.
+
 ### Agents
 
 | Agent | Role | Model |
 |---|---|---|
-| **Orchestrator** | Routes by intent, manages session Vault lifetime, enforces trust boundary | Gemma 4 |
-| **Detector** ×3 | NER over user input (pass 1), LLM response (pass 2), tool outputs (pass 3) | Gemma 4 + optional bert-base-NER fast path |
-| **Classifier** | Assigns severity (HIGH / MEDIUM / LOW) to each entity | Gemma 4 |
-| **Handler** | Applies Redact+Tokenize strategy, writes to Vault | Rule-based |
-| **Vault** | Session-scoped token ↔ raw mapping; ephemeral by default | In-memory |
-| **Task Router** | Detects task type (chat / math / doc) from sanitized input | Gemma 4 |
-| **Math Agent** | Sends expression to remote for reasoning+snippet; executes locally | Local sandbox |
-| **Doc/Data Agent** | Chunks docs, sanitizes per-chunk with shared Vault, aggregates results | Gemma 4 |
-| **Tool Interceptor** | Wraps every tool call; forces Detector pass 3 on all tool outputs | Rule-based |
-| **Restorer** | Reverse-lookup Vault to rehydrate final output | Rule-based |
-| **Transparency Logger** | Produces per-turn privacy report for the user | Rule-based |
+| **PrivacyOrchestrator** | Coordinates one turn end-to-end: sanitize, classify intent, route, restore, report | Python orchestrator |
+| **PiiDetector** | Runs the general detector and digit detector concurrently, then deduplicates results | Gemma 4 via vLLM |
+| **GeneralPrivacyDetector** | Extracts non-computable sensitive spans such as names, IDs, secrets, org names | Gemma 4 via vLLM |
+| **DigitPrivacyDetector** | Extracts sensitive numeric/temporal spans and normalizes values for later math | Gemma 4 via vLLM |
+| **IntentAnalyzer** | Classifies turns as `chat`, `math`, or `doc` | Gemma 4 via vLLM |
+| **Handler + Vault** | Applies `<<TAG_N>>` placeholders and persists the session mapping | Rule-based + JSON file |
+| **ChatAgent** | Sends sanitized text upstream and returns the response unchanged until restoration | Rule-based |
+| **MathAgent** | Adds the snippet contract before the remote call and executes validated snippets locally after the call | Remote LLM + local executor |
+| **Restorer** | Restores placeholders with a single regex pass | Rule-based |
+| **Transparency Report** | Renders a per-turn markdown summary of masked entities | Rule-based |
+| **Tool Interceptor** | Reserved for future tool-output enforcement; currently a placeholder file | Not implemented yet |
 
 ### Detector Passes (Defense in Depth)
 
-The Detector runs **three times per turn**, not once:
+The current runtime performs **one mandatory detector pass before the remote LLM call**:
 
 ```
 Pass 1  user input        → prevent raw PII from leaving device
-Pass 2  LLM response      → catch hallucinated or training-data PII
-Pass 3  tool call output  → catch PII introduced by external tools (search, DB, APIs)
+Pass 2  LLM response      → planned, not wired yet
+Pass 3  tool call output  → helper exists, interceptor not wired yet
 ```
 
-This triple-pass approach is CloakBot's core security guarantee: PII cannot leak in, cannot leak out, and cannot be injected by tools.
+`sanitize_tool_output()` and `tool_output_entities` already exist in the codebase, so the extension points are there. What is implemented today is input-side sanitization plus post-response restoration and math execution.
 
 ### Math Privacy (Goal 2)
 
@@ -191,51 +205,40 @@ For computation tasks, the remote LLM acts as a **reasoning engine only** — it
 
 ```
 Input:   "My salary is $142,500. What is 18% of it?"
-Masked:  "What is 18% of <<NUM_1>>? Give reasoning + Python snippet."
-Remote:  "Multiply by 0.18. → result = NUM_1 * 0.18"
+Masked:  "What is 18% of <<FINANCE_1>>?" + snippet contract
+Remote:  "<python_snippet_1>result = FINANCE_1 * 0.18</python_snippet_1>"
 Local:   result = 142500 * 0.18          # real value substituted from Vault
 Output:  "$25,650.00"
 ```
 
+The local executor is deliberately narrow: it parses the snippet as Python AST, only allows arithmetic expressions assigned to `result`, exposes only a few safe numeric helpers (`abs`, `round`, `min`, `max`, `pow`), and rejects unknown variables or chained exponentiation.
+
 ### Document & Dataset Privacy (Goal 3)
 
-For large documents and datasets, CloakBot uses a **chunk-map-aggregate** strategy:
+This part of the README was ahead of the code. The current implementation does **not** ship a document or dataset privacy pipeline yet.
 
-**Documents (PDF, DOCX, TXT):**
-1. Parse → extract text + structure (headings, tables, metadata)
-2. Chunk into ~512-token segments, respecting sentence boundaries
-3. Sanitize each chunk with a **shared Vault** (so `PERSON_1` is consistent across the whole document)
-4. Send sanitized chunks to remote LLM for partial analysis
-5. Local Aggregator merges partial analyses
-6. Restorer pass on aggregated result
+What exists today:
+1. The intent analyzer can classify a turn as `doc`.
+2. The router preserves that intent.
+3. `get_agent()` logs a warning and falls back to `ChatAgent` because `DocAgent` is not implemented yet.
 
-**Datasets (CSV, JSON, Parquet):**
-1. Column-level PII classification first (PII / non-PII / mixed)
-2. PII columns tokenized with consistent mapping (all `"Alice Chen"` → same `PERSON_1`)
-3. Non-PII columns pass through unmodified
-4. Remote LLM receives sanitized schema + sample only
-5. Remote returns analysis plan or Python code
-6. Local Executor runs analysis on real data; results sanitized before display
+So document privacy is a roadmap item, not a current feature.
 
 ### Tool Call Privacy (Goal 4)
 
-Tool outputs are an often-overlooked PII attack surface. CloakBot treats every tool result as untrusted:
+Tool privacy is also only **partially scaffolded** right now:
 
 ```
-LLM requests tool call (e.g. web_search, DB query, API call)
-        │
-[ Interceptor validates tool name & args ]
-        │
-[ Execute tool locally ]
-        │
-[ Detector pass 3 — mandatory, no bypass ]
-        │
-[ Handler sanitizes tool output ]
-        │
-[ Sanitized result returned to LLM loop ]
+Implemented today:
+  sanitize_tool_output(text, session_key)  → reusable helper
+  TurnContext.tool_output_entities         → report slot
+
+Not wired yet:
+  agents/tool_interceptor.py               → placeholder
+  main tool loop pass 3 enforcement        → pending
 ```
 
-Example: `web_search("Alice Chen lawsuit")` returns public court records with SSNs and addresses → Interceptor detects and tokenizes before the LLM sees it again.
+So CloakBot already has the core sanitizer entry point for tool results, but the main agent loop does not yet run every tool output through it.
 
 ---
 
@@ -244,71 +247,74 @@ Example: `web_search("Alice Chen lawsuit")` returns public court records with SS
 ```
 cloakbot/
 ├── cloakbot/
-│   ├── sanitizer/               ← CloakBot's core contribution
-│   │   ├── pii_detector.py          Gemma 4 NER via vLLM (3-pass)
-│   │   ├── classifier.py            Entity severity classification
-│   │   ├── handler.py               Redact+Tokenize strategy
-│   │   ├── vault.py                 Session-scoped token ↔ raw Vault
-│   │   ├── restorer.py              Reverse-lookup and rehydration
-│   │   └── sanitize.py              Session-level mapping + rewrite/remap
-│   ├── agents/
-│   │   ├── orchestrator.py          Top-level coordinator
-│   │   ├── task_router.py           Intent detection → chat/math/doc routing
-│   │   ├── math_agent.py            Local execution of remote-generated snippets
-│   │   ├── doc_agent.py             Chunk-map-aggregate for documents & datasets
-│   │   └── tool_interceptor.py      Mandatory post-tool PII scanning
+│   ├── privacy/                 ← CloakBot's privacy layer
+│   │   ├── core/
+│   │   │   ├── detector.py          General + digit detector facade
+│   │   │   ├── general_detector.py  Non-computable entity extraction via local vLLM
+│   │   │   ├── digit_detector.py    Sensitive numeric/temporal extraction via local vLLM
+│   │   │   ├── handler.py           Placeholder-safe token application
+│   │   │   ├── vault.py             Session-scoped token/value map on disk
+│   │   │   ├── restorer.py          Reverse lookup and restoration
+│   │   │   ├── sanitize.py          Public sanitize/remap entry points
+│   │   │   ├── math_executer.py     Remote snippet contract + local execution
+│   │   │   └── math_helpers.py      AST validation for arithmetic-only snippets
+│   │   ├── agents/
+│   │   │   ├── orchestrator.py      Top-level privacy coordinator
+│   │   │   ├── intent_analyzer.py   Local intent classification
+│   │   │   ├── task_router.py       chat/math/doc routing
+│   │   │   ├── chat_agent.py        Standard sanitized chat flow
+│   │   │   ├── math_agent.py        Local execution of remote-generated snippets
+│   │   │   └── tool_interceptor.py  Placeholder for future tool-output enforcement
+│   │   ├── hooks/
+│   │   │   ├── pre_llm.py           Sanitize before the remote LLM call
+│   │   │   ├── post_llm.py          Restore after the remote LLM call
+│   │   │   └── context.py           Turn-scoped privacy state
+│   │   └── transparency/
+│   │       └── report.py            Per-turn privacy report rendering
 │   ├── providers/
-│   │   └── vllm.py                  OpenAI-compatible client → local vLLM server
+│   │   └── vllm.py                  OpenAI-compatible client → trusted vLLM server
 │   └── agent/
 │       └── loop.py                  Sanitization middleware (2 hooks)
 ├── tests/
-│   ├── sanitizer/                   Unit + integration tests
-│   └── agents/                      Agent-level tests (mocked LLM)
+│   ├── privacy/                     Privacy-layer unit tests
+│   └── sanitizer/                   Older sanitizer compatibility / integration tests
 └── scripts/
-    ├── download_model.sh            One-time model download
     ├── start_vllm.sh                Start vLLM server
     └── test_sanitizer.py            Smoke test
 ```
 
-Session-level placeholder mappings are persisted as JSON under `~/.cloakbot/sanitizer_maps/`, so the same entity always maps to the same placeholder across all turns in a conversation.
+Session-level placeholder mappings are persisted as JSON under `~/.cloakbot/sanitizer_maps/`, so the Vault can reuse the same placeholder mapping across turns in the same session. That said, the current end-to-end privacy boundary is still **single-turn**: restored conversation history is persisted back into the session, so full multi-turn conversation privacy remains a roadmap item. Computable placeholders also store normalized values for later local math execution.
 
 ---
 
 ## Roadmap
 
-### ✅ v0.1 — MVP (Current, April 2026)
-- [x] Gemma 4 NER via vLLM for PII detection (pass 1 only)
-- [x] Redact+Tokenize with `<<ENTITY_TYPE_N>>` schema
+### ✅ v0.1 — Privacy Runtime Foundation (Current, April 2026)
+- [x] Split detectors for general entities and numeric/temporal entities
+- [x] Redact+Tokenize with `<<ENTITY_TYPE_N>>` placeholders
 - [x] Session Vault with JSON persistence
-- [x] Remote LLM proxy (Claude / GPT / Gemini via litellm)
-- [x] Restorer for final output rehydration
-- [x] Streaming-safe remap (buffer → remap → re-emit)
-- [x] Basic math privacy: tokenize numerics, execute locally
-- [x] Smoke tests with mocked vLLM
+- [x] Final output restoration via placeholder remap
+- [x] Web UI chat interface
+- [x] `pre_llm_hook` and `post_llm_hook` wired into `cloakbot/agent/loop.py`
+- [x] PrivacyOrchestrator with turn-scoped context
+- [x] Local intent analysis and chat/math/doc routing
+- [x] MathAgent snippet contract plus local arithmetic execution
+- [ ] Web UI polish and usability improvements
 
-### 🔨 v0.2 — Multi-Pass Detection
-- [ ] Detector pass 2: scan LLM response for hallucinated PII
-- [ ] Detector pass 3: mandatory post-tool-call scan via Tool Interceptor
-- [ ] Classifier agent: HIGH / MEDIUM / LOW severity per entity type
-- [ ] Transparency Logger: per-turn privacy report shown to user
-- [ ] Math Agent: full reasoning+snippet pipeline with local sandboxed execution
-- [ ] Fail-open / fail-closed mode toggle per entity severity
+### 🔨 v0.2 — Trust Boundary Expansion
+- [ ] Multi-turn conversation privacy protection
+- [ ] Tool-use Detector: enforce tool-use sanitization in the main loop
+- [ ] Real `ToolInterceptor` implementation
+- [ ] Concrete `DocAgent` implementation
+- [ ] Chunk-map-aggregate document flow with shared Vault
+- [ ] Dataset-specific schema and column sanitization
 
-### 🔭 v0.3 — Document & Dataset Privacy
-- [ ] Doc Agent: chunk-map-aggregate pipeline for PDF, DOCX, TXT
-- [ ] Dataset Agent: column-level PII classification for CSV, JSON, Parquet
-- [ ] Shared Vault across chunks (consistent entity mapping per document)
-- [ ] Local Aggregator for partial analysis results
-- [ ] Orchestrator Agent: full Gemma 4 powered intent routing
-
-### 🚀 v0.4 — Production Hardening 
-- [ ] Encrypted Vault persistence option (for long-running doc sessions)
-- [ ] bert-base-NER fast path for latency-sensitive detection
-- [ ] Quasi-identifier combination detection
-- [ ] Bilingual detection improvements (English + Chinese)
-- [ ] Web UI with real-time transparency dashboard
-- [ ] Policy engine: per-user or per-org entity handling rules
-- [ ] Full integration test suite
+### 🚀 v0.3 — Production Readiness
+- [ ] Encrypted Vault persistence option
+- [ ] Faster detector path / smaller local models
+- [ ] Better bilingual and quasi-identifier coverage
+- [ ] Policy-driven handling beyond the current registry defaults
+- [ ] Full end-to-end privacy integration tests
 
 ---
 
@@ -317,8 +323,7 @@ Session-level placeholder mappings are persisted as JSON under `~/.cloakbot/sani
 ### 1. Clone & install
 
 ```bash
-git clone <this-repo> cloakbot && cd cloakbot
-curl -Ls https://astral.sh/uv/install.sh | sh   # install uv if needed
+git clone https://github.com/spire-studio/cloakbot.git && cd cloakbot
 uv sync                                           # install cloakbot dependencies
 ```
 
@@ -364,13 +369,13 @@ uv run python -m cloakbot agent --config ~/.cloakbot/config.json
 ## Running Tests
 
 ```bash
-# Unit tests (no vLLM needed — all LLM calls are mocked)
+# Privacy unit tests (mocked vLLM + Vault)
+uv run --extra dev pytest tests/privacy/ -v
+
+# Sanitizer compatibility / round-trip tests
 uv run --extra dev pytest tests/sanitizer/ -v
 
-# Agent tests (mocked LLM + Vault)
-uv run --extra dev pytest tests/agents/ -v
-
-# Integration tests (requires running vLLM server)
+# Integration tests (requires a running vLLM server)
 uv run --extra dev pytest tests/ -m integration -v
 ```
 
@@ -378,19 +383,19 @@ uv run --extra dev pytest tests/ -m integration -v
 
 ## Design Decisions
 
-**Redact + Tokenize, not Pseudonymize** — `<<PERSON_1>>` is simpler and safer than replacing names with fake-but-realistic names. No fake-data consistency to manage, no risk of fake data colliding with real entities. The remote LLM can still track relationships between `PERSON_1` and `PERSON_2` without knowing who they are.
+**Redact + Tokenize, not Pseudonymize** — `<<PERSON_1>>` is simpler and safer than replacing names with fake-but-realistic names. The remote LLM can still track relationships between `PERSON_1` and `PERSON_2` without learning who they are.
 
-**Three Detector passes** — single-pass detection (input only) misses two major PII surfaces: LLM hallucinations (e.g. the model generates a real person's email from training data) and tool-injected PII (e.g. a web search returns court records with SSNs). CloakBot treats every data boundary as a detection checkpoint.
+**Two local detectors, one Vault** — CloakBot separates non-computable spans from numeric or temporal spans so it can both preserve task structure and keep enough normalized data locally for later math execution.
 
-**Remote LLM as reasoning engine only** — for math and code tasks, the remote model provides algorithm and structure; local execution provides results. Sensitive values never travel to the cloud even as part of a computation.
+**Remote LLM as reasoning engine only for math** — math turns ask the remote model for structure in `<python_snippet_N>` blocks; the final numeric answer is computed locally against Vault values.
 
-**Shared Vault across document chunks** — when processing large documents, the same entity must always map to the same token. A shared Vault ensures `Alice Chen` is `PERSON_1` in chunk 1 and still `PERSON_1` in chunk 47.
+**Fail-open by default** — if the local vLLM server is unreachable, the current default is to pass the message through unchanged rather than block the turn. The sanitizer APIs also support strict fail-closed behavior.
 
-**Fail-open by default** — if the local vLLM server is unreachable, messages pass through unmodified rather than blocking the user. Set `fail_open=False` in `loop.py` for strict mode, which will block all unverified messages.
+**Streaming-safe post-processing** — the CLI buffers streamed output until math execution, restoration, and report rendering are finished. The user sees the finalized answer, not intermediate placeholders.
 
-**Streaming-safe remap** — the CLI streams tokens. When sanitization is active, the stream is buffered internally until the LLM finishes, then remapped and re-emitted. The user never sees raw placeholders.
+**Hook-based integration** — the privacy layer is largely isolated under `cloakbot/privacy/` and integrates into the main runtime through `pre_llm_hook` and `post_llm_hook` in [loop.py](/Users/laurieluo/Documents/github/my-repos/cloakbot/cloakbot/agent/loop.py:574).
 
-**No nanobot core changes** — the sanitizer and agent layer are self-contained modules. Integration is two hooks in `loop.py` (one before the LLM call, one after). The feature can be disabled or removed without touching nanobot internals.
+**Roadmap already scaffolded in code** — document intent, tool-output sanitization helpers, and tool-interceptor placeholders already exist, but they are not fully wired into the runtime yet.
 
 ---
 
@@ -403,5 +408,4 @@ uv run --extra dev pytest tests/ -m integration -v
 
 ## Credits & License
 
-CloakBot is built on [nanobot](https://github.com/HKUDS/nanobot) (MIT License) by HKUDS. The channel integrations, session management, memory system, and CLI are from nanobot, used unchanged. CloakBot's contribution is entirely in `cloakbot/sanitizer/`, `cloakbot/agents/`, and the two hooks in `cloakbot/agent/loop.py`.
-
+CloakBot is built on [nanobot](https://github.com/HKUDS/nanobot) (MIT License) by HKUDS. The channel integrations, session management, memory system, and CLI come from the upstream framework. CloakBot's privacy-specific work in this repo lives primarily under `cloakbot/privacy/`, [vllm.py](/Users/laurieluo/Documents/github/my-repos/cloakbot/cloakbot/providers/vllm.py:1), and the hook integration points in [loop.py](/Users/laurieluo/Documents/github/my-repos/cloakbot/cloakbot/agent/loop.py:574).

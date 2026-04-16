@@ -70,6 +70,7 @@ class GitStore:
                 message=b"init: cloakbot memory store",
                 author=b"cloakbot <cloakbot@dream>",
                 committer=b"cloakbot <cloakbot@dream>",
+                sign=False,
             )
             logger.info("Git store initialized at {}", self._workspace)
             return True
@@ -103,6 +104,7 @@ class GitStore:
                 message=msg_bytes,
                 author=b"cloakbot <cloakbot@dream>",
                 committer=b"cloakbot <cloakbot@dream>",
+                sign=False,
             )
             if sha_bytes is None:
                 return None

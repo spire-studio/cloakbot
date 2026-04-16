@@ -13,7 +13,7 @@ from pathlib import Path
 # Allow running from project root without installing the package
 sys.path.insert(0, str(Path(__file__).parents[1]))
 
-from cloakbot.sanitizer import remap_response, sanitize_input
+from cloakbot.privacy.core.sanitize import remap_response, sanitize_input
 from cloakbot.providers.vllm import get_vllm_model, _settings
 
 TEST_CASES = [
@@ -52,15 +52,13 @@ async def main() -> None:
         print(f"  Modified : {modified}")
 
         if modified:
-            # Simulate an LLM response that echoes placeholders back
-            fake_response = f"Got it. I'll keep {sanitized.split('{{')[1].split('}}')[0] if '{{' in sanitized else 'your info'} in mind."  # noqa
-            # Actually just use the sanitized text as a fake response
+            # Use the sanitized text as a fake response for restoration.
             fake_response = sanitized
             restored = await remap_response(fake_response, SESSION)
             print(f"  Restored : {restored}")
 
     print("\n" + "=" * 60)
-    print("Done. Check ~/.cloakbot/sanitizer_maps/ for session JSON.")
+    print("Done. Check the session JSON under ~/.cloakbot/.")
 
 
 if __name__ == "__main__":

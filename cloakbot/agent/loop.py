@@ -31,13 +31,8 @@ from cloakbot.command import CommandContext, CommandRouter, register_builtin_com
 from cloakbot.bus.queue import MessageBus
 from cloakbot.config.schema import AgentDefaults
 from cloakbot.providers.base import LLMProvider
+from cloakbot.privacy import Intent, post_llm_hook, pre_llm_hook
 from cloakbot.session.manager import Session, SessionManager
-from cloakbot.sanitizer import remap_response, sanitize_input_with_detection
-from cloakbot.sanitizer.privacy_math import (
-    apply_privacy_math,
-    build_privacy_math_instruction,
-    has_privacy_math,
-)
 from cloakbot.utils.helpers import image_placeholder_text, truncate_text
 from cloakbot.utils.runtime import EMPTY_FINAL_RESPONSE_MESSAGE
 
@@ -575,40 +570,30 @@ class AgentLoop:
             if isinstance(message_tool, MessageTool):
                 message_tool.start_turn()
 
-        # ── Sanitization + privacy-math planning middleware ───────────────────
-        # Runs before build_messages so the remote LLM never sees raw PII.
-        # fail_open=True: if vLLM is unreachable the message passes through.
-        sanitized_content, was_sanitized, redacted_entities, detection = await sanitize_input_with_detection(
-            msg.content, key, fail_open=True
+        session_key = key
+        user_message, turn_ctx = await pre_llm_hook(
+            msg.content,
+            session_key,
+            fail_open=True,
         )
-        math_plan = detection.math_plan if detection else None
-        math_enabled = has_privacy_math(math_plan)
 
-        if was_sanitized:
+        if turn_ctx.was_sanitized:
             logger.info(
                 "sanitizer: input redacted for session {} (original len={} sanitized len={})",
-                key, len(msg.content), len(sanitized_content),
-            )
-        if math_enabled and math_plan is not None:
-            sanitized_content = f"{sanitized_content}\n\n{build_privacy_math_instruction(math_plan)}"
-            logger.info(
-                "privacy-math: enabled for session {} (vars={})",
                 key,
-                len(math_plan.variables),
+                len(msg.content),
+                len(turn_ctx.sanitized_input),
             )
-
-        async def _finalize_response_text(raw_text: str) -> str:
-            result = raw_text
-            if math_enabled:
-                result = await apply_privacy_math(result, math_plan)
-            if was_sanitized:
-                result = await remap_response(result, key)
-            return result
+        if turn_ctx.intent is Intent.MATH:
+            logger.info(
+                "privacy-math: enabled for session {}",
+                key,
+            )
 
         history = session.get_history(max_messages=0)
         initial_messages = self.context.build_messages(
             history=history,
-            current_message=sanitized_content,
+            current_message=user_message,
             media=msg.media if msg.media else None,
             channel=msg.channel, chat_id=msg.chat_id,
         )
@@ -621,22 +606,28 @@ class AgentLoop:
                 channel=msg.channel, chat_id=msg.chat_id, content=content, metadata=meta,
             ))
 
-        if was_sanitized:
+        if turn_ctx.was_sanitized:
             entity_summary = ", ".join(
-                f'"{e.text}" [{e.entity_type.value}]' for e in redacted_entities
+                f'"{e.text}"' for e in turn_ctx.user_input_entities
             )
             _notify = on_progress or _bus_progress
             await _notify(f"🔒 Redacted before sending to AI: {entity_summary}")
-        if math_enabled:
+        if turn_ctx.intent is Intent.MATH:
             _notify = on_progress or _bus_progress
-            await _notify("🧮 Privacy math mode enabled: formula generation requested, local computation will be applied.")
+            await _notify(
+                "🧮 Privacy math mode enabled: formula generation requested, local computation "
+                "will be applied."
+            )
 
         # ── Stream buffering for post-processing ───────────────────────────
-        # When sanitization or privacy-math is active, buffer streamed tokens
-        # so remap/local-computation happens before user-visible output.
+        # Buffer streamed tokens so post-response privacy checks and restoration
+        # run before user-visible output.
         _stream_buf: list[str] = []
 
-        if (was_sanitized or math_enabled) and on_stream is not None:
+        async def _finalize_response_text(raw_text: str) -> str:
+            return await post_llm_hook(raw_text, turn_ctx, session_key)
+
+        if on_stream is not None:
             async def _buffered_stream(delta: str) -> None:
                 _stream_buf.append(delta)
 
@@ -654,7 +645,7 @@ class AgentLoop:
             effective_stream = on_stream
             effective_stream_end = on_stream_end
 
-        final_content, _, all_msgs = await self._run_agent_loop(
+        final_content, tools_used, all_msgs = await self._run_agent_loop(
             initial_messages,
             on_progress=on_progress or _bus_progress,
             on_stream=effective_stream,
@@ -667,6 +658,7 @@ class AgentLoop:
         if final_content is None or not final_content.strip():
             final_content = EMPTY_FINAL_RESPONSE_MESSAGE
 
+        turn_ctx.tool_calls_made = len(tools_used)
         final_content = await _finalize_response_text(final_content)
 
         self._save_turn(session, all_msgs, 1 + len(history))

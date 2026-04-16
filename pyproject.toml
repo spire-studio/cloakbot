@@ -22,6 +22,7 @@ dependencies = [
     "anthropic>=0.45.0,<1.0.0",
     "pydantic>=2.12.0,<3.0.0",
     "pydantic-settings>=2.12.0,<3.0.0",
+    "fastapi>=0.115.0,<1.0.0",
     "websockets>=16.0,<17.0",
     "websocket-client>=1.9.0,<2.0.0",
     "httpx>=0.28.0,<1.0.0",
@@ -100,16 +101,19 @@ allow-direct-references = true
 [tool.hatch.build]
 include = [
     "cloakbot/**/*.py",
+    "webui/**/*.py",
+    "webui/dist/**/*",
     "cloakbot/templates/**/*.md",
     "cloakbot/skills/**/*.md",
     "cloakbot/skills/**/*.sh",
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["cloakbot"]
+packages = ["cloakbot", "webui"]
 
 [tool.hatch.build.targets.wheel.sources]
 "cloakbot" = "cloakbot"
+"webui" = "webui"
 
 [tool.hatch.build.targets.wheel.force-include]
 "bridge" = "cloakbot/bridge"
@@ -117,6 +121,7 @@ packages = ["cloakbot"]
 [tool.hatch.build.targets.sdist]
 include = [
     "cloakbot/",
+    "webui/",
     "bridge/",
     "README.md",
     "LICENSE",

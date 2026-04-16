@@ -86,7 +86,7 @@ class Schema(ABC):
             if "maxItems" in schema and len(val) > schema["maxItems"]:
                 errors.append(f"{label} must be at most {schema['maxItems']} items")
             if "items" in schema:
-                prefix = f"{path}[{{}}]" if path else "[{}]"
+                prefix = f"{path}[" + "{}" + "]" if path else "[{}]"
                 for i, item in enumerate(val):
                     errors.extend(
                         Schema.validate_json_schema_value(item, schema["items"], prefix.format(i))

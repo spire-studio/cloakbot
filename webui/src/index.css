@@ -1,0 +1,168 @@
+@import '@fontsource/manrope/400.css';
+@import '@fontsource/manrope/500.css';
+@import '@fontsource/manrope/600.css';
+@import '@fontsource/manrope/700.css';
+@import '@fontsource/ibm-plex-mono/400.css';
+@import '@fontsource/ibm-plex-mono/500.css';
+@import 'tailwindcss';
+@import 'tw-animate-css';
+
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  --background: hsl(51, 24%, 95%);
+  --foreground: hsl(47, 15%, 25%);
+  --card: hsl(40, 23%, 98%);
+  --card-foreground: hsl(47, 15%, 25%);
+  --popover: hsl(40, 23%, 98%);
+  --popover-foreground: hsl(47, 15%, 25%);
+  --primary: hsl(47, 15%, 25%);
+  --primary-foreground: hsl(51, 24%, 95%);
+  --secondary: hsl(51, 19%, 87%);
+  --secondary-foreground: hsl(47, 15%, 25%);
+  --muted: #E4E1D7;
+  --muted-foreground: hsl(47, 15%, 25%);
+  --accent: hsl(51, 19%, 87%);
+  --accent-foreground: hsl(47, 15%, 25%);
+  --destructive: oklch(0.61 0.19 28);
+  --destructive-foreground: oklch(0.98 0.003 95);
+  --border: #87867F40;
+  --input: #87867F40;
+  --ring: hsl(47, 15%, 25%);
+  --radius: 1rem;
+  
+  --sidebar-background: #F8F7F2;
+  --sidebar-foreground: hsl(49 19.6% 13.3%);
+  --sidebar-primary: hsl(240 5.9% 10%);
+  --sidebar-primary-foreground: hsl(0 0% 98%);
+  --sidebar-accent: #E4E1D7;
+  --sidebar-accent-foreground: hsl(49 19.6% 13.3%);
+  --sidebar-border: #87867F40;
+  --sidebar-ring: hsl(217.2 91.2% 59.8%);
+
+  --chat-code-bg: #3D39290D;
+  --chat-code-text: #7C1B13;
+  --chat-pre-text: #FFFFFF;
+}
+
+.dark {
+  --background: #2D2E2D;
+  --foreground: hsl(50, 14%, 91%);
+  --card: hsl(60, 2%, 21%);
+  --card-foreground: hsl(50, 14%, 91%);
+  --popover: hsl(60, 2%, 21%);
+  --popover-foreground: hsl(50, 14%, 91%);
+  --primary: hsl(50, 14%, 91%);
+  --primary-foreground: #2D2E2D;
+  --secondary: hsl(60, 2%, 21%);
+  --secondary-foreground: hsl(50, 14%, 91%);
+  --muted: #3D3D3A;
+  --muted-foreground: hsl(50, 14%, 91%);
+  --accent: hsl(60, 2%, 21%);
+  --accent-foreground: hsl(50, 14%, 91%);
+  --destructive: oklch(0.7 0.16 22);
+  --destructive-foreground: oklch(0.18 0.01 95);
+  --border: #5E5D5940;
+  --input: #5E5D5940;
+  --ring: hsl(50, 14%, 91%);
+  
+  --sidebar-background: #2A2B2A;
+  --sidebar-foreground: hsl(50, 14%, 91%);
+  --sidebar-primary: hsl(224.3 76.3% 48%);
+  --sidebar-primary-foreground: hsl(0 0% 100%);
+  --sidebar-accent: #323332;
+  --sidebar-accent-foreground: hsl(50, 14%, 91%);
+  --sidebar-border: #5E5D5940;
+  --sidebar-ring: hsl(217.2 91.2% 59.8%);
+
+  --chat-code-bg: #E5E5E20D;
+  --chat-code-text: #EA928A;
+  --chat-pre-text: #ABB2BF;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) - 0.25rem);
+  --radius-md: calc(var(--radius) - 0.125rem);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 0.25rem);
+  --font-sans: 'Manrope', 'Avenir Next', 'Helvetica Neue', sans-serif;
+  --font-mono: 'IBM Plex Mono', 'SFMono-Regular', monospace;
+  
+  --color-sidebar: var(--sidebar-background);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  --color-chat-code-bg: var(--chat-code-bg);
+  --color-chat-code-text: var(--chat-code-text);
+  --color-chat-pre-text: var(--chat-pre-text);
+}
+
+* {
+  @apply border-border;
+}
+
+html {
+  color-scheme: light;
+}
+
+html.dark {
+  color-scheme: dark;
+}
+
+body {
+  @apply min-h-svh bg-background font-sans text-foreground antialiased;
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+}
+
+#root {
+  min-height: 100svh;
+}
+
+/* Custom Markdown styles for Chat */
+.prose pre {
+  @apply bg-zinc-900 text-chat-pre-text rounded-md p-4 overflow-x-auto my-4;
+}
+.prose code {
+  @apply bg-chat-code-bg text-chat-code-text px-1.5 py-0.5 rounded-md text-sm font-mono;
+}
+.prose pre code {
+  @apply bg-transparent text-inherit p-0;
+}
+.prose p {
+  @apply mb-4 last:mb-0 leading-relaxed;
+}
+.prose ul {
+  @apply list-disc pl-6 mb-4;
+}
+.prose ol {
+  @apply list-decimal pl-6 mb-4;
+}
