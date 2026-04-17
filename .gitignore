@@ -4,6 +4,9 @@
 .env
 .web
 CLAUDE.md
+AGENTS.md
+.vscode/
+bridge/node_modules/
 *.pyc
 dist/
 build/

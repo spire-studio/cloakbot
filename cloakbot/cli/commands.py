@@ -4,7 +4,9 @@ import asyncio
 import os
 import select
 import signal
+import subprocess
 import sys
+import time
 from contextlib import nullcontext
 from pathlib import Path
 from typing import Any
@@ -47,6 +49,7 @@ class SafeFileHistory(FileHistory):
         safe = string.encode("utf-8", errors="surrogateescape").decode("utf-8", errors="replace")
         super().store_string(safe)
 from cloakbot.cli.stream import StreamRenderer, ThinkingSpinner
+from cloakbot.channels.webui import WebUIConfig
 from cloakbot.config.paths import get_workspace_path, is_default_workspace
 from cloakbot.config.schema import Config
 from cloakbot.utils.helpers import sync_workspace_templates
@@ -501,6 +504,40 @@ def _load_runtime_config(config: str | None = None, workspace: str | None = None
     return loaded
 
 
+def _configure_webui_channel(config: Config, host: str, port: int) -> None:
+    """Enable and hydrate the local WebUI channel when configured or env-forced."""
+    existing = getattr(config.channels, "webui", None)
+    env_enabled = os.environ.get("CLOAKBOT_ENABLE_WEBUI_CHANNEL") == "1"
+
+    if not env_enabled and existing is None:
+        return
+
+    section = WebUIConfig.model_validate(existing or {})
+    enabled = env_enabled or section.enabled
+    if not enabled:
+        return
+
+    channel_host = os.environ.get("CLOAKBOT_WEBUI_CHANNEL_HOST") or section.host or host
+    channel_port = int(os.environ.get("CLOAKBOT_WEBUI_CHANNEL_PORT") or section.port or port)
+    frontend_url = os.environ.get("CLOAKBOT_WEBUI_FRONTEND_URL") or section.frontend_url
+
+    section = section.model_copy(
+        update={
+            "enabled": True,
+            "host": channel_host,
+            "port": channel_port,
+            "frontend_url": frontend_url,
+            "status": {
+                "ready": True,
+                "model": config.agents.defaults.model,
+                "provider": config.get_provider_name(config.agents.defaults.model) or "unknown",
+                "workspace": str(config.workspace_path),
+            },
+        }
+    )
+    setattr(config.channels, "webui", section)
+
+
 def _warn_deprecated_config_keys(config_path: Path | None) -> None:
     """Hint users to remove obsolete keys from their config file."""
     import json
@@ -620,12 +657,144 @@ def serve(
 
 
 # ============================================================================
+# WebUI
+# ============================================================================
+
+
+@app.command()
+def webui(
+    port: int = typer.Option(8000, "--port", "-p", "--gateway-port", help="Gateway port"),
+    host: str = typer.Option("127.0.0.1", "--host", "-H", "--gateway-host", help="Gateway bind address"),
+    frontend_port: int = typer.Option(5173, "--frontend-port", help="Frontend port"),
+    frontend_host: str = typer.Option("127.0.0.1", "--frontend-host", help="Frontend bind address"),
+    reload: bool = typer.Option(False, "--reload", help="Enable auto-reload for development"),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show cloakbot runtime logs"),
+    workspace: str | None = typer.Option(None, "--workspace", "-w", help="Workspace directory"),
+    config: str | None = typer.Option(None, "--config", "-c", help="Path to config file"),
+):
+    """Start the Cloakbot WebUI frontend and gateway."""
+
+    repo_root = Path(__file__).resolve().parents[2]
+    frontend_dir = repo_root / "webui"
+
+    runtime_config = _load_runtime_config(config, workspace)
+    model_name = runtime_config.agents.defaults.model
+
+    gateway_target_host = "127.0.0.1" if host in {"0.0.0.0", "::"} else host
+    frontend_target_host = "127.0.0.1" if frontend_host in {"0.0.0.0", "::"} else frontend_host
+
+    if config:
+        os.environ["CLOAKBOT_WEBUI_CONFIG"] = str(Path(config).expanduser().resolve())
+    else:
+        os.environ.pop("CLOAKBOT_WEBUI_CONFIG", None)
+    os.environ["CLOAKBOT_WEBUI_WORKSPACE"] = str(runtime_config.workspace_path)
+    os.environ["CLOAKBOT_WEBUI_GATEWAY_URL"] = f"http://{gateway_target_host}:{port}"
+
+    if verbose:
+        logger.enable("cloakbot")
+    else:
+        logger.disable("cloakbot")
+
+    console.print(f"{__logo__} Starting Cloakbot WebUI")
+    console.print(f"  [cyan]Frontend[/cyan] : http://{frontend_target_host}:{frontend_port}")
+    console.print(f"  [cyan]Gateway[/cyan]  : http://{gateway_target_host}:{port}")
+    console.print(f"  [cyan]Model[/cyan]    : {model_name}")
+    console.print(f"  [cyan]Workspace[/cyan]: {runtime_config.workspace_path}")
+    if reload:
+        console.print("  [cyan]Reload[/cyan]   : frontend HMR enabled")
+    console.print()
+
+    env = os.environ.copy()
+    env["CLOAKBOT_ENABLE_WEBUI_CHANNEL"] = "1"
+    env["CLOAKBOT_WEBUI_CHANNEL_HOST"] = host
+    env["CLOAKBOT_WEBUI_CHANNEL_PORT"] = str(port)
+    env["CLOAKBOT_WEBUI_FRONTEND_URL"] = f"http://{frontend_target_host}:{frontend_port}"
+    env["VITE_CLOAKBOT_WEBUI_GATEWAY_URL"] = f"http://{gateway_target_host}:{port}"
+
+    gateway_cmd = [
+        sys.executable,
+        "-m",
+        "cloakbot",
+        "gateway",
+        "--host",
+        host,
+        "--port",
+        str(port),
+    ]
+    if verbose:
+        gateway_cmd.append("--verbose")
+    if config:
+        gateway_cmd.extend(["--config", str(Path(config).expanduser().resolve())])
+    if workspace:
+        gateway_cmd.extend(["--workspace", str(Path(workspace).expanduser().resolve())])
+
+    frontend_cmd = [
+        "npm",
+        "run",
+        "dev",
+        "--",
+        "--host",
+        frontend_host,
+        "--port",
+        str(frontend_port),
+    ]
+
+    console.print(f"[dim]gateway:[/dim] {' '.join(gateway_cmd)}")
+    console.print(f"[dim]frontend:[/dim] {' '.join(frontend_cmd)}")
+    console.print()
+
+    processes: list[tuple[str, subprocess.Popen[str]]] = []
+
+    try:
+        processes.append(("gateway", subprocess.Popen(gateway_cmd, env=env, text=True)))
+        processes.append(
+            (
+                "frontend",
+                subprocess.Popen(frontend_cmd, cwd=frontend_dir, env=env, text=True),
+            )
+        )
+
+        while True:
+            for name, process in processes:
+                return_code = process.poll()
+                if return_code is None:
+                    continue
+
+                console.print(f"[yellow]{name} exited with code {return_code}[/yellow]")
+                for other_name, other_process in processes:
+                    if other_process is process or other_process.poll() is not None:
+                        continue
+                    console.print(f"[dim]Stopping {other_name}...[/dim]")
+                    other_process.terminate()
+                    try:
+                        other_process.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        other_process.kill()
+                raise typer.Exit(return_code)
+
+            time.sleep(0.3)
+    except KeyboardInterrupt:
+        console.print("\nShutting down WebUI...")
+        for _name, process in processes:
+            if process.poll() is None:
+                process.terminate()
+        for _name, process in processes:
+            if process.poll() is None:
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+        raise typer.Exit(0)
+
+
+# ============================================================================
 # Gateway / Server
 # ============================================================================
 
 
 @app.command()
 def gateway(
+    host: str | None = typer.Option(None, "--host", "-H", help="Gateway bind address"),
     port: int | None = typer.Option(None, "--port", "-p", help="Gateway port"),
     workspace: str | None = typer.Option(None, "--workspace", "-w", help="Workspace directory"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Verbose output"),
@@ -646,9 +815,11 @@ def gateway(
         logging.basicConfig(level=logging.DEBUG)
 
     config = _load_runtime_config(config, workspace)
+    host = host if host is not None else config.gateway.host
     port = port if port is not None else config.gateway.port
+    _configure_webui_channel(config, host, port)
 
-    console.print(f"{__logo__} Starting cloakbot gateway version {__version__} on port {port}...")
+    console.print(f"{__logo__} Starting cloakbot gateway version {__version__} on {host}:{port}...")
     sync_workspace_templates(config.workspace_path)
     bus = MessageBus()
     provider = _make_provider(config)

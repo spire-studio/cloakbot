@@ -1,7 +1,9 @@
 import asyncio
 import json
+import os
 import re
 import shutil
+import sys
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -798,6 +800,96 @@ def _patch_serve_runtime(monkeypatch, config: Config, seen: dict[str, object]) -
     monkeypatch.setattr("aiohttp.web.run_app", _fake_run_app)
 
 
+def test_webui_command_starts_frontend_and_backend(monkeypatch, tmp_path: Path) -> None:
+    config_file = _write_instance_config(tmp_path)
+    config = Config()
+    config.agents.defaults.workspace = str(tmp_path / "config-workspace")
+    seen: dict[str, object] = {"calls": []}
+
+    monkeypatch.setattr("cloakbot.config.loader.set_config_path", lambda _path: None)
+    monkeypatch.setattr("cloakbot.config.loader.load_config", lambda _path=None: config)
+    monkeypatch.setattr("cloakbot.config.loader.resolve_config_env_vars", lambda value: value)
+    monkeypatch.setattr("cloakbot.cli.commands._warn_deprecated_config_keys", lambda _path: None)
+    monkeypatch.setattr("cloakbot.cli.commands.logger.disable", lambda _name: seen.__setitem__("logger", "disabled"))
+    monkeypatch.setattr("cloakbot.cli.commands.logger.enable", lambda _name: seen.__setitem__("logger", "enabled"))
+
+    class _FakeProcess:
+        def __init__(self, args, **kwargs) -> None:
+            self.args = args
+            self.kwargs = kwargs
+            self._poll_calls = 0
+            seen["calls"].append((args, kwargs))
+
+        def poll(self):
+            self._poll_calls += 1
+            if self.args[0] == "npm":
+                return None
+            return 0 if self._poll_calls >= 1 else None
+
+        def terminate(self) -> None:
+            seen["terminated"] = True
+
+        def wait(self, timeout=None) -> int:
+            seen["wait_timeout"] = timeout
+            return 0
+
+        def kill(self) -> None:
+            seen["killed"] = True
+
+    monkeypatch.setattr("subprocess.Popen", _FakeProcess)
+
+    result = runner.invoke(
+        app,
+        [
+            "webui",
+            "--config",
+            str(config_file),
+            "--workspace",
+            str(tmp_path / "override-workspace"),
+            "--port",
+            "8123",
+            "--host",
+            "0.0.0.0",
+            "--frontend-port",
+            "4173",
+            "--reload",
+        ],
+    )
+
+    assert result.exit_code == 0
+    backend_args, backend_kwargs = seen["calls"][0]
+    frontend_args, frontend_kwargs = seen["calls"][1]
+    assert backend_args == [
+        sys.executable,
+        "-m",
+        "cloakbot",
+        "gateway",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8123",
+        "--config",
+        str(config_file.resolve()),
+        "--workspace",
+        str((tmp_path / "override-workspace").resolve()),
+    ]
+    assert frontend_args == [
+        "npm",
+        "run",
+        "dev",
+        "--",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "4173",
+    ]
+    assert frontend_kwargs["cwd"] == Path(__file__).resolve().parents[2] / "webui"
+    assert seen["terminated"] is True
+    assert os.environ["CLOAKBOT_WEBUI_CONFIG"] == str(config_file.resolve())
+    assert os.environ["CLOAKBOT_WEBUI_WORKSPACE"] == str((tmp_path / "override-workspace").resolve())
+    assert os.environ["CLOAKBOT_WEBUI_GATEWAY_URL"] == "http://127.0.0.1:8123"
+
+
 def test_gateway_uses_workspace_from_config_by_default(monkeypatch, tmp_path: Path) -> None:
     config_file = _write_instance_config(tmp_path)
     config = Config()
@@ -1106,7 +1198,7 @@ def test_gateway_uses_configured_port_when_cli_flag_is_missing(monkeypatch, tmp_
     result = runner.invoke(app, ["gateway", "--config", str(config_file)])
 
     assert isinstance(result.exception, _StopGatewayError)
-    assert "port 18791" in result.stdout
+    assert "0.0.0.0:18791" in result.stdout
 
 
 def test_gateway_cli_port_overrides_configured_port(monkeypatch, tmp_path: Path) -> None:
@@ -1123,7 +1215,7 @@ def test_gateway_cli_port_overrides_configured_port(monkeypatch, tmp_path: Path)
     result = runner.invoke(app, ["gateway", "--config", str(config_file), "--port", "18792"])
 
     assert isinstance(result.exception, _StopGatewayError)
-    assert "port 18792" in result.stdout
+    assert "0.0.0.0:18792" in result.stdout
 
 
 def test_serve_uses_api_config_defaults_and_workspace_override(
