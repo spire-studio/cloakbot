@@ -295,14 +295,13 @@ cloakbot/
 - [x] 带 JSON 持久化的 Session Vault
 - [x] 基于占位符 remap 的最终输出恢复
 - [x] Web UI 聊天界面
-- [x] 在 `cloakbot/agent/loop.py` 中接入 `pre_llm_hook` 和 `post_llm_hook`
 - [x] 具备逐轮上下文的 PrivacyOrchestrator
 - [x] 本地意图分析与 chat/math/doc 路由
 - [x] MathAgent 片段约束与本地算术执行
+- [ ] 多轮对话隐私保护
 - [ ] Web UI 细节打磨与可用性完善
 
 ### 🔨 v0.2 — 信任边界扩展
-- [ ] 多轮对话隐私保护
 - [ ] Tool-use Detector：在主循环中强制执行工具使用结果脱敏
 - [ ] 真正实现 `ToolInterceptor`
 - [ ] 具体可用的 `DocAgent`

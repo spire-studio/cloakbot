@@ -295,14 +295,13 @@ Session-level placeholder mappings are persisted as JSON under `~/.cloakbot/sani
 - [x] Session Vault with JSON persistence
 - [x] Final output restoration via placeholder remap
 - [x] Web UI chat interface
-- [x] `pre_llm_hook` and `post_llm_hook` wired into `cloakbot/agent/loop.py`
 - [x] PrivacyOrchestrator with turn-scoped context
 - [x] Local intent analysis and chat/math/doc routing
 - [x] MathAgent snippet contract plus local arithmetic execution
+- [ ] Multi-turn conversation privacy protection
 - [ ] Web UI polish and usability improvements
 
 ### 🔨 v0.2 — Trust Boundary Expansion
-- [ ] Multi-turn conversation privacy protection
 - [ ] Tool-use Detector: enforce tool-use sanitization in the main loop
 - [ ] Real `ToolInterceptor` implementation
 - [ ] Concrete `DocAgent` implementation
