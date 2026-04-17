@@ -12,6 +12,10 @@ import pytest_asyncio
 from cloakbot.api.server import (
     API_CHAT_ID,
     API_SESSION_KEY,
+    AGENT_LOOP_KEY,
+    MODEL_NAME_KEY,
+    REQUEST_TIMEOUT_KEY,
+    SESSION_LOCKS_KEY,
     _chat_completion_response,
     _error_json,
     create_app,
@@ -34,6 +38,15 @@ def _make_mock_agent(response_text: str = "mock response") -> MagicMock:
     agent._connect_mcp = AsyncMock()
     agent.close_mcp = AsyncMock()
     return agent
+
+
+def _mock_app(response_text: str = "mock response") -> dict:
+    return {
+        AGENT_LOOP_KEY: _make_mock_agent(response_text),
+        MODEL_NAME_KEY: "test-model",
+        REQUEST_TIMEOUT_KEY: 10.0,
+        SESSION_LOCKS_KEY: {},
+    }
 
 
 @pytest.fixture
@@ -121,12 +134,7 @@ async def test_model_mismatch_returns_400() -> None:
             "messages": [{"role": "user", "content": "hello"}],
         }
     )
-    request.app = {
-        "agent_loop": _make_mock_agent(),
-        "model_name": "test-model",
-        "request_timeout": 10.0,
-        "session_lock": asyncio.Lock(),
-    }
+    request.app = _mock_app()
 
     resp = await handle_chat_completions(request)
     assert resp.status == 400
@@ -145,12 +153,7 @@ async def test_single_user_message_required() -> None:
             ],
         }
     )
-    request.app = {
-        "agent_loop": _make_mock_agent(),
-        "model_name": "test-model",
-        "request_timeout": 10.0,
-        "session_lock": asyncio.Lock(),
-    }
+    request.app = _mock_app()
 
     resp = await handle_chat_completions(request)
     assert resp.status == 400
@@ -166,12 +169,7 @@ async def test_single_user_message_must_have_user_role() -> None:
             "messages": [{"role": "system", "content": "you are a bot"}],
         }
     )
-    request.app = {
-        "agent_loop": _make_mock_agent(),
-        "model_name": "test-model",
-        "request_timeout": 10.0,
-        "session_lock": asyncio.Lock(),
-    }
+    request.app = _mock_app()
 
     resp = await handle_chat_completions(request)
     assert resp.status == 400

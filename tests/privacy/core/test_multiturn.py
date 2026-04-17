@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from cloakbot.privacy.core.detector import PiiDetector
 from cloakbot.privacy.agents.alias_resolver import resolve_existing_placeholder
 from cloakbot.privacy.core.sanitize import sanitize_input_with_detection
 from cloakbot.privacy.core.types import DetectionResult, GeneralEntity
@@ -30,7 +31,7 @@ async def test_sanitize_input_pre_swaps_known_originals(monkeypatch) -> None:
     )
     save_calls: list[_SessionMap] = []
 
-    monkeypatch.setattr("cloakbot.privacy.core.sanitize._detector.detect", detect)
+    monkeypatch.setattr(PiiDetector, "detect", detect)
     monkeypatch.setattr("cloakbot.privacy.core.sanitize.get_map", lambda _session_key: smap)
     monkeypatch.setattr(
         "cloakbot.privacy.core.sanitize.save_map",

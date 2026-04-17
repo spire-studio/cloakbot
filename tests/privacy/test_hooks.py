@@ -63,5 +63,9 @@ async def test_post_llm_hook_delegates_to_orchestrator() -> None:
     ):
         result = await post_llm_hook("Hello <<PERSON_1>>", ctx, "cli:test")
 
-    orchestrator.finalize_turn.assert_awaited_once_with("Hello <<PERSON_1>>", ctx)
+    orchestrator.finalize_turn.assert_awaited_once_with(
+        "Hello <<PERSON_1>>",
+        ctx,
+        include_report=True,
+    )
     assert result == "Hello Laurie Luo"
