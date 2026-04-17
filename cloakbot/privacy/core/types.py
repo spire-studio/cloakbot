@@ -46,7 +46,7 @@ class PrivacyRegistry(BaseModel):
 REGISTRY = PrivacyRegistry(
     general=[
         EntitySpec(
-            slug="person", tag="PERSON", description="names of individuals, handles, or pseudonyms"
+            slug="person", tag="PERSON", description="names of individuals, handles, or pseudonyms."
         ),
         EntitySpec(slug="phone", tag="PHONE", description="phone numbers"),
         EntitySpec(slug="email", tag="EMAIL", description="email addresses"),
@@ -85,11 +85,6 @@ REGISTRY = PrivacyRegistry(
             slug="sensitive_text",
             tag="DETAIL",
             description="private plans, secrets, or project code names",
-        ),
-        EntitySpec(
-            slug="non_computable_other",
-            tag="ENTITY",
-            description="other non-numeric sensitive identifiers",
         ),
     ],
     computable=[

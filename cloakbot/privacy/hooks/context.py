@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 
+from cloakbot.privacy.core.restorer import RestoredTokenAnnotation
 from cloakbot.privacy.core.types import DetectedEntity
 
 
@@ -18,6 +19,9 @@ class TurnContext:
     turn_id: str
     raw_input: str
     sanitized_input: str = ""
+    sanitized_output: str = ""
+    display_output: str = ""
+    display_output_annotations: list[RestoredTokenAnnotation] = field(default_factory=list)
     intent: Intent = Intent.CHAT
     user_input_entities: list[DetectedEntity] = field(default_factory=list)
     tool_input_entities: list[DetectedEntity] = field(default_factory=list)

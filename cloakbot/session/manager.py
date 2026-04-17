@@ -60,6 +60,32 @@ class Session:
             out.append(entry)
         return out
 
+    def get_display_history(self, max_messages: int = 500) -> list[dict[str, Any]]:
+        """Return history with placeholders restored for user-facing rendering."""
+        from cloakbot.privacy.core.restorer import restore_tokens
+        from cloakbot.privacy.core.vault import get_map
+
+        smap = get_map(self.key)
+        display_history = self.get_history(max_messages=max_messages)
+
+        for message in display_history:
+            content = message.get("content")
+            if isinstance(content, str):
+                message["content"] = restore_tokens(content, smap)
+            elif isinstance(content, list):
+                restored_blocks: list[dict[str, Any]] = []
+                for block in content:
+                    if (
+                        isinstance(block, dict)
+                        and block.get("type") == "text"
+                        and isinstance(block.get("text"), str)
+                    ):
+                        restored_blocks.append({**block, "text": restore_tokens(block["text"], smap)})
+                    else:
+                        restored_blocks.append(block)
+                message["content"] = restored_blocks
+        return display_history
+
     def clear(self) -> None:
         """Clear all messages and reset session to initial state."""
         self.messages = []

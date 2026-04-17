@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import uuid
 
+from loguru import logger
+
 from cloakbot.privacy.agents.intent_analyzer import analyze_user_intent
 from cloakbot.privacy.agents.task_router import get_agent, route_turn
 from cloakbot.privacy.core.sanitize import (
-    remap_response,
+    remap_response_with_annotations,
     sanitize_input_with_detection,
 )
 from cloakbot.privacy.hooks.context import TurnContext
@@ -32,10 +34,28 @@ class PrivacyOrchestrator:
             text,
             session_key,
             fail_open=fail_open,
+            turn_id=ctx.turn_id,
         )
         ctx.sanitized_input = sanitized
         ctx.was_sanitized = modified
         ctx.user_input_entities = entities
+        logger.info(
+            "privacy-orchestrator: turn context prepared for session {}: {}",
+            session_key,
+            {
+                "turn_id": ctx.turn_id,
+                "sanitized_input": ctx.sanitized_input,
+                "user_input_entities": [
+                    {
+                        "text": entity.text,
+                        "entity_type": entity.entity_type,
+                        **({"value": entity.value} if hasattr(entity, "value") else {}),
+                    }
+                    for entity in ctx.user_input_entities
+                ],
+                "was_sanitized": ctx.was_sanitized,
+            },
+        )
         ctx.intent = await analyze_user_intent(text)
         ctx.intent = route_turn(ctx)
 
@@ -47,15 +67,20 @@ class PrivacyOrchestrator:
         self,
         response: str,
         ctx: TurnContext,
+        *,
+        include_report: bool = True,
     ) -> str:
         """Run local post-processing, restore tokens and emit report."""
         agent = get_agent(ctx)
         finalized = await agent.finalize_output(response, ctx)
+        ctx.sanitized_output = finalized
 
-        restored = await remap_response(finalized, ctx.session_key)
+        restored, annotations = await remap_response_with_annotations(finalized, ctx.session_key)
+        ctx.display_output = restored
+        ctx.display_output_annotations = annotations
 
         report_text = TurnReport(ctx=ctx).render()
-        if report_text:
+        if include_report and report_text:
             restored = f"{restored}\n\n{report_text}"
         return restored
 

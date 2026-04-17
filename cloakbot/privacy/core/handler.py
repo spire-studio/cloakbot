@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 
+from cloakbot.privacy.agents.alias_resolver import resolve_existing_placeholder
 from cloakbot.privacy.core.vault import PLACEHOLDER_RE, _SessionMap
 from cloakbot.privacy.core.types import REGISTRY, DetectionResult, ComputableEntity
 
@@ -38,7 +39,12 @@ def _find_safe_positions(
     return positions
 
 
-def apply_tokens(detection: DetectionResult, smap: _SessionMap) -> tuple[str, bool]:
+def apply_tokens(
+    detection: DetectionResult,
+    smap: _SessionMap,
+    *,
+    turn_id: str | None = None,
+) -> tuple[str, bool]:
     """
     Replace sensitive entities with placeholders using span-aware replacement.
 
@@ -71,7 +77,15 @@ def apply_tokens(detection: DetectionResult, smap: _SessionMap) -> tuple[str, bo
 
         # Get or create placeholder via vault
         tag = tag_map.get(entity.entity_type, "ENTITY")
-        placeholder, _is_new = smap.get_or_create_placeholder(entity.text, tag)
+        placeholder = resolve_existing_placeholder(entity.text, tag, smap)
+        if placeholder is not None:
+            smap.register_alias(placeholder, entity.text, turn_id=turn_id)
+        else:
+            placeholder, _is_new = smap.get_or_create_placeholder(
+                entity.text,
+                tag,
+                turn_id=turn_id,
+            )
 
         # Store computable value if applicable
         if isinstance(entity, ComputableEntity):

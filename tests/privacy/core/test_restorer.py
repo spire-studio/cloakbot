@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from cloakbot.privacy.core.restorer import restore_tokens
+from cloakbot.privacy.core.restorer import restore_tokens, restore_tokens_with_annotations
 from cloakbot.privacy.core.vault import _SessionMap
 
 
@@ -83,3 +83,23 @@ def test_restore_tokens_leaves_unknown_placeholders_intact() -> None:
     restored = restore_tokens("<<PERSON_1>> and <<PERSON_2>>", smap)
 
     assert restored == "Alice and <<PERSON_2>>"
+
+
+def test_restore_tokens_with_annotations_returns_visible_restored_spans() -> None:
+    smap = _SessionMap()
+    placeholder, _ = smap.get_or_create_placeholder("Alice Chen", "PERSON", turn_id="turn-1")
+    smap.register_alias(placeholder, "@alice", turn_id="turn-2")
+
+    restored, annotations = restore_tokens_with_annotations(
+        f"Hello {placeholder}",
+        smap,
+    )
+
+    assert restored == "Hello Alice Chen"
+    assert len(annotations) == 1
+    assert annotations[0].placeholder == placeholder
+    assert annotations[0].text == "Alice Chen"
+    assert annotations[0].start == 6
+    assert annotations[0].end == 16
+    assert annotations[0].entity_type == "person"
+    assert annotations[0].aliases == ["Alice Chen", "@alice"]

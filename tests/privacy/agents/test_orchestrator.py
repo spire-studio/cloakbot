@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 
 from cloakbot.privacy.agents.orchestrator import PrivacyOrchestrator
+from cloakbot.privacy.core.restorer import RestoredTokenAnnotation
 from cloakbot.privacy.core.types import GeneralEntity, DetectionResult
 from cloakbot.privacy.hooks.context import Intent, TurnContext
 
@@ -89,8 +90,8 @@ async def test_finalize_turn_restores_tokens_and_emits_report() -> None:
     )
 
     with patch(
-        "cloakbot.privacy.agents.orchestrator.remap_response",
-        new=AsyncMock(return_value="Hello Laurie Luo"),
+        "cloakbot.privacy.agents.orchestrator.remap_response_with_annotations",
+        new=AsyncMock(return_value=("Hello Laurie Luo", [])),
     ), patch(
         "cloakbot.privacy.agents.orchestrator.get_agent",
         return_value=agent,
@@ -102,4 +103,56 @@ async def test_finalize_turn_restores_tokens_and_emits_report() -> None:
 
     agent.finalize_output.assert_awaited_once_with("Hello <<PERSON_1>>", ctx)
     assert result.startswith("Hello Laurie Luo")
+    assert ctx.display_output == "Hello Laurie Luo"
+    assert ctx.display_output_annotations == []
     assert "Privacy Report" in result
+
+
+@pytest.mark.asyncio
+async def test_finalize_turn_can_skip_report_for_webui() -> None:
+    orchestrator = PrivacyOrchestrator()
+    agent = Mock()
+    agent.finalize_output = AsyncMock(return_value="Hello <<PERSON_1>>")
+    ctx = TurnContext(
+        session_key="cli:test",
+        turn_id="turn-1",
+        raw_input="Hi, my name is Laurie Luo",
+        sanitized_input="Hi, my name is <<PERSON_1>>",
+        intent=Intent.CHAT,
+        was_sanitized=True,
+        user_input_entities=[_entity("Laurie Luo", "person")],
+    )
+
+    with patch(
+        "cloakbot.privacy.agents.orchestrator.remap_response_with_annotations",
+        new=AsyncMock(
+            return_value=(
+                "Hello Laurie Luo",
+                [
+                    RestoredTokenAnnotation(
+                        placeholder="<<PERSON_1>>",
+                        text="Laurie Luo",
+                        start=6,
+                        end=16,
+                        entity_type="person",
+                        severity="high",
+                        canonical="Laurie Luo",
+                        aliases=["Laurie Luo"],
+                        value=None,
+                    )
+                ],
+            )
+        ),
+    ), patch(
+        "cloakbot.privacy.agents.orchestrator.get_agent",
+        return_value=agent,
+    ):
+        result = await orchestrator.finalize_turn(
+            "Hello <<PERSON_1>>",
+            ctx,
+            include_report=False,
+        )
+
+    assert result == "Hello Laurie Luo"
+    assert len(ctx.display_output_annotations) == 1
+    assert ctx.display_output_annotations[0].placeholder == "<<PERSON_1>>"

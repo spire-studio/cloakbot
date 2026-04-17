@@ -1,4 +1,5 @@
 from cloakbot.session.manager import Session
+from cloakbot.privacy.core.vault import _SessionMap
 
 
 def _assert_no_orphans(history: list[dict]) -> None:
@@ -171,6 +172,29 @@ def test_empty_session_history():
     session = Session(key="test:empty")
     history = session.get_history(max_messages=500)
     assert history == []
+
+
+def test_get_display_history_restores_placeholders(monkeypatch):
+    session = Session(key="test:display")
+    session.messages.append({"role": "user", "content": "Hello <<PERSON_1>>"})
+    session.messages.append({"role": "assistant", "content": "Hi <<PERSON_1>>"})
+
+    smap = _SessionMap(
+        original_to_placeholder={"Alice Chen": "<<PERSON_1>>"},
+        placeholder_to_original={"<<PERSON_1>>": "Alice Chen"},
+    )
+    smap.rebuild_indexes()
+    monkeypatch.setattr(
+        "cloakbot.privacy.core.vault.get_map",
+        lambda _session_key: smap,
+    )
+
+    history = session.get_display_history(max_messages=500)
+
+    assert history == [
+        {"role": "user", "content": "Hello Alice Chen"},
+        {"role": "assistant", "content": "Hi Alice Chen"},
+    ]
 
 
 def test_get_history_preserves_reasoning_content():

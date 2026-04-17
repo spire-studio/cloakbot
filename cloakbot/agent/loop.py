@@ -32,6 +32,7 @@ from cloakbot.bus.queue import MessageBus
 from cloakbot.config.schema import AgentDefaults
 from cloakbot.providers.base import LLMProvider
 from cloakbot.privacy import Intent, post_llm_hook, pre_llm_hook
+from cloakbot.privacy.transparency.report import build_session_privacy_snapshot
 from cloakbot.session.manager import Session, SessionManager
 from cloakbot.utils.helpers import image_placeholder_text, truncate_text
 from cloakbot.utils.runtime import EMPTY_FINAL_RESPONSE_MESSAGE
@@ -455,12 +456,21 @@ class AgentLoop:
                             metadata=meta,
                         ))
 
-                    async def on_stream_end(*, resuming: bool = False) -> None:
+                    async def on_stream_end(
+                        *,
+                        resuming: bool = False,
+                        privacy: dict[str, Any] | None = None,
+                        privacy_annotations: list[dict[str, Any]] | None = None,
+                    ) -> None:
                         nonlocal stream_segment
                         meta = dict(msg.metadata or {})
                         meta["_stream_end"] = True
                         meta["_resuming"] = resuming
                         meta["_stream_id"] = _current_stream_id()
+                        if privacy is not None:
+                            meta["privacy"] = privacy
+                        if privacy_annotations is not None:
+                            meta["privacyAnnotations"] = privacy_annotations
                         await self.bus.publish_outbound(OutboundMessage(
                             channel=msg.channel, chat_id=msg.chat_id,
                             content="",
@@ -625,7 +635,12 @@ class AgentLoop:
         _stream_buf: list[str] = []
 
         async def _finalize_response_text(raw_text: str) -> str:
-            return await post_llm_hook(raw_text, turn_ctx, session_key)
+            return await post_llm_hook(
+                raw_text,
+                turn_ctx,
+                session_key,
+                include_report=msg.channel != "webui",
+            )
 
         if on_stream is not None:
             async def _buffered_stream(delta: str) -> None:
@@ -637,7 +652,19 @@ class AgentLoop:
                 for i in range(0, len(finalized), chunk):
                     await on_stream(finalized[i : i + chunk])
                 if on_stream_end is not None:
-                    await on_stream_end(resuming=resuming)
+                    privacy = None
+                    privacy_annotations = None
+                    if msg.channel == "webui":
+                        privacy = build_session_privacy_snapshot(session_key).model_dump(mode="json")
+                        privacy_annotations = [
+                            annotation.model_dump(mode="json")
+                            for annotation in turn_ctx.display_output_annotations
+                        ]
+                    await on_stream_end(
+                        resuming=resuming,
+                        privacy=privacy,
+                        privacy_annotations=privacy_annotations,
+                    )
 
             effective_stream: Callable[[str], Awaitable[None]] | None = _buffered_stream
             effective_stream_end: Callable[..., Awaitable[None]] | None = _buffered_stream_end
@@ -673,6 +700,12 @@ class AgentLoop:
         logger.info("Response to {}:{}: {}", msg.channel, msg.sender_id, preview)
 
         meta = dict(msg.metadata or {})
+        if msg.channel == "webui":
+            meta["privacy"] = build_session_privacy_snapshot(session_key).model_dump(mode="json")
+            meta["privacyAnnotations"] = [
+                annotation.model_dump(mode="json")
+                for annotation in turn_ctx.display_output_annotations
+            ]
         if on_stream is not None:
             meta["_streamed"] = True
         return OutboundMessage(
