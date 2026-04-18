@@ -114,7 +114,7 @@ class WebUIChannel(BaseChannel):
             await websocket.send_json(
                 {
                     "type": "privacy_snapshot",
-                    "data": build_session_privacy_snapshot(session_id).model_dump(mode="json"),
+                    "data": build_session_privacy_snapshot(f"{self.name}:{session_id}").model_dump(mode="json"),
                 }
             )
 
@@ -196,6 +196,7 @@ class WebUIChannel(BaseChannel):
                 "content": msg.content,
                 "privacy": msg.metadata.get("privacy"),
                 "privacyAnnotations": msg.metadata.get("privacyAnnotations"),
+                "privacyTurn": msg.metadata.get("privacyTurn"),
             },
         )
         await self._broadcast(msg.chat_id, {"type": "assistant_done"})
@@ -214,6 +215,7 @@ class WebUIChannel(BaseChannel):
                     "type": "assistant_done",
                     "privacy": meta.get("privacy"),
                     "privacyAnnotations": meta.get("privacyAnnotations"),
+                    "privacyTurn": meta.get("privacyTurn"),
                 },
             )
             return

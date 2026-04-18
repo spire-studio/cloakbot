@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import {
+  ArrowLeftRight,
   ChevronLeft,
   ChevronRight,
   MessageSquare,
@@ -20,6 +21,7 @@ import { Avatar } from './components/ui/avatar';
 import { Button } from './components/ui/button';
 import { ScrollArea } from './components/ui/scroll-area';
 import { Sheet, SheetContent } from './components/ui/sheet';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from './components/ui/tabs';
 import { Textarea } from './components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './components/ui/tooltip';
 
@@ -34,7 +36,24 @@ type Message = {
   privacyAnnotations?: PrivacyAnnotation[];
 };
 
+type LocalComputation = {
+  snippet_index: number;
+  expression: string;
+  resolved_expression: string;
+  result: number;
+  formatted_result: string;
+};
+
+type PrivacyTurn = {
+  turnId: string;
+  intent: 'chat' | 'math' | 'doc';
+  remotePrompt: string;
+  fullRemotePrompt?: string;
+  localComputations: LocalComputation[];
+};
+
 type PrivacyAnnotation = {
+  annotation_type?: 'entity' | 'local_computation';
   placeholder: string;
   text: string;
   start: number;
@@ -44,6 +63,7 @@ type PrivacyAnnotation = {
   canonical: string;
   aliases: string[];
   value: string | number | null;
+  formula?: string | null;
 };
 
 type PrivacySummary = {
@@ -118,8 +138,27 @@ function splitTextNodeByPrivacyAnnotations(
       continue;
     }
 
-    const segmentStart = Math.max(annotation.start, start);
-    const segmentEnd = Math.min(annotation.end, end);
+    let segmentStart = Math.max(annotation.start, start);
+    let segmentEnd = Math.min(annotation.end, end);
+    let localStart = segmentStart - start;
+    let localEnd = segmentEnd - start;
+    const currentSlice = node.value.slice(localStart, localEnd);
+    if (currentSlice !== annotation.text) {
+      const snappedStart = node.value.indexOf(annotation.text, Math.max(0, localStart - 1));
+      if (snappedStart >= 0 && snappedStart <= localStart + 1) {
+        localStart = snappedStart;
+        localEnd = snappedStart + annotation.text.length;
+        segmentStart = start + localStart;
+        segmentEnd = start + localEnd;
+      }
+    }
+
+    const alignedSlice = node.value.slice(localStart, localEnd);
+    const isPartialBoundaryOverlap = annotation.start < start || annotation.end > end;
+    if (alignedSlice !== annotation.text && isPartialBoundaryOverlap) {
+      continue;
+    }
+
     if (segmentStart > cursor) {
       fragments.push({
         type: 'text',
@@ -136,7 +175,7 @@ function splitTextNodeByPrivacyAnnotations(
       children: [
         {
           type: 'text',
-          value: node.value.slice(segmentStart - start, segmentEnd - start),
+          value: node.value.slice(localStart, localEnd),
         },
       ],
     });
@@ -153,14 +192,20 @@ function splitTextNodeByPrivacyAnnotations(
   return fragments;
 }
 
-function annotateMarkdownTree(node: MarkdownNode, annotations: PrivacyAnnotation[]) {
+function annotateMarkdownTree(
+  node: MarkdownNode,
+  annotations: PrivacyAnnotation[],
+  insideCode = false,
+) {
   if (!Array.isArray(node.children)) {
     return;
   }
 
+  const nextInsideCode = insideCode || node.tagName === 'code' || node.tagName === 'pre';
+
   for (let index = node.children.length - 1; index >= 0; index -= 1) {
     const child = node.children[index];
-    if (child.type === 'text') {
+    if (!nextInsideCode && child.type === 'text') {
       const fragments = splitTextNodeByPrivacyAnnotations(child, annotations);
       if (fragments) {
         node.children.splice(index, 1, ...fragments);
@@ -168,7 +213,7 @@ function annotateMarkdownTree(node: MarkdownNode, annotations: PrivacyAnnotation
       }
     }
 
-    annotateMarkdownTree(child, annotations);
+    annotateMarkdownTree(child, annotations, nextInsideCode);
   }
 }
 
@@ -209,6 +254,7 @@ function AnnotatedMarkdown({
               }
 
               const extraAliases = annotation.aliases.filter((alias) => alias !== annotation.canonical);
+              const isLocalComputation = annotation.annotation_type === 'local_computation';
               return (
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -223,25 +269,119 @@ function AnnotatedMarkdown({
                     </span>
                   </TooltipTrigger>
                   <TooltipContent className="max-w-xs rounded-2xl px-3 py-2">
-                    <div className="space-y-1.5">
-                      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                        Privacy-Protected Entity
-                      </div>
-                      <div className="text-sm font-medium text-foreground">{annotation.canonical}</div>
-                      <div className="text-xs text-muted-foreground">
-                        {formatEntityLabel(annotation.entity_type)} · {annotation.placeholder}
-                      </div>
-                      {extraAliases.length > 0 && (
-                        <div className="text-xs text-muted-foreground">
-                          Aliases: {extraAliases.join(', ')}
+                    {isLocalComputation ? (
+                      <div className="space-y-1.5">
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                          Local Computation
                         </div>
-                      )}
-                      {annotation.value !== null && annotation.value !== undefined && (
+                        {annotation.formula ? (
+                          <div className="font-mono text-xs leading-6 text-foreground">
+                            {annotation.formula} = {annotation.text}
+                          </div>
+                        ) : (
+                          <div className="text-sm font-medium text-foreground">{annotation.text}</div>
+                        )}
                         <div className="text-xs text-muted-foreground">
-                          Normalized value: {String(annotation.value)}
+                          Computed locally on-device after the remote model returned the structure.
                         </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-1.5">
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                          Privacy-Protected Entity
+                        </div>
+                        <div className="text-sm font-medium text-foreground">{annotation.canonical}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {formatEntityLabel(annotation.entity_type)} · {annotation.placeholder}
+                        </div>
+                        {extraAliases.length > 0 && (
+                          <div className="text-xs text-muted-foreground">
+                            Aliases: {extraAliases.join(', ')}
+                          </div>
+                        )}
+                        {annotation.value !== null && annotation.value !== undefined && (
+                          <div className="text-xs text-muted-foreground">
+                            Normalized value: {String(annotation.value)}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </TooltipContent>
+                </Tooltip>
+              );
+            },
+            code({ node, className, children, ...props }) {
+              const codeText = String(children).replace(/\n$/, '');
+              const start = node?.position?.start?.offset;
+              const end = node?.position?.end?.offset;
+              const annotation = sortedAnnotations.find((item) => {
+                if (typeof start === 'number' && typeof end === 'number') {
+                  return item.start < end && item.end > start;
+                }
+                return item.text === codeText;
+              });
+
+              if (!annotation) {
+                return (
+                  <code className={className} {...props}>
+                    {children}
+                  </code>
+                );
+              }
+
+              const extraAliases = annotation.aliases.filter((alias) => alias !== annotation.canonical);
+              const isLocalComputation = annotation.annotation_type === 'local_computation';
+              return (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <code
+                      className={cn(
+                        'rounded-[0.22rem] bg-secondary/75 px-1 py-0.5 text-inherit shadow-[inset_0_-0.14rem_0_rgba(61,57,41,0.12)] transition-colors hover:bg-secondary/90',
+                        className,
                       )}
-                    </div>
+                      {...props}
+                    >
+                      {children}
+                    </code>
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-xs rounded-2xl px-3 py-2">
+                    {isLocalComputation ? (
+                      <div className="space-y-1.5">
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                          Local Computation
+                        </div>
+                        {annotation.formula ? (
+                          <div className="font-mono text-xs leading-6 text-foreground">
+                            {annotation.formula} = {annotation.text}
+                          </div>
+                        ) : (
+                          <div className="text-sm font-medium text-foreground">{annotation.text}</div>
+                        )}
+                        <div className="text-xs text-muted-foreground">
+                          Computed locally on-device after the remote model returned the structure.
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-1.5">
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                          Privacy-Protected Entity
+                        </div>
+                        <div className="text-sm font-medium text-foreground">{annotation.canonical}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {formatEntityLabel(annotation.entity_type)} · {annotation.placeholder}
+                        </div>
+                        {extraAliases.length > 0 && (
+                          <div className="text-xs text-muted-foreground">
+                            Aliases: {extraAliases.join(', ')}
+                          </div>
+                        )}
+                        {annotation.value !== null && annotation.value !== undefined && (
+                          <div className="text-xs text-muted-foreground">
+                            Normalized value: {String(annotation.value)}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </TooltipContent>
                 </Tooltip>
               );
@@ -393,15 +533,51 @@ function privacySeverityClasses(severity: PrivacySummary['severity']) {
   return 'border-emerald-200 bg-emerald-50 text-emerald-700';
 }
 
+function upsertPrivacyTurn(turns: PrivacyTurn[], nextTurn: PrivacyTurn) {
+  const next = [...turns];
+  const existingIndex = next.findIndex((turn) => turn.turnId === nextTurn.turnId);
+  if (existingIndex >= 0) {
+    next[existingIndex] = nextTurn;
+    return next;
+  }
+  next.push(nextTurn);
+  return next;
+}
+
+function PanelSection({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="space-y-3">
+      <div>
+        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+          {title}
+        </div>
+        <p className="mt-1 text-xs text-muted-foreground">{description}</p>
+      </div>
+      {children}
+    </section>
+  );
+}
+
 function PrivacyPanel({
   open,
   onToggle,
   snapshot,
+  turns,
 }: {
   open: boolean;
   onToggle: () => void;
   snapshot: PrivacySnapshot;
+  turns: PrivacyTurn[];
 }) {
+  const computationTurns = turns.filter((turn) => turn.localComputations.length > 0);
   return (
     <aside
       className={cn(
@@ -420,23 +596,21 @@ function PrivacyPanel({
             <div className="min-w-0">
               <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
                 <Shield className="h-4 w-4 text-muted-foreground" />
-                <span>Privacy Entities</span>
+                <span>Privacy Panel</span>
               </div>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {snapshot.total_entities > 0
-                  ? `${snapshot.total_entities} entities accumulated in this chat session`
-                  : 'No privacy entities detected in this chat session yet.'}
-              </p>
             </div>
             <Button
               type="button"
               variant="ghost"
               size="icon"
-              className="h-9 w-9 rounded-xl"
+              className="group h-9 w-9 rounded-full"
               onClick={onToggle}
               aria-label="Collapse privacy panel"
             >
-              <ChevronRight className="h-4 w-4" />
+              <span className="relative block h-4 w-4">
+                <ChevronRight className="absolute inset-0 h-4 w-4 transition-opacity group-hover:opacity-0" />
+                <ArrowLeftRight className="absolute inset-0 h-4 w-4 opacity-0 transition-opacity group-hover:opacity-100" />
+              </span>
             </Button>
           </>
         ) : (
@@ -445,11 +619,14 @@ function PrivacyPanel({
               type="button"
               variant="ghost"
               size="icon"
-              className="h-10 w-10 rounded-xl"
+              className="group h-10 w-10 rounded-full"
               onClick={onToggle}
               aria-label="Expand privacy panel"
             >
-              <ChevronLeft className="h-4 w-4" />
+              <span className="relative block h-4 w-4">
+                <ChevronLeft className="absolute inset-0 h-4 w-4 transition-opacity group-hover:opacity-0" />
+                <ArrowLeftRight className="absolute inset-0 h-4 w-4 opacity-0 transition-opacity group-hover:opacity-100" />
+              </span>
             </Button>
             <div className="text-center text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground [writing-mode:vertical-rl]">
               Privacy Panel
@@ -460,80 +637,175 @@ function PrivacyPanel({
 
       {open && (
         <ScrollArea className="min-h-0 flex-1 px-4 pb-4">
-          <div className="space-y-4 pb-2">
-            {snapshot.entity_counts.length > 0 && (
-              <div className="flex flex-wrap gap-2">
-                {snapshot.entity_counts.map((summary) => (
-                  <div
-                    key={`${summary.entity_type}-${summary.severity}`}
-                    className={cn(
-                      'rounded-md border px-3 py-1 text-[11px] font-medium uppercase tracking-[0.16em]',
-                      privacySeverityClasses(summary.severity)
-                    )}
-                  >
-                    {formatEntityLabel(summary.entity_type)} x{summary.count}
-                  </div>
-                ))}
-              </div>
-            )}
+          <Tabs defaultValue="entities" className="space-y-0 pb-2">
+            <TabsList className="grid h-auto w-full grid-cols-3 gap-0.5">
+              <TabsTrigger value="entities" className="h-8 px-1.5">
+                <Shield className="h-3.25 w-3.25 shrink-0" />
+                <span>Entities</span>
+              </TabsTrigger>
+              <TabsTrigger value="remote-prompts" className="h-8 px-1.5">
+                <Send className="h-3.25 w-3.25 shrink-0" />
+                <span>Prompts</span>
+              </TabsTrigger>
+              <TabsTrigger value="local-computations" className="h-8 px-1.5">
+                <Terminal className="h-3.25 w-3.25 shrink-0" />
+                <span>Compute</span>
+              </TabsTrigger>
+            </TabsList>
 
-            {snapshot.entities.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-border/80 bg-card/70 px-4 py-5 text-sm text-muted-foreground">
-                Detected entities will appear here after Cloakbot finishes a response.
-              </div>
-            ) : (
-              snapshot.entities.map((entity) => {
-                const extraAliases = entity.aliases.filter((alias) => alias !== entity.canonical);
-                return (
-                  <div
-                    key={entity.placeholder}
-                    className="rounded-2xl border border-border/70 bg-card/85 p-4 shadow-sm"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="truncate text-sm font-semibold text-foreground">
-                          {entity.canonical}
-                        </div>
-                        <div className="mt-1 text-xs text-muted-foreground">{entity.placeholder}</div>
-                      </div>
+            <TabsContent value="entities">
+              <PanelSection
+                title="Privacy Entities"
+                description={
+                  snapshot.total_entities > 0
+                    ? `${snapshot.total_entities} entities accumulated in this chat session`
+                    : 'No privacy entities detected in this chat session yet.'
+                }
+              >
+                {snapshot.entity_counts.length > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    {snapshot.entity_counts.map((summary) => (
                       <div
+                        key={`${summary.entity_type}-${summary.severity}`}
                         className={cn(
-                          'shrink-0 rounded-md border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em]',
-                          privacySeverityClasses(entity.severity)
+                          'rounded-md border px-3 py-1 text-[11px] font-medium uppercase tracking-[0.16em]',
+                          privacySeverityClasses(summary.severity)
                         )}
                       >
-                        {formatEntityLabel(entity.entity_type)}
+                        {formatEntityLabel(summary.entity_type)} x{summary.count}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {snapshot.entities.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-border/80 bg-card/70 px-4 py-5 text-sm text-muted-foreground">
+                    Detected entities will appear here after Cloakbot finishes a response.
+                  </div>
+                ) : (
+                  snapshot.entities.map((entity) => {
+                    const extraAliases = entity.aliases.filter((alias) => alias !== entity.canonical);
+                    return (
+                      <div
+                        key={entity.placeholder}
+                        className="rounded-2xl border border-border/70 bg-card/85 p-4 shadow-sm"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="truncate text-sm font-semibold text-foreground">
+                              {entity.canonical}
+                            </div>
+                            <div className="mt-1 text-xs text-muted-foreground">{entity.placeholder}</div>
+                          </div>
+                          <div
+                            className={cn(
+                              'shrink-0 rounded-md border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em]',
+                              privacySeverityClasses(entity.severity)
+                            )}
+                          >
+                            {formatEntityLabel(entity.entity_type)}
+                          </div>
+                        </div>
+
+                        {extraAliases.length > 0 && (
+                          <div className="mt-3">
+                            <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+                              Aliases
+                            </div>
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              {extraAliases.map((alias) => (
+                                <span
+                                  key={`${entity.placeholder}-${alias}`}
+                                  className="rounded-md bg-secondary px-2.5 py-1 text-xs text-secondary-foreground"
+                                >
+                                  {alias}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {entity.value !== null && entity.value !== undefined && (
+                          <div className="mt-3 text-xs text-muted-foreground">
+                            Normalized value: <span className="font-medium text-foreground">{String(entity.value)}</span>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })
+                )}
+              </PanelSection>
+            </TabsContent>
+
+            <TabsContent value="remote-prompts">
+              <PanelSection
+                title="Remote Prompt Log"
+                description="The sanitized content actually sent to the remote model for each turn."
+              >
+                {turns.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-border/80 bg-card/70 px-4 py-5 text-sm text-muted-foreground">
+                    Sanitized prompts will appear here after Cloakbot finishes a response.
+                  </div>
+                ) : (
+                  turns.map((turn, index) => (
+                    <div
+                      key={turn.turnId}
+                      className="rounded-2xl border border-border/70 bg-card/85 p-4 shadow-sm"
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="text-sm font-semibold text-foreground">Turn {index + 1}</div>
+                        <div className="rounded-md bg-secondary px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-secondary-foreground">
+                          {turn.intent}
+                        </div>
+                      </div>
+                      <pre className="mt-3 whitespace-pre-wrap break-words rounded-xl bg-background/80 px-3 py-3 font-mono text-xs leading-6 text-foreground">
+                        {turn.remotePrompt}
+                      </pre>
+                    </div>
+                  ))
+                )}
+              </PanelSection>
+            </TabsContent>
+
+            <TabsContent value="local-computations">
+              <PanelSection
+                title="Local Computations"
+                description="On-device arithmetic executed after the remote model returned structure."
+              >
+                {computationTurns.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-border/80 bg-card/70 px-4 py-5 text-sm text-muted-foreground">
+                    Local computation steps will appear here for privacy math turns.
+                  </div>
+                ) : (
+                  computationTurns.map((turn) => (
+                    <div
+                      key={`computation-${turn.turnId}`}
+                      className="rounded-2xl border border-border/70 bg-card/85 p-4 shadow-sm"
+                    >
+                      <div className="text-sm font-semibold text-foreground">
+                        Turn {turns.findIndex((item) => item.turnId === turn.turnId) + 1}
+                      </div>
+                      <div className="mt-3 space-y-3">
+                        {turn.localComputations.map((computation, computationIndex) => (
+                          <div
+                            key={`${turn.turnId}-${computation.snippet_index}`}
+                            className="rounded-xl bg-background/80 px-3 py-3"
+                          >
+                            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                              Computation {computationIndex + 1}
+                            </div>
+                            <div className="mt-2 font-mono text-xs leading-6 text-foreground">
+                              {computation.resolved_expression} = {computation.formatted_result}
+                            </div>
+                          </div>
+                        ))}
                       </div>
                     </div>
-
-                    {extraAliases.length > 0 && (
-                      <div className="mt-3">
-                        <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
-                          Aliases
-                        </div>
-                        <div className="mt-2 flex flex-wrap gap-2">
-                          {extraAliases.map((alias) => (
-                            <span
-                              key={`${entity.placeholder}-${alias}`}
-                              className="rounded-md bg-secondary px-2.5 py-1 text-xs text-secondary-foreground"
-                            >
-                              {alias}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {entity.value !== null && entity.value !== undefined && (
-                      <div className="mt-3 text-xs text-muted-foreground">
-                        Normalized value: <span className="font-medium text-foreground">{String(entity.value)}</span>
-                      </div>
-                    )}
-                  </div>
-                );
-              })
-            )}
-          </div>
+                  ))
+                )}
+              </PanelSection>
+            </TabsContent>
+          </Tabs>
         </ScrollArea>
       )}
     </aside>
@@ -553,6 +825,7 @@ function ChatInterface() {
     () => typeof window !== 'undefined' ? window.innerWidth >= 1024 : true
   );
   const [privacySnapshot, setPrivacySnapshot] = useState<PrivacySnapshot>(emptyPrivacySnapshot);
+  const [privacyTurns, setPrivacyTurns] = useState<PrivacyTurn[]>([]);
   const wsRef = useRef<WebSocket | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -576,6 +849,9 @@ function ChatInterface() {
         ]);
         if (data.privacy) {
           setPrivacySnapshot(data.privacy as PrivacySnapshot);
+        }
+        if (data.privacyTurn) {
+          setPrivacyTurns((prev) => upsertPrivacyTurn(prev, data.privacyTurn as PrivacyTurn));
         }
       } else if (data.type === 'assistant_delta') {
         setMessages((prev) => {
@@ -608,6 +884,9 @@ function ChatInterface() {
         }
         if (data.privacy) {
           setPrivacySnapshot(data.privacy as PrivacySnapshot);
+        }
+        if (data.privacyTurn) {
+          setPrivacyTurns((prev) => upsertPrivacyTurn(prev, data.privacyTurn as PrivacyTurn));
         }
       } else if (data.type === 'privacy_snapshot') {
         setPrivacySnapshot((data.data as PrivacySnapshot) ?? emptyPrivacySnapshot);
@@ -740,6 +1019,7 @@ function ChatInterface() {
         open={privacyPanelOpen}
         onToggle={() => setPrivacyPanelOpen((prev) => !prev)}
         snapshot={privacySnapshot}
+        turns={privacyTurns}
       />
     </div>
   );

@@ -42,6 +42,19 @@ if TYPE_CHECKING:
     from cloakbot.cron.service import CronService
 
 
+def _build_webui_privacy_turn_payload(turn_ctx) -> dict[str, Any]:
+    return {
+        "turnId": turn_ctx.turn_id,
+        "intent": turn_ctx.intent.value,
+        "remotePrompt": turn_ctx.sanitized_input,
+        "fullRemotePrompt": turn_ctx.remote_prompt,
+        "localComputations": [
+            computation.model_dump(mode="json")
+            for computation in turn_ctx.local_computations
+        ],
+    }
+
+
 class _LoopHook(AgentHook):
     """Core hook for the main loop."""
 
@@ -461,6 +474,7 @@ class AgentLoop:
                         resuming: bool = False,
                         privacy: dict[str, Any] | None = None,
                         privacy_annotations: list[dict[str, Any]] | None = None,
+                        privacy_turn: dict[str, Any] | None = None,
                     ) -> None:
                         nonlocal stream_segment
                         meta = dict(msg.metadata or {})
@@ -471,6 +485,8 @@ class AgentLoop:
                             meta["privacy"] = privacy
                         if privacy_annotations is not None:
                             meta["privacyAnnotations"] = privacy_annotations
+                        if privacy_turn is not None:
+                            meta["privacyTurn"] = privacy_turn
                         await self.bus.publish_outbound(OutboundMessage(
                             channel=msg.channel, chat_id=msg.chat_id,
                             content="",
@@ -654,16 +670,19 @@ class AgentLoop:
                 if on_stream_end is not None:
                     privacy = None
                     privacy_annotations = None
+                    privacy_turn = None
                     if msg.channel == "webui":
                         privacy = build_session_privacy_snapshot(session_key).model_dump(mode="json")
                         privacy_annotations = [
                             annotation.model_dump(mode="json")
                             for annotation in turn_ctx.display_output_annotations
                         ]
+                        privacy_turn = _build_webui_privacy_turn_payload(turn_ctx)
                     await on_stream_end(
                         resuming=resuming,
                         privacy=privacy,
                         privacy_annotations=privacy_annotations,
+                        privacy_turn=privacy_turn,
                     )
 
             effective_stream: Callable[[str], Awaitable[None]] | None = _buffered_stream
@@ -706,6 +725,7 @@ class AgentLoop:
                 annotation.model_dump(mode="json")
                 for annotation in turn_ctx.display_output_annotations
             ]
+            meta["privacyTurn"] = _build_webui_privacy_turn_payload(turn_ctx)
         if on_stream is not None:
             meta["_streamed"] = True
         return OutboundMessage(

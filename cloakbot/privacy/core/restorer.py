@@ -6,11 +6,13 @@ import re
 
 from pydantic import BaseModel
 
+from cloakbot.privacy.core.math_executer import LocalComputationRecord
 from cloakbot.privacy.core.types import REGISTRY, Severity
 from cloakbot.privacy.core.vault import PLACEHOLDER_RE, _SessionMap
 
 
 class RestoredTokenAnnotation(BaseModel):
+    annotation_type: str = "entity"
     placeholder: str
     text: str
     start: int
@@ -20,6 +22,7 @@ class RestoredTokenAnnotation(BaseModel):
     canonical: str
     aliases: list[str]
     value: int | float | str | None = None
+    formula: str | None = None
 
 
 def restore_tokens(text: str, smap: _SessionMap) -> str:
@@ -89,6 +92,44 @@ def restore_tokens_with_annotations(
         parts.append(text[cursor:])
 
     return "".join(parts), annotations
+
+
+def build_local_computation_annotations(
+    text: str,
+    computations: list[LocalComputationRecord],
+) -> list[RestoredTokenAnnotation]:
+    """Annotate visible local computation results in output text."""
+    annotations: list[RestoredTokenAnnotation] = []
+    cursor = 0
+
+    for computation in computations:
+        result_text = computation.formatted_result
+        if not result_text:
+            continue
+
+        start = text.find(result_text, cursor)
+        if start < 0:
+            continue
+
+        end = start + len(result_text)
+        annotations.append(
+            RestoredTokenAnnotation(
+                annotation_type="local_computation",
+                placeholder=f"<python_snippet_{computation.snippet_index}>",
+                text=result_text,
+                start=start,
+                end=end,
+                entity_type="local_computation",
+                severity=Severity.LOW,
+                canonical=result_text,
+                aliases=[],
+                value=computation.result,
+                formula=computation.resolved_expression,
+            )
+        )
+        cursor = end
+
+    return annotations
 
 
 def _entity_type_from_placeholder(placeholder: str) -> str:

@@ -1,6 +1,11 @@
 from __future__ import annotations
 
-from cloakbot.privacy.core.restorer import restore_tokens, restore_tokens_with_annotations
+from cloakbot.privacy.core.math_executer import LocalComputationRecord
+from cloakbot.privacy.core.restorer import (
+    build_local_computation_annotations,
+    restore_tokens,
+    restore_tokens_with_annotations,
+)
 from cloakbot.privacy.core.vault import _SessionMap
 
 
@@ -103,3 +108,24 @@ def test_restore_tokens_with_annotations_returns_visible_restored_spans() -> Non
     assert annotations[0].end == 16
     assert annotations[0].entity_type == "person"
     assert annotations[0].aliases == ["Alice Chen", "@alice"]
+
+
+def test_build_local_computation_annotations_marks_visible_result_span() -> None:
+    annotations = build_local_computation_annotations(
+        "The updated acquisition value is 252150000.",
+        [
+            LocalComputationRecord(
+                snippet_index=1,
+                expression="FINANCE_1 * 1.23",
+                resolved_expression="205000000 * 1.23",
+                result=252150000,
+                formatted_result="252150000",
+            )
+        ],
+    )
+
+    assert len(annotations) == 1
+    assert annotations[0].annotation_type == "local_computation"
+    assert annotations[0].start == 33
+    assert annotations[0].end == 42
+    assert annotations[0].formula == "205000000 * 1.23"

@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from cloakbot.privacy.agents.math_agent import MathAgent
+from cloakbot.privacy.core.math_executer import LocalComputationRecord
 from cloakbot.privacy.hooks.context import Intent, TurnContext
 
 
@@ -38,10 +39,24 @@ async def test_finalize_output_delegates_to_math_executer() -> None:
     ctx = _turn_context()
 
     with patch(
-        "cloakbot.privacy.agents.math_agent.apply_privacy_math",
-        new=AsyncMock(return_value="finalized"),
+        "cloakbot.privacy.agents.math_agent.apply_privacy_math_with_details",
+        new=AsyncMock(
+            return_value=(
+                "finalized",
+                [
+                    LocalComputationRecord(
+                        snippet_index=1,
+                        expression="FINANCE_1 * PERCENTAGE_1",
+                        resolved_expression="100000 * 0.1",
+                        result=10000,
+                        formatted_result="10000",
+                    )
+                ],
+            )
+        ),
     ) as mocked:
         result = await agent.finalize_output("response", ctx)
 
     mocked.assert_awaited_once_with("response", "cli:test")
     assert result == "finalized"
+    assert ctx.local_computations[0].formatted_result == "10000"

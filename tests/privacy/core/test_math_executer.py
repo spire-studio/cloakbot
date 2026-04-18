@@ -6,6 +6,7 @@ import pytest
 
 from cloakbot.privacy.core.math_executer import (
     apply_privacy_math,
+    apply_privacy_math_with_details,
     build_math_execution_instruction,
 )
 from cloakbot.privacy.core.vault import _SessionMap
@@ -51,7 +52,7 @@ async def test_apply_privacy_math_executes_single_snippet() -> None:
         output = await apply_privacy_math(response, "cli:test")
 
     assert "python_snippet_1" not in output
-    assert "100000 * 0.1 = 10000" in output
+    assert output == "Result below\n10000"
 
 
 @pytest.mark.asyncio
@@ -81,3 +82,27 @@ async def test_apply_privacy_math_handles_failed_execution() -> None:
     # On failure, snippet tags are stripped but inner content is preserved
     assert "<python_snippet_1>" not in output
     assert "UNKNOWN_1 + 1" in output
+
+
+@pytest.mark.asyncio
+async def test_apply_privacy_math_with_details_returns_local_computation_records() -> None:
+    smap = _SessionMap(
+        original_to_placeholder={"$100,000": "<<FINANCE_1>>"},
+        placeholder_to_original={"<<FINANCE_1>>": "$100,000"},
+        placeholder_to_value={"<<FINANCE_1>>": 100000},
+        counters={"FINANCE": 1},
+    )
+    response = (
+        "Result below\n"
+        "<python_snippet_1>\n"
+        "result = FINANCE_1 * 0.25\n"
+        "</python_snippet_1>"
+    )
+
+    with patch("cloakbot.privacy.core.math_executer.get_map", return_value=smap):
+        output, records = await apply_privacy_math_with_details(response, "cli:test")
+
+    assert output == "Result below\n25000"
+    assert len(records) == 1
+    assert records[0].resolved_expression == "100000 * 0.25"
+    assert records[0].formatted_result == "25000"

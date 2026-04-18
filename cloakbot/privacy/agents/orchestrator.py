@@ -10,6 +10,7 @@ from cloakbot.privacy.core.sanitize import (
     remap_response_with_annotations,
     sanitize_input_with_detection,
 )
+from cloakbot.privacy.core.restorer import build_local_computation_annotations
 from cloakbot.privacy.hooks.context import TurnContext
 from cloakbot.privacy.transparency.report import TurnReport
 
@@ -61,6 +62,7 @@ class PrivacyOrchestrator:
 
         agent = get_agent(ctx)
         prepared = await agent.prepare_input(ctx)
+        ctx.remote_prompt = prepared
         return prepared, ctx
 
     async def finalize_turn(
@@ -76,6 +78,8 @@ class PrivacyOrchestrator:
         ctx.sanitized_output = finalized
 
         restored, annotations = await remap_response_with_annotations(finalized, ctx.session_key)
+        annotations.extend(build_local_computation_annotations(restored, ctx.local_computations))
+        annotations.sort(key=lambda annotation: (annotation.start, annotation.end))
         ctx.display_output = restored
         ctx.display_output_annotations = annotations
 

@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 
 from cloakbot.privacy.agents.orchestrator import PrivacyOrchestrator
+from cloakbot.privacy.core.math_executer import LocalComputationRecord
 from cloakbot.privacy.core.restorer import RestoredTokenAnnotation
 from cloakbot.privacy.core.types import GeneralEntity, DetectionResult
 from cloakbot.privacy.hooks.context import Intent, TurnContext
@@ -156,3 +157,44 @@ async def test_finalize_turn_can_skip_report_for_webui() -> None:
     assert result == "Hello Laurie Luo"
     assert len(ctx.display_output_annotations) == 1
     assert ctx.display_output_annotations[0].placeholder == "<<PERSON_1>>"
+
+
+@pytest.mark.asyncio
+async def test_finalize_turn_adds_local_computation_annotations() -> None:
+    orchestrator = PrivacyOrchestrator()
+    agent = Mock()
+    agent.finalize_output = AsyncMock(return_value="The result is 252150000.")
+    ctx = TurnContext(
+        session_key="cli:test",
+        turn_id="turn-1",
+        raw_input="What is my acquisition after it increases by 23%?",
+        sanitized_input="What is my acquisition after it increases by <<PERCENTAGE_1>>?",
+        intent=Intent.MATH,
+        local_computations=[
+            LocalComputationRecord(
+                snippet_index=1,
+                expression="FINANCE_1 * 1.23",
+                resolved_expression="205000000 * 1.23",
+                result=252150000,
+                formatted_result="252150000",
+            )
+        ],
+    )
+
+    with patch(
+        "cloakbot.privacy.agents.orchestrator.remap_response_with_annotations",
+        new=AsyncMock(return_value=("The result is 252150000.", [])),
+    ), patch(
+        "cloakbot.privacy.agents.orchestrator.get_agent",
+        return_value=agent,
+    ):
+        result = await orchestrator.finalize_turn(
+            "The result is 252150000.",
+            ctx,
+            include_report=False,
+        )
+
+    assert result == "The result is 252150000."
+    assert len(ctx.display_output_annotations) == 1
+    assert ctx.display_output_annotations[0].annotation_type == "local_computation"
+    assert ctx.display_output_annotations[0].formula == "205000000 * 1.23"

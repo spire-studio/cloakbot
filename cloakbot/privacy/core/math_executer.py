@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from loguru import logger
+from pydantic import BaseModel
 from cloakbot.privacy.core.math_helpers import (
     execute_privacy_math,
     extract_python_snippets,
@@ -13,6 +14,14 @@ from cloakbot.privacy.core.types import REGISTRY
 
 _PLACEHOLDER_RE = re.compile(r"^<<([A-Z]+(?:_[A-Z]+)*_\d+)>>$")
 _INPUT_TOKEN_RE = re.compile(r"<<([A-Z]+(?:_[A-Z]+)*_\d+)>>")
+
+
+class LocalComputationRecord(BaseModel):
+    snippet_index: int
+    expression: str
+    resolved_expression: str
+    result: float
+    formatted_result: str
 
 
 def build_math_execution_instruction(sanitized_text: str) -> str:
@@ -53,22 +62,39 @@ def build_math_execution_instruction(sanitized_text: str) -> str:
 
 
 async def apply_privacy_math(response: str, session_key: str) -> str:
+    final_text, _records = await apply_privacy_math_with_details(response, session_key)
+    return final_text
+
+
+async def apply_privacy_math_with_details(
+    response: str,
+    session_key: str,
+) -> tuple[str, list[LocalComputationRecord]]:
     """Execute snippets and replace them IN-PLACE with numeric results."""
     snippets = extract_python_snippets(response)
     if not snippets:
-        return response
+        return response, []
 
     smap = get_map(session_key)
     values = _build_variable_values(smap)
 
     final_text = response
-    executions = []
+    records: list[LocalComputationRecord] = []
 
     # Process each unique snippet index
     for snippet_index, snippet_content in snippets:
         try:
             execution = execute_privacy_math(snippet_content, values, snippet_index=snippet_index)
-            executions.append(execution)
+            resolved_expression = resolve_expression(execution.expression, values)
+            records.append(
+                LocalComputationRecord(
+                    snippet_index=execution.snippet_index,
+                    expression=execution.expression,
+                    resolved_expression=resolved_expression,
+                    result=execution.result,
+                    formatted_result=format_result(execution.result),
+                )
+            )
 
             # Replace the snippet tag with the result in the text
             target_re = re.compile(
@@ -89,12 +115,7 @@ async def apply_privacy_math(response: str, session_key: str) -> str:
     # CRITICAL: We NO LONGER call replace_symbolic_variables here.
     # The final restoration stage in orchestrator.py will handle <<FINANCE_1>> -> $100,000 correctly.
 
-    if not executions:
-        return final_text
-
-    # Append de-duplicated transparency report
-    transparency = _render_transparency(executions, values)
-    return f"{final_text.strip()}\n\n{transparency}"
+    return final_text.strip(), _deduplicate_records(records)
 
 
 def _extract_numeric_token_names(sanitized_text: str) -> list[str]:
@@ -143,23 +164,12 @@ def _build_variable_values(smap) -> dict[str, float]:
     return values
 
 
-def _render_transparency(executions, values) -> str:
-    """Render unique computation results for transparency."""
-    # Deduplicate by expression to avoid repeating the same math 12 times
-    unique_exprs = {}
-    for ex in executions:
-        resolved = resolve_expression(ex.expression, values)
-        if resolved not in unique_exprs:
-            unique_exprs[resolved] = ex.result
-
-    if not unique_exprs:
-        return ""
-
-    if len(unique_exprs) == 1:
-        expr, res = next(iter(unique_exprs.items()))
-        return f"Local privacy computation (on-device): {expr} = {format_result(res)}."
-
-    lines = ["Local privacy computations (on-device):"]
-    for i, (expr, res) in enumerate(unique_exprs.items(), 1):
-        lines.append(f" {i}. {expr} = {format_result(res)}.")
-    return "\n".join(lines)
+def _deduplicate_records(records: list[LocalComputationRecord]) -> list[LocalComputationRecord]:
+    seen: set[str] = set()
+    deduplicated: list[LocalComputationRecord] = []
+    for record in records:
+        if record.resolved_expression in seen:
+            continue
+        seen.add(record.resolved_expression)
+        deduplicated.append(record)
+    return deduplicated

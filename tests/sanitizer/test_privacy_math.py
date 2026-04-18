@@ -60,7 +60,7 @@ async def test_apply_privacy_math_replaces_snippet() -> None:
         out = await apply_privacy_math(text, "cli:test")
 
     assert "python_snippet_1" not in out
-    assert "100 - 60 = 40" in out
+    assert out == "Your margin is below.\n40"
 
 
 def test_extract_python_snippets_multiple() -> None:
@@ -109,5 +109,4 @@ async def test_apply_privacy_math_executes_multiple_snippets() -> None:
 
     assert "python_snippet_1" not in out
     assert "python_snippet_2" not in out
-    assert "1. 100 * 0.1 = 10." in out
-    assert "2. 100 * 0.2 = 20." in out
+    assert out == "Scenario summaries.\n10\n20"
