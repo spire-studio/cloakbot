@@ -18,6 +18,7 @@ from pydantic import AliasChoices, Field
 from cloakbot.bus.events import OutboundMessage
 from cloakbot.channels.base import BaseChannel
 from cloakbot.config.schema import Base
+from cloakbot.privacy.transparency.report import build_session_privacy_snapshot
 
 
 class SPAStaticFiles(StaticFiles):
@@ -110,6 +111,12 @@ class WebUIChannel(BaseChannel):
                     },
                 }
             )
+            await websocket.send_json(
+                {
+                    "type": "privacy_snapshot",
+                    "data": build_session_privacy_snapshot(f"{self.name}:{session_id}").model_dump(mode="json"),
+                }
+            )
 
             try:
                 while True:
@@ -187,6 +194,9 @@ class WebUIChannel(BaseChannel):
             {
                 "type": "assistant_message",
                 "content": msg.content,
+                "privacy": msg.metadata.get("privacy"),
+                "privacyAnnotations": msg.metadata.get("privacyAnnotations"),
+                "privacyTurn": msg.metadata.get("privacyTurn"),
             },
         )
         await self._broadcast(msg.chat_id, {"type": "assistant_done"})
@@ -199,7 +209,15 @@ class WebUIChannel(BaseChannel):
     ) -> None:
         meta = metadata or {}
         if meta.get("_stream_end"):
-            await self._broadcast(chat_id, {"type": "assistant_done"})
+            await self._broadcast(
+                chat_id,
+                {
+                    "type": "assistant_done",
+                    "privacy": meta.get("privacy"),
+                    "privacyAnnotations": meta.get("privacyAnnotations"),
+                    "privacyTurn": meta.get("privacyTurn"),
+                },
+            )
             return
 
         if delta:

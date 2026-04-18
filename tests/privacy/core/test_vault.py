@@ -26,26 +26,24 @@ def isolated_vault(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 def test_get_map_returns_empty_session_map_for_new_session_key(isolated_vault: None) -> None:
     smap = vault.get_map("new:session")
 
-    assert smap == _SessionMap(
-        original_to_placeholder={},
-        placeholder_to_original={},
-        counters={},
-    )
+    assert smap == _SessionMap()
 
 
 def test_save_map_persists_and_get_map_retrieves_it_correctly(isolated_vault: None) -> None:
     session_key = "persist:session"
-    smap = _SessionMap(
-        original_to_placeholder={"Alice Chen": "<<PERSON_1>>"},
-        placeholder_to_original={"<<PERSON_1>>": "Alice Chen"},
-        counters={"PERSON": 1},
-    )
+    smap = _SessionMap()
+    placeholder, is_new = smap.get_or_create_placeholder("Alice Chen", "PERSON", turn_id="turn-1")
+    assert is_new is True
+    smap.register_alias(placeholder, "Alice", turn_id="turn-2")
 
     vault.save_map(session_key, smap)
     vault.clear_cache(session_key)
     loaded = vault.get_map(session_key)
 
-    assert loaded == smap
+    assert loaded.original_to_placeholder["Alice Chen"] == "<<PERSON_1>>"
+    assert loaded.original_to_placeholder["Alice"] == "<<PERSON_1>>"
+    assert loaded.placeholder_to_entity["<<PERSON_1>>"].canonical == "Alice Chen"
+    assert loaded.placeholder_to_entity["<<PERSON_1>>"].aliases == ["Alice Chen", "Alice"]
 
 
 def test_atomic_write_keeps_original_file_intact_on_mid_write_crash(
@@ -146,3 +144,17 @@ def test_load_map_prunes_placeholder_to_placeholder_entries(
 
     assert loaded.original_to_placeholder == {"Alice": "<<PERSON_1>>"}
     assert loaded.placeholder_to_original == {"<<PERSON_1>>": "Alice"}
+
+
+def test_replace_known_originals_swaps_existing_aliases_without_new_counters(
+    isolated_vault: None,
+) -> None:
+    smap = _SessionMap()
+    placeholder, _ = smap.get_or_create_placeholder("Alice Chen", "PERSON", turn_id="turn-1")
+    smap.register_alias(placeholder, "Alice", turn_id="turn-2")
+
+    replaced, modified = smap.replace_known_originals("Alice sent a note to Alice Chen.")
+
+    assert modified is True
+    assert replaced == "<<PERSON_1>> sent a note to <<PERSON_1>>."
+    assert smap.counters == {"PERSON": 1}

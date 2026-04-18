@@ -8,6 +8,8 @@ async def post_llm_hook(
     response: str,
     ctx: TurnContext,
     session_key: str,
+    *,
+    include_report: bool = True,
 ) -> str:
     """
     Called in loop.py after the LLM response arrives.
@@ -15,4 +17,4 @@ async def post_llm_hook(
     """
     _ = session_key
     orchestrator = get_orchestrator()
-    return await orchestrator.finalize_turn(response, ctx)
+    return await orchestrator.finalize_turn(response, ctx, include_report=include_report)

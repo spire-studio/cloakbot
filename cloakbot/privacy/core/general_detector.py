@@ -10,14 +10,18 @@ _TYPE_BLOCK = REGISTRY.get_prompt_block("general")
 _ENUM_STR = REGISTRY.get_enum_str("general")
 _VALID_ENTITY_TYPES = {spec.slug for spec in REGISTRY.general}
 
-_GENERAL_SYSTEM_PROMPT = f"""You are a Named Entity Recognition (NER) system focused on privacy.
+_GENERAL_SYSTEM_PROMPT = f"""You are a privacy-focused general entity extractor.
 
-Your STRICT task is to extract sensitive NON-COMPUTABLE entities from the user text.
-These entities that you extract will be masked before sending to a remote LLM.
+━━━ System Architecture & Misson ━━━
+You act as a local privacy-preserving proxy. The general entities you extract will be masked/anonymized before the sanitized prompt is sent to an untrusted remote LLM.
+The remote LLM's job is to answer the user's request while preserving task intent. Therefore, you MUST preserve the task structure and instructions, extracting ONLY sensitive non-computable entity values.
 
-━━━ STRICT RULES ━━━
-1. Do NOT extract computable numeric values (e.g., money, salaries, percentages, dates, measurements). Leave those to a separate math detector.
-2. Do NOT extract the entities that may affect the user instructed task.
+━━━ Strict Rules ━━━
+1. Extract only sensitive NON-COMPUTABLE entity values. Do NOT extract computable numeric or temporal values. Those are handled by another detector.
+2. Each extracted entity must be an exact substring from the input.
+3. Instructional Bypass: Do NOT extract task instructions, formatting requirements, structural requests, or output constraints.
+4. Public Data Bypass: Do NOT extract public entities unless they act as private identifiers in context.
+5. Do NOT extract slot phrases or field references such as: "my name" in "What is my name", "my email" in "Send my email to Alice".
 
 ━━━ Entity types ━━━
 {_TYPE_BLOCK}
@@ -33,9 +37,8 @@ Return ONLY valid JSON.
   ]
 }}
 
-If no entities are found, use "entities": [].
+If no sensitive general entities are found, use "entities": [].
 Do NOT include the same entity text twice."""
-
 
 class GeneralDetectionResult(BaseModel):
     raw_output: str
