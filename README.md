@@ -298,8 +298,8 @@ Session-level placeholder mappings are persisted as JSON under `~/.cloakbot/sani
 - [x] PrivacyOrchestrator with turn-scoped context
 - [x] Local intent analysis and chat/math/doc routing
 - [x] MathAgent snippet contract plus local arithmetic execution
-- [ ] Multi-turn conversation privacy protection
-- [ ] Web UI polish and usability improvements
+- [x] Multi-turn conversation privacy protection
+- [x] Web UI polish and usability improvements
 
 ### 🔨 v0.2 — Trust Boundary Expansion
 - [ ] Tool-use Detector: enforce tool-use sanitization in the main loop

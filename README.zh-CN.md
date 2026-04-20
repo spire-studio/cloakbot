@@ -298,8 +298,8 @@ cloakbot/
 - [x] 具备逐轮上下文的 PrivacyOrchestrator
 - [x] 本地意图分析与 chat/math/doc 路由
 - [x] MathAgent 片段约束与本地算术执行
-- [ ] 多轮对话隐私保护
-- [ ] Web UI 细节打磨与可用性完善
+- [x] 多轮对话隐私保护
+- [x] Web UI 细节打磨与可用性完善
 
 ### 🔨 v0.2 — 信任边界扩展
 - [ ] Tool-use Detector：在主循环中强制执行工具使用结果脱敏

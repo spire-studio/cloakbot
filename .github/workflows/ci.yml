@@ -82,6 +82,9 @@ jobs:
       - name: Lint webui
         run: npm run lint
 
+      - name: Test webui
+        run: npm run test
+
       - name: Build webui
         run: npm run build
 

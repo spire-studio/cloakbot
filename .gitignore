@@ -3,6 +3,7 @@
 .docs
 .env
 .web
+.claude
 CLAUDE.md
 AGENTS.md
 .vscode/
@@ -21,6 +22,7 @@ build/
 *.pyzz
 .venv/
 venv/
+docs/
 __pycache__/
 poetry.lock
 .pytest_cache/
