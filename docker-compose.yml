@@ -1,0 +1,55 @@
+x-common-config: &common-config
+  build:
+    context: .
+    dockerfile: Dockerfile
+  volumes:
+    - ~/.cloakbot:/home/cloakbot/.cloakbot
+  cap_drop:
+    - ALL
+  cap_add:
+    - SYS_ADMIN
+  security_opt:
+    - apparmor=unconfined
+    - seccomp=unconfined
+
+services:
+  cloakbot-gateway:
+    container_name: cloakbot-gateway
+    <<: *common-config
+    command: ["gateway"]
+    restart: unless-stopped
+    ports:
+      - 18790:18790
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 1G
+        reservations:
+          cpus: "0.25"
+          memory: 256M
+
+  cloakbot-api:
+    container_name: cloakbot-api
+    <<: *common-config
+    command:
+      ["serve", "--host", "0.0.0.0", "-w", "/home/cloakbot/.cloakbot/api-workspace"]
+    restart: unless-stopped
+    ports:
+      - 127.0.0.1:8900:8900
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 1G
+        reservations:
+          cpus: "0.25"
+          memory: 256M
+
+  cloakbot-cli:
+    <<: *common-config
+    profiles:
+      - cli
+    command: ["status"]
+    stdin_open: true
+    tty: true

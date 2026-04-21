@@ -1,0 +1,118 @@
+name: CI
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+on:
+  push:
+    branches: [ main, nightly ]
+  pull_request:
+    branches: [ main, nightly ]
+  workflow_dispatch:
+
+jobs:
+  core-python:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          cache-suffix: py${{ matrix.python-version }}
+
+      - name: Install core test dependencies
+        run: uv sync --extra dev
+
+      - name: Lint with ruff
+        run: uv run ruff check cloakbot --select F401,F841
+
+      - name: Run core tests
+        run: uv run pytest -m "not integration" tests/
+
+  optional-integrations:
+    if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/nightly' || github.base_ref == 'nightly'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Install optional integration system dependencies
+        run: sudo apt-get update && sudo apt-get install -y libolm-dev build-essential
+
+      - name: Install all optional dependencies
+        run: uv sync --all-extras
+
+  webui:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: webui
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: webui/package-lock.json
+
+      - name: Install webui dependencies
+        run: npm ci
+
+      - name: Lint webui
+        run: npm run lint
+
+      - name: Test webui
+        run: npm run test
+
+      - name: Build webui
+        run: npm run build
+
+  bridge:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: bridge
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+
+      - name: Install bridge dependencies
+        run: npm install
+
+      - name: Build bridge
+        run: npm run build
+
+  docker-smoke:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Build Docker image and run smoke test
+        run: bash tests/test_docker.sh
