@@ -58,6 +58,8 @@ CPH 仅承担四类职责：
 
 ### 4.1 统一协议头（所有契约共享）
 
+**实现规定（主方案）**：消息契约统一使用 **Pydantic v2** 模型定义与校验，不使用裸 `dict` 作为协议真源。
+
 必填字段：
 
 - `trace_id`
@@ -70,6 +72,14 @@ CPH 仅承担四类职责：
 - `timestamp`
 - `status`
 - `error_code`
+
+Pydantic 约束：
+
+- 协议模型默认 `extra="forbid"`，禁止未声明字段进入链路。
+- `intent/status/privacy_stage/event_type` 使用 `Literal` 或 `Enum` 强约束。
+- 仅边界层执行 `model_validate()`，内部流转使用已验证模型对象。
+- 统一通过 `model_dump()` 发射事件与日志载荷，保证字段一致性。
+- 所有契约字段变更必须带 `event_version` 兼容策略。
 
 ### 4.2 TurnContract（主链路）
 
@@ -274,7 +284,8 @@ CPH 仅承担四类职责：
 
 交付：
 
-- TurnContract 与最小事件 taxonomy
+- 基于 Pydantic 的 TurnContract/AgentTaskContract/ToolInvocationContract（主方案）
+- 最小事件 taxonomy
 - ObservabilityEmitter 接入主链路
 - ProtocolGateway + ContractRouter 最小实现
 - privacy 主流程关键节点全部事件化
