@@ -18,7 +18,7 @@
 
 <p align="center"><strong>English</strong> | <a href="README.zh-CN.md">简体中文</a></p>
 
-<p align="center"><sub>Built on <a href="https://github.com/HKUDS/nanobot">nanobot</a> · Submitted to the <strong>Gemma 4 Good Hackathon</strong> (Kaggle, May 2026)</sub></p>
+<p align="center"><sub>Built on <a href="https://github.com/HKUDS/nanobot">nanobot</a> · A demo version has been submitted to the <strong>Gemma 4 Good Hackathon</strong> (Kaggle, May 2026)</sub></p>
 
 CloakBot adds a **local privacy pipeline** between your session and any remote LLM. Before a message is sent upstream, a multi-agent system powered by trusted local model served through vLLM/Ollama runs two local JSON-only detectors: one for general sensitive entities and one for sensitive numeric or temporal values. Matched spans are rewritten into typed, reversible placeholders and stored in a session-scoped Vault. For math task turns, the remote LLM is asked for structure only while the real arithmetic happens locally with the original values from the Vault.
 
