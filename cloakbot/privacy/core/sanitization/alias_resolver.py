@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from cloakbot.privacy.core.vault import _SessionMap
+from cloakbot.privacy.core.state.vault import _SessionMap
 
 
 class AliasResolverAgent:

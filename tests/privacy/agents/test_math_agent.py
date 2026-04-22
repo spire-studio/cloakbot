@@ -4,8 +4,8 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from cloakbot.privacy.agents.math_agent import MathAgent
-from cloakbot.privacy.core.math_executer import LocalComputationRecord
+from cloakbot.privacy.agents.workers.math_agent import MathAgent
+from cloakbot.privacy.core.math.math_executor import LocalComputationRecord
 from cloakbot.privacy.hooks.context import Intent, TurnContext
 
 
@@ -34,12 +34,12 @@ async def test_prepare_input_appends_math_execution_instruction() -> None:
 
 
 @pytest.mark.asyncio
-async def test_finalize_output_delegates_to_math_executer() -> None:
+async def test_finalize_output_delegates_to_math_executor() -> None:
     agent = MathAgent()
     ctx = _turn_context()
 
     with patch(
-        "cloakbot.privacy.agents.math_agent.apply_privacy_math_with_details",
+        "cloakbot.privacy.agents.workers.math_agent.apply_privacy_math_with_details",
         new=AsyncMock(
             return_value=(
                 "finalized",

@@ -6,9 +6,9 @@ import re
 
 from pydantic import BaseModel
 
-from cloakbot.privacy.core.math_executer import LocalComputationRecord
+from cloakbot.privacy.core.math.math_executor import LocalComputationRecord
 from cloakbot.privacy.core.types import REGISTRY, Severity
-from cloakbot.privacy.core.vault import PLACEHOLDER_RE, _SessionMap
+from cloakbot.privacy.core.state.vault import PLACEHOLDER_RE, _SessionMap
 
 
 class RestoredTokenAnnotation(BaseModel):

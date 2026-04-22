@@ -4,16 +4,16 @@ from unittest.mock import patch
 
 import pytest
 
-from cloakbot.privacy.core.math_executer import (
+from cloakbot.privacy.core.math.math_executor import (
     apply_privacy_math,
     build_math_execution_instruction,
 )
-from cloakbot.privacy.core.math_helpers import (
+from cloakbot.privacy.core.math.math_helpers import (
     execute_privacy_math,
     extract_python_snippet,
     extract_python_snippets,
 )
-from cloakbot.privacy.core.vault import _SessionMap
+from cloakbot.privacy.core.state.vault import _SessionMap
 
 
 def test_build_instruction_contains_numeric_tokens() -> None:
@@ -56,7 +56,7 @@ async def test_apply_privacy_math_replaces_snippet() -> None:
         counters={"AMOUNT": 2},
     )
 
-    with patch("cloakbot.privacy.core.math_executer.get_map", return_value=smap):
+    with patch("cloakbot.privacy.core.math.math_executor.get_map", return_value=smap):
         out = await apply_privacy_math(text, "cli:test")
 
     assert "python_snippet_1" not in out
@@ -104,7 +104,7 @@ async def test_apply_privacy_math_executes_multiple_snippets() -> None:
         counters={"FINANCE": 1, "PERCENTAGE": 2},
     )
 
-    with patch("cloakbot.privacy.core.math_executer.get_map", return_value=smap):
+    with patch("cloakbot.privacy.core.math.math_executor.get_map", return_value=smap):
         out = await apply_privacy_math(text, "cli:test")
 
     assert "python_snippet_1" not in out

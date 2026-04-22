@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from loguru import logger
 
-from cloakbot.privacy.core.llm_json import JsonCompletionRunner, load_json_object
+from cloakbot.privacy.core.detection.llm_json import JsonCompletionRunner, load_json_object
 from cloakbot.privacy.hooks.context import Intent
 
 _INTENT_SYSTEM_PROMPT = """You are an intent classifier for a privacy pipeline.

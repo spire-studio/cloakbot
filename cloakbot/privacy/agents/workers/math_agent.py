@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from cloakbot.privacy.agents.base import BaseAgent
-from cloakbot.privacy.core.math_executer import (
+from cloakbot.privacy.core.math.math_executor import (
     apply_privacy_math_with_details,
     build_math_execution_instruction,
 )

@@ -3,7 +3,7 @@ from __future__ import annotations
 from loguru import logger
 from pydantic import BaseModel
 
-from cloakbot.privacy.core.llm_json import JsonCompletionRunner, load_json_object
+from cloakbot.privacy.core.detection.llm_json import JsonCompletionRunner, load_json_object
 from cloakbot.privacy.core.types import REGISTRY, GeneralEntity
 
 _TYPE_BLOCK = REGISTRY.get_prompt_block("general")

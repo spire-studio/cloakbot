@@ -227,22 +227,31 @@ cloakbot/
 ├── cloakbot/
 │   ├── privacy/                 ← CloakBot's privacy layer
 │   │   ├── core/
-│   │   │   ├── detector.py          General + digit detector facade
-│   │   │   ├── general_detector.py  Non-computable entity extraction via local vLLM
-│   │   │   ├── digit_detector.py    Sensitive numeric/temporal extraction via local vLLM
-│   │   │   ├── handler.py           Placeholder-safe token application
-│   │   │   ├── vault.py             Session-scoped token/value map on disk
-│   │   │   ├── restorer.py          Reverse lookup and restoration
-│   │   │   ├── sanitize.py          Public sanitize/remap entry points
-│   │   │   ├── math_executer.py     Remote snippet contract + local execution
-│   │   │   └── math_helpers.py      AST validation for arithmetic-only snippets
+│   │   │   ├── detection/
+│   │   │   │   ├── detector.py      General + digit detector facade
+│   │   │   │   ├── general_detector.py  Non-computable entity extraction via local vLLM
+│   │   │   │   ├── digit_detector.py    Sensitive numeric/temporal extraction via local vLLM
+│   │   │   │   └── llm_json.py      JSON completion helpers for local models
+│   │   │   ├── sanitization/
+│   │   │   │   ├── sanitize.py      Public sanitize/remap entry points
+│   │   │   │   ├── handler.py       Placeholder-safe token application
+│   │   │   │   ├── restorer.py      Reverse lookup and restoration
+│   │   │   │   └── alias_resolver.py  Reuse placeholders across turns
+│   │   │   ├── math/
+│   │   │   │   ├── math_executor.py Remote snippet contract + local execution
+│   │   │   │   └── math_helpers.py  AST validation for arithmetic-only snippets
+│   │   │   └── state/
+│   │   │       └── vault.py         Session-scoped token/value map on disk
 │   │   ├── agents/
-│   │   │   ├── orchestrator.py      Top-level privacy coordinator
-│   │   │   ├── intent_analyzer.py   Local intent classification
-│   │   │   ├── task_router.py       chat/math/doc routing
-│   │   │   ├── chat_agent.py        Standard sanitized chat flow
-│   │   │   ├── math_agent.py        Local execution of remote-generated snippets
-│   │   │   └── tool_interceptor.py  Placeholder for future tool-output enforcement
+│   │   │   ├── runtime/
+│   │   │   │   ├── orchestrator.py  Top-level privacy coordinator
+│   │   │   │   ├── task_router.py   chat/math/doc routing
+│   │   │   │   └── registry.py      Worker registration and lookup
+│   │   │   ├── classification/
+│   │   │   │   └── intent_analyzer.py   Local intent classification
+│   │   │   └── workers/
+│   │   │       ├── chat_agent.py    Standard sanitized chat flow
+│   │   │       └── math_agent.py    Local execution of remote-generated snippets
 │   │   ├── hooks/
 │   │   │   ├── pre_llm.py           Sanitize before the remote LLM call
 │   │   │   ├── post_llm.py          Restore after the remote LLM call

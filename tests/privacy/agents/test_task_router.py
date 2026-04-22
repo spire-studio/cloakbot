@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from cloakbot.privacy.agents.chat_agent import ChatAgent
-from cloakbot.privacy.agents.math_agent import MathAgent
-from cloakbot.privacy.agents.task_router import get_agent, route_turn
+from cloakbot.privacy.agents.workers.chat_agent import ChatAgent
+from cloakbot.privacy.agents.workers.math_agent import MathAgent
+from cloakbot.privacy.agents.runtime.task_router import get_agent, route_turn
 from cloakbot.privacy.hooks.context import Intent, TurnContext
 
 

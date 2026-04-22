@@ -227,22 +227,31 @@ cloakbot/
 ├── cloakbot/
 │   ├── privacy/                 ← CloakBot 隐私层
 │   │   ├── core/
-│   │   │   ├── detector.py          General + digit 检测入口
-│   │   │   ├── general_detector.py  本地 vLLM 非可计算实体抽取
-│   │   │   ├── digit_detector.py    本地 vLLM 数字/时间实体抽取
-│   │   │   ├── handler.py           占位符替换逻辑
-│   │   │   ├── vault.py             会话级 token/value 持久化
-│   │   │   ├── restorer.py          占位符恢复
-│   │   │   ├── sanitize.py          对外脱敏/恢复接口
-│   │   │   ├── math_executer.py     远端代码约束 + 本地执行
-│   │   │   └── math_helpers.py      算术 AST 安全校验
+│   │   │   ├── detection/
+│   │   │   │   ├── detector.py      General + digit 检测入口
+│   │   │   │   ├── general_detector.py  本地 vLLM 非可计算实体抽取
+│   │   │   │   ├── digit_detector.py    本地 vLLM 数字/时间实体抽取
+│   │   │   │   └── llm_json.py      本地模型 JSON 完成辅助
+│   │   │   ├── sanitization/
+│   │   │   │   ├── sanitize.py      对外脱敏/恢复接口
+│   │   │   │   ├── handler.py       占位符替换逻辑
+│   │   │   │   ├── restorer.py      占位符恢复
+│   │   │   │   └── alias_resolver.py  跨轮复用占位符
+│   │   │   ├── math/
+│   │   │   │   ├── math_executor.py 远端代码约束 + 本地执行
+│   │   │   │   └── math_helpers.py  算术 AST 安全校验
+│   │   │   └── state/
+│   │   │       └── vault.py         会话级 token/value 持久化
 │   │   ├── agents/
-│   │   │   ├── orchestrator.py      隐私总控
-│   │   │   ├── intent_analyzer.py   本地意图分析
-│   │   │   ├── task_router.py       chat/math/doc 路由
-│   │   │   ├── chat_agent.py        标准脱敏聊天流程
-│   │   │   ├── math_agent.py        远端生成、本地执行数学片段
-│   │   │   └── tool_interceptor.py  工具输出约束占位
+│   │   │   ├── runtime/
+│   │   │   │   ├── orchestrator.py  隐私总控
+│   │   │   │   ├── task_router.py   chat/math/doc 路由
+│   │   │   │   └── registry.py      worker 注册与发现
+│   │   │   ├── classification/
+│   │   │   │   └── intent_analyzer.py   本地意图分析
+│   │   │   └── workers/
+│   │   │       ├── chat_agent.py    标准脱敏聊天流程
+│   │   │       └── math_agent.py    远端生成、本地执行数学片段
 │   │   ├── hooks/
 │   │   │   ├── pre_llm.py           远端调用前脱敏
 │   │   │   ├── post_llm.py          远端调用后恢复

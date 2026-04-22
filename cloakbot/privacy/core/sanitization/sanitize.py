@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from loguru import logger
 
-from cloakbot.privacy.core.detector import PiiDetector
+from cloakbot.privacy.core.detection.detector import PiiDetector
 from cloakbot.privacy.core.types import DetectedEntity, DetectionResult
-from cloakbot.privacy.core.handler import apply_tokens
-from cloakbot.privacy.core.restorer import RestoredTokenAnnotation, restore_tokens, restore_tokens_with_annotations
-from cloakbot.privacy.core.vault import _SessionMap, get_map, save_map
+from cloakbot.privacy.core.sanitization.handler import apply_tokens
+from cloakbot.privacy.core.sanitization.restorer import RestoredTokenAnnotation, restore_tokens, restore_tokens_with_annotations
+from cloakbot.privacy.core.state.vault import _SessionMap, get_map, save_map
 
 _detector = PiiDetector()
 

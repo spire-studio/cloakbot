@@ -4,9 +4,9 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from cloakbot.privacy.agents.orchestrator import PrivacyOrchestrator
-from cloakbot.privacy.core.math_executer import LocalComputationRecord
-from cloakbot.privacy.core.restorer import RestoredTokenAnnotation
+from cloakbot.privacy.agents.runtime.orchestrator import PrivacyOrchestrator
+from cloakbot.privacy.core.math.math_executor import LocalComputationRecord
+from cloakbot.privacy.core.sanitization.restorer import RestoredTokenAnnotation
 from cloakbot.privacy.core.types import GeneralEntity, DetectionResult
 from cloakbot.privacy.hooks.context import Intent, TurnContext
 
@@ -26,12 +26,12 @@ async def test_prepare_turn_populates_turn_context_for_chat() -> None:
     )
 
     with patch(
-        "cloakbot.privacy.agents.orchestrator.sanitize_input_with_detection",
+        "cloakbot.privacy.agents.runtime.orchestrator.sanitize_input_with_detection",
         new=AsyncMock(
             return_value=("Hello <<PERSON_1>>", True, detection.sensitive_entities, detection)
         ),
     ), patch(
-        "cloakbot.privacy.agents.orchestrator.analyze_user_intent",
+        "cloakbot.privacy.agents.runtime.orchestrator.analyze_user_intent",
         new=AsyncMock(return_value=Intent.CHAT),
     ):
         prepared, ctx = await orchestrator.prepare_turn(
@@ -59,10 +59,10 @@ async def test_prepare_turn_routes_math_from_intent() -> None:
     )
 
     with patch(
-        "cloakbot.privacy.agents.orchestrator.sanitize_input_with_detection",
+        "cloakbot.privacy.agents.runtime.orchestrator.sanitize_input_with_detection",
         new=AsyncMock(return_value=("What is <<AMOUNT_1>> of <<AMOUNT_2>>?", True, [], detection)),
     ), patch(
-        "cloakbot.privacy.agents.orchestrator.analyze_user_intent",
+        "cloakbot.privacy.agents.runtime.orchestrator.analyze_user_intent",
         new=AsyncMock(return_value=Intent.MATH),
     ):
         prepared, ctx = await orchestrator.prepare_turn(
@@ -91,10 +91,10 @@ async def test_finalize_turn_restores_tokens_and_emits_report() -> None:
     )
 
     with patch(
-        "cloakbot.privacy.agents.orchestrator.remap_response_with_annotations",
+        "cloakbot.privacy.agents.runtime.orchestrator.remap_response_with_annotations",
         new=AsyncMock(return_value=("Hello Laurie Luo", [])),
     ), patch(
-        "cloakbot.privacy.agents.orchestrator.get_agent",
+        "cloakbot.privacy.agents.runtime.orchestrator.get_agent",
         return_value=agent,
     ):
         result = await orchestrator.finalize_turn(
@@ -125,7 +125,7 @@ async def test_finalize_turn_can_skip_report_for_webui() -> None:
     )
 
     with patch(
-        "cloakbot.privacy.agents.orchestrator.remap_response_with_annotations",
+        "cloakbot.privacy.agents.runtime.orchestrator.remap_response_with_annotations",
         new=AsyncMock(
             return_value=(
                 "Hello Laurie Luo",
@@ -145,7 +145,7 @@ async def test_finalize_turn_can_skip_report_for_webui() -> None:
             )
         ),
     ), patch(
-        "cloakbot.privacy.agents.orchestrator.get_agent",
+        "cloakbot.privacy.agents.runtime.orchestrator.get_agent",
         return_value=agent,
     ):
         result = await orchestrator.finalize_turn(
@@ -182,10 +182,10 @@ async def test_finalize_turn_adds_local_computation_annotations() -> None:
     )
 
     with patch(
-        "cloakbot.privacy.agents.orchestrator.remap_response_with_annotations",
+        "cloakbot.privacy.agents.runtime.orchestrator.remap_response_with_annotations",
         new=AsyncMock(return_value=("The result is 252150000.", [])),
     ), patch(
-        "cloakbot.privacy.agents.orchestrator.get_agent",
+        "cloakbot.privacy.agents.runtime.orchestrator.get_agent",
         return_value=agent,
     ):
         result = await orchestrator.finalize_turn(

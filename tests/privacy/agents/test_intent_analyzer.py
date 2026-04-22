@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from cloakbot.privacy.agents.intent_analyzer import (
+from cloakbot.privacy.agents.classification.intent_analyzer import (
     _INTENT_SYSTEM_PROMPT,
     UserIntentAnalyzer,
 )
