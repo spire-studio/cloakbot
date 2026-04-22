@@ -299,12 +299,74 @@ CPH 仅承担四类职责：
   - `adapters/agent_adapter.py`
   - `adapters/tool_adapter.py`
 
-现有目录职责保持不变：
+### 10.1 `privacy/core` 结构优化（纳入任务书）
 
-- `privacy/core` 保持纯能力
-- `privacy/agents` 聚焦业务 agent 逻辑
-- `privacy/hooks` 仅做入口桥接
-- `privacy/transparency` 改为消费标准事件
+目标：将 `core` 从“平铺文件集合”升级为“按子域组织的纯能力层”，降低耦合并提高可测试性。
+
+建议结构：
+
+- `privacy/core/detection/`
+  - `detector.py`
+  - `general_detector.py`
+  - `digit_detector.py`
+  - `llm_json.py`
+- `privacy/core/sanitization/`
+  - `sanitize.py`
+  - `handler.py`
+  - `restorer.py`
+- `privacy/core/math/`
+  - `math_executor.py`（由 `math_executer.py` 更名）
+  - `math_helpers.py`
+- `privacy/core/state/`
+  - `vault.py`
+- `privacy/core/types.py`（保留为跨子域共享模型）
+
+结构优化任务：
+
+1. 拆分 detection/sanitization/math/state 子目录并迁移文件。
+2. 统一 import 路径并清理循环依赖。
+3. 将 `math_executer.py` 更名为 `math_executor.py` 并全量更新引用。
+4. 保持对外 API 稳定（通过 `core/__init__.py` 或兼容导出层）。
+5. 增加最小回归测试，保证行为一致。
+
+### 10.2 `privacy/agents` 结构优化（纳入任务书）
+
+目标：将 `agents` 从“路由式调用集合”升级为“可注册、可替换、可观测的 worker 运行层”。
+
+建议结构：
+
+- `privacy/agents/runtime/`
+  - `orchestrator.py`
+  - `task_router.py`
+  - `registry.py`（新增，统一注册与发现）
+- `privacy/agents/workers/`
+  - `chat_agent.py`
+  - `math_agent.py`
+  - `doc_agent.py`（后续补齐）
+- `privacy/agents/classification/`
+  - `intent_analyzer.py`
+- `privacy/agents/base.py`
+
+结构优化任务：
+
+1. 引入 `registry.py`，由运行时按能力注册 worker，不再硬编码单例分派。
+2. 将 `chat/math` agent 迁移到 `workers/`，将 intent 分析迁移到 `classification/`。
+3. `tool_interceptor.py` 在本阶段二选一：完成实现并纳入协议链，或删除空壳。
+4. 重新定义 `alias_resolver.py` 归属（迁入 `core` 或 `policy` 层），避免语义漂移。
+5. 为 agent runtime 增加契约测试，确保 worker 可替换性。
+
+### 10.3 分阶段落地关系
+
+- Phase A：先完成目录重组最小子集（不改变行为），并接通关键可观测事件。
+- Phase C：在新结构上统一指标采集点。
+- Phase B：基于统一 runtime 与事件索引实现会话回放。
+
+现有目录职责约束：
+
+- `privacy/core` 仅保留纯能力，不承担调度。
+- `privacy/agents` 仅保留 worker 与运行时，不承载通用工具逻辑。
+- `privacy/hooks` 仅做入口桥接。
+- `privacy/transparency` 仅消费标准事件。
 
 ## 11. 非目标（当前阶段不做）
 
