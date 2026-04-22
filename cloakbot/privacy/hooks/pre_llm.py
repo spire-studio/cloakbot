@@ -1,7 +1,9 @@
 from __future__ import annotations
 
-from cloakbot.privacy.agents.orchestrator import get_orchestrator
 from cloakbot.privacy.hooks.context import TurnContext
+from cloakbot.privacy.protocol.hub import ProtocolGateway
+
+_GATEWAY = ProtocolGateway(channel="cli")
 
 
 async def pre_llm_hook(
@@ -15,9 +17,9 @@ async def pre_llm_hook(
     Returns (sanitized_text, TurnContext).
     The TurnContext must be passed to post_llm_hook().
     """
-    orchestrator = get_orchestrator()
-    return await orchestrator.prepare_turn(
+    prepared, ctx, _contract = await _GATEWAY.prepare(
         text,
         session_key,
         fail_open=fail_open,
     )
+    return prepared, ctx

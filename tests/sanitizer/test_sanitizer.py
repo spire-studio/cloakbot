@@ -19,16 +19,16 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from cloakbot.privacy.core.detector import PiiDetector
-from cloakbot.privacy.core.general_detector import parse_general_entities
-from cloakbot.privacy.core.handler import apply_tokens as _rewrite
-from cloakbot.privacy.core.restorer import restore_tokens as _remap
-from cloakbot.privacy.core.sanitize import (
+from cloakbot.privacy.core.detection.detector import PiiDetector
+from cloakbot.privacy.core.detection.general_detector import parse_general_entities
+from cloakbot.privacy.core.sanitization.handler import apply_tokens as _rewrite
+from cloakbot.privacy.core.sanitization.restorer import restore_tokens as _remap
+from cloakbot.privacy.core.sanitization.sanitize import (
     remap_response,
     sanitize_input,
     sanitize_input_with_detection,
 )
-from cloakbot.privacy.core.vault import (
+from cloakbot.privacy.core.state.vault import (
     _SessionMap,
     _load_map,
     _save_map,
@@ -235,7 +235,7 @@ class TestSessionMap:
             counters={"PERSON": 1},
         )
         with patch(
-            "cloakbot.privacy.core.vault._map_path",
+            "cloakbot.privacy.core.state.vault._map_path",
             return_value=tmp_path / "test.json",
         ):
             _save_map("test:session", smap)
@@ -247,7 +247,7 @@ class TestSessionMap:
 
     def test_missing_file_returns_empty_map(self, tmp_path: Path):
         with patch(
-            "cloakbot.privacy.core.vault._map_path",
+            "cloakbot.privacy.core.state.vault._map_path",
             return_value=tmp_path / "nonexistent.json",
         ):
             loaded = _load_map("no:session")
@@ -257,7 +257,7 @@ class TestSessionMap:
         bad = tmp_path / "bad.json"
         bad.write_text("not json", encoding="utf-8")
         with patch(
-            "cloakbot.privacy.core.vault._map_path",
+            "cloakbot.privacy.core.state.vault._map_path",
             return_value=bad,
         ):
             loaded = _load_map("bad:session")
@@ -294,7 +294,7 @@ def session_key(tmp_path: Path):
     """Isolated session key that writes maps to tmp_path."""
     key = "test:isolated"
     with patch(
-        "cloakbot.privacy.core.vault._map_path",
+        "cloakbot.privacy.core.state.vault._map_path",
         side_effect=lambda k: tmp_path / f"{k.replace(':', '_')}.json",
     ):
         clear_cache(key)

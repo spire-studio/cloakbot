@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from cloakbot.privacy.core.math_executer import LocalComputationRecord
-from cloakbot.privacy.core.restorer import (
+from cloakbot.privacy.core.math.math_executor import LocalComputationRecord
+from cloakbot.privacy.core.sanitization.restorer import (
     build_local_computation_annotations,
     restore_tokens,
     restore_tokens_with_annotations,
 )
-from cloakbot.privacy.core.vault import _SessionMap
+from cloakbot.privacy.core.state.vault import _SessionMap
 
 
 def test_restore_tokens_reverses_person_token_to_original_value() -> None:

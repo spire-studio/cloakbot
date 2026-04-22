@@ -4,12 +4,12 @@ from unittest.mock import patch
 
 import pytest
 
-from cloakbot.privacy.core.math_executer import (
+from cloakbot.privacy.core.math.math_executor import (
     apply_privacy_math,
     apply_privacy_math_with_details,
     build_math_execution_instruction,
 )
-from cloakbot.privacy.core.vault import _SessionMap
+from cloakbot.privacy.core.state.vault import _SessionMap
 
 
 def test_build_math_execution_instruction_lists_numeric_tokens() -> None:
@@ -48,7 +48,7 @@ async def test_apply_privacy_math_executes_single_snippet() -> None:
         "</python_snippet_1>"
     )
 
-    with patch("cloakbot.privacy.core.math_executer.get_map", return_value=smap):
+    with patch("cloakbot.privacy.core.math.math_executor.get_map", return_value=smap):
         output = await apply_privacy_math(response, "cli:test")
 
     assert "python_snippet_1" not in output
@@ -76,7 +76,7 @@ async def test_apply_privacy_math_handles_failed_execution() -> None:
         "</python_snippet_1>"
     )
 
-    with patch("cloakbot.privacy.core.math_executer.get_map", return_value=smap):
+    with patch("cloakbot.privacy.core.math.math_executor.get_map", return_value=smap):
         output = await apply_privacy_math(response, "cli:test")
 
     # On failure, snippet tags are stripped but inner content is preserved
@@ -99,7 +99,7 @@ async def test_apply_privacy_math_with_details_returns_local_computation_records
         "</python_snippet_1>"
     )
 
-    with patch("cloakbot.privacy.core.math_executer.get_map", return_value=smap):
+    with patch("cloakbot.privacy.core.math.math_executor.get_map", return_value=smap):
         output, records = await apply_privacy_math_with_details(response, "cli:test")
 
     assert output == "Result below\n25000"

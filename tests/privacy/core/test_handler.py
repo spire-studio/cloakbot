@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from cloakbot.privacy.core.handler import apply_tokens
+from cloakbot.privacy.core.sanitization.handler import apply_tokens
 from cloakbot.privacy.core.types import GeneralEntity, ComputableEntity, DetectionResult
-from cloakbot.privacy.core.vault import _SessionMap
+from cloakbot.privacy.core.state.vault import _SessionMap
 
 
 def _general(text: str, entity_type: str) -> GeneralEntity:

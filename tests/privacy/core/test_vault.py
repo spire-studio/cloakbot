@@ -7,8 +7,8 @@ from unittest.mock import patch
 
 import pytest
 
-import cloakbot.privacy.core.vault as vault
-from cloakbot.privacy.core.vault import _SessionMap
+import cloakbot.privacy.core.state.vault as vault
+from cloakbot.privacy.core.state.vault import _SessionMap
 
 
 @pytest.fixture()

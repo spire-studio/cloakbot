@@ -6,7 +6,7 @@ from collections import Counter
 from pydantic import BaseModel, ConfigDict, Field
 
 from cloakbot.privacy.core.types import DetectedEntity, REGISTRY, Severity
-from cloakbot.privacy.core.vault import get_map
+from cloakbot.privacy.core.state.vault import get_map
 from cloakbot.privacy.hooks.context import TurnContext
 
 _PLACEHOLDER_RE = re.compile(r"<<([A-Z]+(?:_[A-Z]+)*)_(\d+)>>")
