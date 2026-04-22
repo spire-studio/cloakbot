@@ -248,19 +248,41 @@ CPH 仅承担四类职责：
 
 注入 timeout、invalid json、tool failure、vault io failure，验证重试/降级/熔断行为和事件一致。
 
-## 9. 分阶段实施路线（A -> C -> B）
+## 9. 分阶段实施路线（执行顺序：S0 -> S1 -> C -> B）
 
-### Phase A（单 turn 可追踪）
+### S0（最小结构优化，先做）
+
+目标：先清边界，再立协议，确保后续 Protocol Hub 不固化历史耦合。
+
+交付：
+
+- `privacy/core` 完成最小子域重组（detection/sanitization/math/state）
+- `math_executer.py` 更名为 `math_executor.py` 并全量更新引用
+- `privacy/agents` 完成最小重组（runtime/workers/classification）
+- `tool_interceptor.py` 二选一：接入主链或删除空壳
+- 清理无用结构与死代码（见 9.4 简洁化约束）
+
+验收：
+
+- 行为等价（核心路径输出不变）
+- import 与类型检查通过
+- 现有测试通过且无新增回归
+
+### S1（Protocol Hub 主链，后做）
+
+目标：接通最小协议中枢，完成单 turn 全链路结构化可观测。
 
 交付：
 
 - TurnContract 与最小事件 taxonomy
 - ObservabilityEmitter 接入主链路
+- ProtocolGateway + ContractRouter 最小实现
 - privacy 主流程关键节点全部事件化
 
 验收：
 
 - 任意 turn 可重建时序与耗时分解
+- 关键事件链完整：`received -> sanitize -> dispatch -> restore -> completed`
 
 ### Phase C（统一指标面板）
 
@@ -284,6 +306,19 @@ CPH 仅承担四类职责：
 验收：
 
 - 给定 `session_id` 可回放关键协作路径与策略动作
+
+### 9.4 代码简洁化硬约束（所有阶段强制）
+
+1. 删除未使用结构、空壳文件与未接线模块，不保留“未来预留占位”。
+2. 禁止过度抽象：同一能力只保留一个主入口。
+3. 禁止“兼容层堆叠”掩盖坏结构；若可直接迁移则直接迁移。
+4. 每个阶段提交必须附“删除清单”：
+   - 删除了哪些文件/类/函数
+   - 删除依据（无引用/空壳/重复职责）
+5. 验证门槛：
+   - 无死代码（静态检查通过）
+   - 全量引用可解析
+   - 测试通过
 
 ## 10. 与现有目录的映射建议
 
