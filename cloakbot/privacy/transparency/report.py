@@ -1,15 +1,12 @@
 from __future__ import annotations
 
-import re
 from collections import Counter
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from cloakbot.privacy.core.types import DetectedEntity, REGISTRY, Severity
-from cloakbot.privacy.core.state.vault import get_map
+from cloakbot.privacy.core.state.vault import PLACEHOLDER_RE, get_map
 from cloakbot.privacy.hooks.context import TurnContext
-
-_PLACEHOLDER_RE = re.compile(r"<<([A-Z]+(?:_[A-Z]+)*)_(\d+)>>")
 
 
 class EntitySummary(BaseModel):
@@ -156,9 +153,9 @@ def _summarize_entities(entities: list[DetectedEntity]) -> list[EntitySummary]:
 
 def _summarize_placeholders(text: str) -> list[PlaceholderSummary]:
     counts: dict[str, list[str]] = {}
-    for match in _PLACEHOLDER_RE.finditer(text or ""):
+    for match in PLACEHOLDER_RE.finditer(text or ""):
         placeholder = match.group(0)
-        tag = match.group(1)
+        tag, _index = placeholder[2:-2].rsplit("_", 1)
         counts.setdefault(tag, [])
         if placeholder not in counts[tag]:
             counts[tag].append(placeholder)

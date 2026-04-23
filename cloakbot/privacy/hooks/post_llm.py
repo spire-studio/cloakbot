@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from cloakbot.privacy.hooks.context import TurnContext
-from cloakbot.privacy.protocol.hub import ProtocolGateway
+from cloakbot.privacy.runtime import get_runtime
 
-_GATEWAY = ProtocolGateway(channel="cli")
+_RUNTIME = get_runtime()
 
 
 async def post_llm_hook(
@@ -18,4 +18,4 @@ async def post_llm_hook(
     Runs pass 2 detection, restores tokens, emits transparency report.
     """
     _ = session_key
-    return await _GATEWAY.finalize(response, ctx, include_report=include_report)
+    return await _RUNTIME.finalize_turn(response, ctx, include_report=include_report)

@@ -10,7 +10,7 @@ from cloakbot.privacy.hooks.pre_llm import pre_llm_hook
 
 
 @pytest.mark.asyncio
-async def test_pre_llm_hook_delegates_to_gateway() -> None:
+async def test_pre_llm_hook_delegates_to_runtime() -> None:
     ctx = TurnContext(
         session_key="cli:test",
         turn_id="turn-1",
@@ -20,12 +20,11 @@ async def test_pre_llm_hook_delegates_to_gateway() -> None:
     )
 
     with patch(
-        "cloakbot.privacy.hooks.pre_llm._GATEWAY.prepare",
+        "cloakbot.privacy.hooks.pre_llm._RUNTIME.prepare_turn",
         new=AsyncMock(
             return_value=(
                 "Revenue is <<AMOUNT_1>> and cost is <<AMOUNT_2>>.\n\nPRIVACY_MATH_MODE",
                 ctx,
-                object(),
             )
         ),
     ) as mocked_prepare:
@@ -44,7 +43,7 @@ async def test_pre_llm_hook_delegates_to_gateway() -> None:
 
 
 @pytest.mark.asyncio
-async def test_post_llm_hook_delegates_to_gateway() -> None:
+async def test_post_llm_hook_delegates_to_runtime() -> None:
     ctx = TurnContext(
         session_key="cli:test",
         turn_id="turn-1",
@@ -55,7 +54,7 @@ async def test_post_llm_hook_delegates_to_gateway() -> None:
     )
 
     with patch(
-        "cloakbot.privacy.hooks.post_llm._GATEWAY.finalize",
+        "cloakbot.privacy.hooks.post_llm._RUNTIME.finalize_turn",
         new=AsyncMock(return_value="Hello Laurie Luo"),
     ) as mocked_finalize:
         result = await post_llm_hook("Hello <<PERSON_1>>", ctx, "cli:test")

@@ -36,5 +36,9 @@ models/
 *.gguf
 vllm_server.log
 
+# evals
+datasets/
+evals/
+
 # Sanitizer session maps (contain PII placeholders, stay local)
 ~/.cloakbot/sanitizer_maps/
