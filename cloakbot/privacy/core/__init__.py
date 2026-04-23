@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from cloakbot.privacy.core.detector import PiiDetector
-from cloakbot.privacy.core.digit_detector import DigitPrivacyDetector
-from cloakbot.privacy.core.general_detector import GeneralPrivacyDetector
-from cloakbot.privacy.core.math_executer import (
+from cloakbot.privacy.core.detection.detector import PiiDetector
+from cloakbot.privacy.core.detection.digit_detector import DigitPrivacyDetector
+from cloakbot.privacy.core.detection.general_detector import GeneralPrivacyDetector
+from cloakbot.privacy.core.math.math_executor import (
     apply_privacy_math,
     build_math_execution_instruction,
 )

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from cloakbot.privacy.core.math_helpers import (
+from cloakbot.privacy.core.math.math_helpers import (
     execute_privacy_math,
     extract_python_snippet,
     extract_python_snippets,

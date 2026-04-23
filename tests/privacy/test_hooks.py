@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -10,7 +10,7 @@ from cloakbot.privacy.hooks.pre_llm import pre_llm_hook
 
 
 @pytest.mark.asyncio
-async def test_pre_llm_hook_delegates_to_orchestrator() -> None:
+async def test_pre_llm_hook_delegates_to_runtime() -> None:
     ctx = TurnContext(
         session_key="cli:test",
         turn_id="turn-1",
@@ -18,24 +18,22 @@ async def test_pre_llm_hook_delegates_to_orchestrator() -> None:
         sanitized_input="Revenue is <<AMOUNT_1>> and cost is <<AMOUNT_2>>.",
         intent=Intent.MATH,
     )
-    orchestrator = Mock()
-    orchestrator.prepare_turn = AsyncMock(
-        return_value=(
-            "Revenue is <<AMOUNT_1>> and cost is <<AMOUNT_2>>.\n\nPRIVACY_MATH_MODE",
-            ctx,
-        )
-    )
 
     with patch(
-        "cloakbot.privacy.hooks.pre_llm.get_orchestrator",
-        return_value=orchestrator,
-    ):
+        "cloakbot.privacy.hooks.pre_llm._RUNTIME.prepare_turn",
+        new=AsyncMock(
+            return_value=(
+                "Revenue is <<AMOUNT_1>> and cost is <<AMOUNT_2>>.\n\nPRIVACY_MATH_MODE",
+                ctx,
+            )
+        ),
+    ) as mocked_prepare:
         user_message, result_ctx = await pre_llm_hook(
             "Revenue is 100 and cost is 60.",
             "cli:test",
         )
 
-    orchestrator.prepare_turn.assert_awaited_once_with(
+    mocked_prepare.assert_awaited_once_with(
         "Revenue is 100 and cost is 60.",
         "cli:test",
         fail_open=True,
@@ -45,7 +43,7 @@ async def test_pre_llm_hook_delegates_to_orchestrator() -> None:
 
 
 @pytest.mark.asyncio
-async def test_post_llm_hook_delegates_to_orchestrator() -> None:
+async def test_post_llm_hook_delegates_to_runtime() -> None:
     ctx = TurnContext(
         session_key="cli:test",
         turn_id="turn-1",
@@ -54,16 +52,14 @@ async def test_post_llm_hook_delegates_to_orchestrator() -> None:
         intent=Intent.CHAT,
         was_sanitized=True,
     )
-    orchestrator = Mock()
-    orchestrator.finalize_turn = AsyncMock(return_value="Hello Laurie Luo")
 
     with patch(
-        "cloakbot.privacy.hooks.post_llm.get_orchestrator",
-        return_value=orchestrator,
-    ):
+        "cloakbot.privacy.hooks.post_llm._RUNTIME.finalize_turn",
+        new=AsyncMock(return_value="Hello Laurie Luo"),
+    ) as mocked_finalize:
         result = await post_llm_hook("Hello <<PERSON_1>>", ctx, "cli:test")
 
-    orchestrator.finalize_turn.assert_awaited_once_with(
+    mocked_finalize.assert_awaited_once_with(
         "Hello <<PERSON_1>>",
         ctx,
         include_report=True,

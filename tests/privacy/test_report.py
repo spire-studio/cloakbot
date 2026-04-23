@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from cloakbot.privacy.core.types import GeneralEntity
-from cloakbot.privacy.core.vault import _SessionMap
+from cloakbot.privacy.core.state.vault import _SessionMap
 from cloakbot.privacy.hooks.context import TurnContext
 from cloakbot.privacy.transparency.report import TurnReport, build_session_privacy_snapshot
 

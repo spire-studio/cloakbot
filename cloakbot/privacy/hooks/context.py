@@ -3,8 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 
-from cloakbot.privacy.core.math_executer import LocalComputationRecord
-from cloakbot.privacy.core.restorer import RestoredTokenAnnotation
+from cloakbot.privacy.core.math.math_executor import LocalComputationRecord
+from cloakbot.privacy.core.sanitization.restorer import RestoredTokenAnnotation
 from cloakbot.privacy.core.types import DetectedEntity
 
 

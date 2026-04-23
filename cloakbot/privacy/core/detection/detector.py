@@ -8,8 +8,8 @@ import re
 
 from loguru import logger
 
-from cloakbot.privacy.core.digit_detector import DigitPrivacyDetector
-from cloakbot.privacy.core.general_detector import GeneralPrivacyDetector
+from cloakbot.privacy.core.detection.digit_detector import DigitPrivacyDetector
+from cloakbot.privacy.core.detection.general_detector import GeneralPrivacyDetector
 from cloakbot.privacy.core.types import (
     DetectedEntity,
     DetectionResult,

@@ -62,8 +62,8 @@ class Session:
 
     def get_display_history(self, max_messages: int = 500) -> list[dict[str, Any]]:
         """Return history with placeholders restored for user-facing rendering."""
-        from cloakbot.privacy.core.restorer import restore_tokens
-        from cloakbot.privacy.core.vault import get_map
+        from cloakbot.privacy.core.sanitization.restorer import restore_tokens
+        from cloakbot.privacy.core.state.vault import get_map
 
         smap = get_map(self.key)
         display_history = self.get_history(max_messages=max_messages)

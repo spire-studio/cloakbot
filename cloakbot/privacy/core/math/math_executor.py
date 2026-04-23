@@ -3,13 +3,13 @@ from __future__ import annotations
 import re
 from loguru import logger
 from pydantic import BaseModel
-from cloakbot.privacy.core.math_helpers import (
+from cloakbot.privacy.core.math.math_helpers import (
     execute_privacy_math,
     extract_python_snippets,
     format_result,
     resolve_expression,
 )
-from cloakbot.privacy.core.vault import get_map
+from cloakbot.privacy.core.state.vault import get_map
 from cloakbot.privacy.core.types import REGISTRY
 
 _PLACEHOLDER_RE = re.compile(r"^<<([A-Z]+(?:_[A-Z]+)*_\d+)>>$")

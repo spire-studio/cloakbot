@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from cloakbot.privacy.core.digit_detector import DigitPrivacyDetector
+from cloakbot.privacy.core.detection.digit_detector import DigitPrivacyDetector
 
 
 @pytest.mark.asyncio

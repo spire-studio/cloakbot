@@ -45,7 +45,7 @@ After the remote LLM responds, CloakBot restores placeholders locally and append
 
 ```
 User message
-  └─► [pre_llm_hook → PrivacyOrchestrator]
+  └─► [pre_llm_hook → PrivacyRuntime]
         • Run GeneralPrivacyDetector + DigitPrivacyDetector locally via vLLM
         • Replace sensitive spans with typed tokens  e.g. "Alice" → <<PERSON_1>>
         • Persist session Vault (token ↔ raw mapping, plus numeric values when needed)
@@ -110,7 +110,7 @@ CloakBot uses a **hybrid multi-agent architecture** inside the privacy layer: a 
 │   User ──► [ pre_llm_hook ]                                         │
 │                  │                                                  │
 │                  ▼                                                  │
-│         [ PrivacyOrchestrator ]                                     │
+│         [ PrivacyRuntime ]                                          │
 │            /         |         \                                    │
 │           ▼          ▼          ▼                                   │
 │  [PiiDetector] [IntentAnalyzer] [TurnContext/Vault]                 │
@@ -147,13 +147,13 @@ CloakBot uses a **hybrid multi-agent architecture** inside the privacy layer: a 
          Output → User ✓
 ```
 
-`Intent.DOC` already exists in the router, but there is no `DocAgent` yet. Document turns currently fall back to `ChatAgent`.
+`Intent.DOC` is currently a deliberate routing policy that maps document turns to `ChatAgent`. There is no separate `DocAgent` yet.
 
 ### Agents
 
 | Agent | Role | Model |
 |---|---|---|
-| **PrivacyOrchestrator** | Coordinates one turn end-to-end: sanitize, classify intent, route, restore, report | Python orchestrator |
+| **PrivacyRuntime** | Coordinates one turn end-to-end: sanitize, classify intent, route, restore, report | Python runtime pipeline |
 | **PiiDetector** | Runs the general detector and digit detector concurrently, then deduplicates results | Gemma 4 via vLLM |
 | **GeneralPrivacyDetector** | Extracts non-computable sensitive spans such as names, IDs, secrets, org names | Gemma 4 via vLLM |
 | **DigitPrivacyDetector** | Extracts sensitive numeric/temporal spans and normalizes values for later math | Gemma 4 via vLLM |
@@ -163,7 +163,7 @@ CloakBot uses a **hybrid multi-agent architecture** inside the privacy layer: a 
 | **MathAgent** | Adds the snippet contract before the remote call and executes validated snippets locally after the call | Remote LLM + local executor |
 | **Restorer** | Restores placeholders with a single regex pass | Rule-based |
 | **Transparency Report** | Renders a per-turn markdown summary of masked entities | Rule-based |
-| **Tool Interceptor** | Reserved for future tool-output enforcement; currently a placeholder file | Not implemented yet |
+| **Tool Output Sanitizer** | Reusable helper for future tool-output enforcement in the main loop | Not fully wired yet |
 
 ### Detector Passes (Defense in Depth)
 
@@ -197,8 +197,8 @@ This part of the README was ahead of the code. The current implementation does *
 
 What exists today:
 1. The intent analyzer can classify a turn as `doc`.
-2. The router preserves that intent.
-3. `get_agent()` logs a warning and falls back to `ChatAgent` because `DocAgent` is not implemented yet.
+2. The runtime preserves that intent.
+3. `Intent.DOC` is intentionally handled by `ChatAgent` until a dedicated document pipeline exists.
 
 So document privacy is a roadmap item, not a current feature.
 
@@ -212,7 +212,7 @@ Implemented today:
   TurnContext.tool_output_entities         → report slot
 
 Not wired yet:
-  agents/tool_interceptor.py               → placeholder
+  runtime-level tool output enforcement    → pending
   main tool loop pass 3 enforcement        → pending
 ```
 
@@ -227,22 +227,31 @@ cloakbot/
 ├── cloakbot/
 │   ├── privacy/                 ← CloakBot's privacy layer
 │   │   ├── core/
-│   │   │   ├── detector.py          General + digit detector facade
-│   │   │   ├── general_detector.py  Non-computable entity extraction via local vLLM
-│   │   │   ├── digit_detector.py    Sensitive numeric/temporal extraction via local vLLM
-│   │   │   ├── handler.py           Placeholder-safe token application
-│   │   │   ├── vault.py             Session-scoped token/value map on disk
-│   │   │   ├── restorer.py          Reverse lookup and restoration
-│   │   │   ├── sanitize.py          Public sanitize/remap entry points
-│   │   │   ├── math_executer.py     Remote snippet contract + local execution
-│   │   │   └── math_helpers.py      AST validation for arithmetic-only snippets
+│   │   │   ├── detection/
+│   │   │   │   ├── detector.py      General + digit detector facade
+│   │   │   │   ├── general_detector.py  Non-computable entity extraction via local vLLM
+│   │   │   │   ├── digit_detector.py    Sensitive numeric/temporal extraction via local vLLM
+│   │   │   │   └── llm_json.py      JSON completion helpers for local models
+│   │   │   ├── sanitization/
+│   │   │   │   ├── sanitize.py      Public sanitize/remap entry points
+│   │   │   │   ├── handler.py       Placeholder-safe token application
+│   │   │   │   ├── restorer.py      Reverse lookup and restoration
+│   │   │   │   └── alias_resolver.py  Reuse placeholders across turns
+│   │   │   ├── math/
+│   │   │   │   ├── math_executor.py Remote snippet contract + local execution
+│   │   │   │   └── math_helpers.py  AST validation for arithmetic-only snippets
+│   │   │   └── state/
+│   │   │       └── vault.py         Session-scoped token/value map on disk
 │   │   ├── agents/
-│   │   │   ├── orchestrator.py      Top-level privacy coordinator
-│   │   │   ├── intent_analyzer.py   Local intent classification
-│   │   │   ├── task_router.py       chat/math/doc routing
-│   │   │   ├── chat_agent.py        Standard sanitized chat flow
-│   │   │   ├── math_agent.py        Local execution of remote-generated snippets
-│   │   │   └── tool_interceptor.py  Placeholder for future tool-output enforcement
+│   │   │   ├── runtime/
+│   │   │   │   ├── orchestrator.py  Top-level privacy coordinator
+│   │   │   │   ├── task_router.py   chat/math/doc routing
+│   │   │   │   └── registry.py      Worker registration and lookup
+│   │   │   ├── classification/
+│   │   │   │   └── intent_analyzer.py   Local intent classification
+│   │   │   └── workers/
+│   │   │       ├── chat_agent.py    Standard sanitized chat flow
+│   │   │       └── math_agent.py    Local execution of remote-generated snippets
 │   │   ├── hooks/
 │   │   │   ├── pre_llm.py           Sanitize before the remote LLM call
 │   │   │   ├── post_llm.py          Restore after the remote LLM call
@@ -272,7 +281,7 @@ Session-level placeholder mappings are persisted as JSON under `~/.cloakbot/sani
 - [x] Session Vault with JSON persistence
 - [x] Final output restoration via placeholder remap
 - [x] Web UI chat interface
-- [x] PrivacyOrchestrator with turn-scoped context
+- [x] PrivacyRuntime with turn-scoped context
 - [x] Local intent analysis and chat/math/doc routing
 - [x] MathAgent snippet contract plus local arithmetic execution
 - [x] Multi-turn conversation privacy protection
@@ -354,7 +363,7 @@ uv run python -m cloakbot webui
 
 **Hook-based integration** — the privacy layer is largely isolated under `cloakbot/privacy/` and integrates into the main runtime through `pre_llm_hook` and `post_llm_hook` in [loop.py](/Users/laurieluo/Documents/github/my-repos/cloakbot/cloakbot/agent/loop.py:574).
 
-**Roadmap already scaffolded in code** — document intent, tool-output sanitization helpers, and tool-interceptor placeholders already exist, but they are not fully wired into the runtime yet.
+**Roadmap already scaffolded in code** — document intent and tool-output sanitization helpers already exist, but they are not fully wired into the runtime yet.
 
 ---
 

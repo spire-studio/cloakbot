@@ -5,10 +5,10 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from cloakbot.privacy.core.detector import PiiDetector
-from cloakbot.privacy.core.digit_detector import DigitDetectionResult
-from cloakbot.privacy.core.general_detector import GeneralDetectionResult
-from cloakbot.privacy.core.llm_json import JsonCompletionRunner, is_valid_json_object
+from cloakbot.privacy.core.detection.detector import PiiDetector
+from cloakbot.privacy.core.detection.digit_detector import DigitDetectionResult
+from cloakbot.privacy.core.detection.general_detector import GeneralDetectionResult
+from cloakbot.privacy.core.detection.llm_json import JsonCompletionRunner, is_valid_json_object
 from cloakbot.privacy.core.types import ComputableEntity, DetectionResult, GeneralEntity
 
 
@@ -56,10 +56,10 @@ class TestJsonCompletionRunner:
 
         runner = JsonCompletionRunner()
         with patch(
-            "cloakbot.privacy.core.llm_json.get_vllm_client",
+            "cloakbot.privacy.core.detection.llm_json.get_vllm_client",
             return_value=client,
         ), patch(
-            "cloakbot.privacy.core.llm_json.get_vllm_model",
+            "cloakbot.privacy.core.detection.llm_json.get_vllm_model",
             return_value="test-model",
         ):
             raw_output, _latency_ms = await runner.complete("system", "prompt")
@@ -80,10 +80,10 @@ class TestJsonCompletionRunner:
 
         runner = JsonCompletionRunner()
         with patch(
-            "cloakbot.privacy.core.llm_json.get_vllm_client",
+            "cloakbot.privacy.core.detection.llm_json.get_vllm_client",
             return_value=client,
         ), patch(
-            "cloakbot.privacy.core.llm_json.get_vllm_model",
+            "cloakbot.privacy.core.detection.llm_json.get_vllm_model",
             return_value="test-model",
         ):
             await runner.complete("system", "prompt")
