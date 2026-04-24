@@ -9,8 +9,7 @@ from typing import Any
 from loguru import logger
 
 from cloakbot.agent.hook import AgentHook, AgentHookContext
-from cloakbot.utils.prompt_templates import render_template
-from cloakbot.agent.runner import AgentRunSpec, AgentRunner
+from cloakbot.agent.runner import AgentRunner, AgentRunSpec
 from cloakbot.agent.skills import BUILTIN_SKILLS_DIR
 from cloakbot.agent.tools.filesystem import EditFileTool, ListDirTool, ReadFileTool, WriteFileTool
 from cloakbot.agent.tools.registry import ToolRegistry
@@ -21,6 +20,7 @@ from cloakbot.bus.events import InboundMessage
 from cloakbot.bus.queue import MessageBus
 from cloakbot.config.schema import ExecToolConfig, WebToolsConfig
 from cloakbot.providers.base import LLMProvider
+from cloakbot.utils.prompt_templates import render_template
 
 
 class _SubagentHook(AgentHook):

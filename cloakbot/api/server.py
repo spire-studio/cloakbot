@@ -104,7 +104,7 @@ async def handle_chat_completions(request: web.Request) -> web.Response:
 
     logger.info("API request session_key={} content={}", session_key, user_content[:80])
 
-    _FALLBACK = EMPTY_FINAL_RESPONSE_MESSAGE
+    fallback = EMPTY_FINAL_RESPONSE_MESSAGE
 
     try:
         async with session_lock:
@@ -140,7 +140,7 @@ async def handle_chat_completions(request: web.Request) -> web.Response:
                             "Empty response after retry for session {}, using fallback",
                             session_key,
                         )
-                        response_text = _FALLBACK
+                        response_text = fallback
 
             except asyncio.TimeoutError:
                 return _error_json(504, f"Request timed out after {timeout_s}s")

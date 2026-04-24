@@ -6,12 +6,10 @@ import platform
 from pathlib import Path
 from typing import Any
 
-from cloakbot.utils.helpers import current_time_str
-
 from cloakbot.agent.memory import MemoryStore
-from cloakbot.utils.prompt_templates import render_template
 from cloakbot.agent.skills import SkillsLoader
-from cloakbot.utils.helpers import build_assistant_message, detect_image_mime
+from cloakbot.utils.helpers import build_assistant_message, current_time_str, detect_image_mime
+from cloakbot.utils.prompt_templates import render_template
 
 
 class ContextBuilder:

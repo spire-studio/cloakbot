@@ -31,8 +31,10 @@ def _bwrap(command: str, workspace: str, cwd: str) -> str:
                  "/etc/ssl/certs", "/etc/resolv.conf", "/etc/ld.so.cache"]
 
     args = ["bwrap", "--new-session", "--die-with-parent"]
-    for p in required: args += ["--ro-bind",     p, p]
-    for p in optional: args += ["--ro-bind-try", p, p]
+    for p in required:
+        args += ["--ro-bind", p, p]
+    for p in optional:
+        args += ["--ro-bind-try", p, p]
     args += [
         "--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp",
         "--tmpfs", str(ws.parent),        # mask config dir

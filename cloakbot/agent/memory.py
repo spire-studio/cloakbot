@@ -12,12 +12,16 @@ from typing import TYPE_CHECKING, Any, Callable
 
 from loguru import logger
 
-from cloakbot.utils.prompt_templates import render_template
-from cloakbot.utils.helpers import ensure_dir, estimate_message_tokens, estimate_prompt_tokens_chain, strip_think
-
-from cloakbot.agent.runner import AgentRunSpec, AgentRunner
+from cloakbot.agent.runner import AgentRunner, AgentRunSpec
 from cloakbot.agent.tools.registry import ToolRegistry
 from cloakbot.utils.gitstore import GitStore
+from cloakbot.utils.helpers import (
+    ensure_dir,
+    estimate_message_tokens,
+    estimate_prompt_tokens_chain,
+    strip_think,
+)
+from cloakbot.utils.prompt_templates import render_template
 
 if TYPE_CHECKING:
     from cloakbot.providers.base import LLMProvider
@@ -286,7 +290,7 @@ class MemoryStore:
                 read_size = min(size, 4096)
                 f.seek(size - read_size)
                 data = f.read().decode("utf-8")
-                lines = [l for l in data.split("\n") if l.strip()]
+                lines = [line for line in data.split("\n") if line.strip()]
                 if not lines:
                     return None
                 return json.loads(lines[-1])

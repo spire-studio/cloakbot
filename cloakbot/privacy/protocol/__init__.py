@@ -6,8 +6,8 @@ from cloakbot.privacy.protocol.contracts import (
     PrivacyStage,
     ProtocolStatus,
     ToolInvocationContract,
-    TurnContract,
     TurnContextPayload,
+    TurnContract,
 )
 from cloakbot.privacy.protocol.observability import emit_event, get_event_sink
 

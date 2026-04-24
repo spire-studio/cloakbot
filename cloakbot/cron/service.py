@@ -10,7 +10,14 @@ from typing import Any, Callable, Coroutine, Literal
 
 from loguru import logger
 
-from cloakbot.cron.types import CronJob, CronJobState, CronPayload, CronRunRecord, CronSchedule, CronStore
+from cloakbot.cron.types import (
+    CronJob,
+    CronJobState,
+    CronPayload,
+    CronRunRecord,
+    CronSchedule,
+    CronStore,
+)
 
 
 def _now_ms() -> int:
@@ -197,7 +204,7 @@ class CronService:
         stat = self.store_path.stat()
         self._last_mtime_ns = stat.st_mtime_ns
         self._last_size = stat.st_size
-    
+
     async def start(self) -> None:
         """Start the cron service."""
         self._running = True

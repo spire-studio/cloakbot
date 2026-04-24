@@ -4,8 +4,8 @@ from collections import Counter
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from cloakbot.privacy.core.types import DetectedEntity, REGISTRY, Severity
 from cloakbot.privacy.core.state.vault import PLACEHOLDER_RE, get_map
+from cloakbot.privacy.core.types import REGISTRY, DetectedEntity, Severity
 from cloakbot.privacy.hooks.context import TurnContext
 
 

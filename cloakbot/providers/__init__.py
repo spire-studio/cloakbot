@@ -29,8 +29,8 @@ if TYPE_CHECKING:
     from cloakbot.providers.anthropic_provider import AnthropicProvider
     from cloakbot.providers.azure_openai_provider import AzureOpenAIProvider
     from cloakbot.providers.github_copilot_provider import GitHubCopilotProvider
-    from cloakbot.providers.openai_compat_provider import OpenAICompatProvider
     from cloakbot.providers.openai_codex_provider import OpenAICodexProvider
+    from cloakbot.providers.openai_compat_provider import OpenAICompatProvider
 
 
 def __getattr__(name: str):

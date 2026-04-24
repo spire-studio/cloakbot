@@ -73,7 +73,7 @@ class MessageTool(Tool):
     ) -> str:
         from cloakbot.utils.helpers import strip_think
         content = strip_think(content)
-        
+
         channel = channel or self._default_channel
         chat_id = chat_id or self._default_chat_id
         # Only inherit default message_id when targeting the same channel+chat.
