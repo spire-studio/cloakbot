@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import re
+
 from loguru import logger
 from pydantic import BaseModel
+
 from cloakbot.privacy.core.math.math_helpers import (
     execute_privacy_math,
     extract_python_snippets,

@@ -28,6 +28,7 @@
   --destructive: #b53333;
   --destructive-hover: #a52f2f;
   --destructive-foreground: #faf9f5;
+  --status-connected: #2f9e57;
   --border: #e8e6dc;
   --input: #e8e6dc;
   --ring: #3898ec;
@@ -91,6 +92,7 @@
   --destructive: #d16464;
   --destructive-hover: #bf5959;
   --destructive-foreground: #141413;
+  --status-connected: #57c785;
   --border: #30302e;
   --input: #30302e;
   --ring: #3898ec;
@@ -152,6 +154,7 @@
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
+  --color-status-connected: var(--status-connected);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);

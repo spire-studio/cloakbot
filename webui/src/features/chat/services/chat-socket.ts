@@ -1,4 +1,4 @@
-import type { PrivacyTurn } from '@/features/privacy/types'
+import type { PrivacyTimeline, PrivacyTurn } from '@/features/privacy/types'
 
 import type { ChatAssistantStatus, ChatMessage, ChatSessionState, ChatSocketEvent } from '../types'
 
@@ -26,14 +26,24 @@ function startAssistantStatus(startedAt: number): ChatAssistantStatus {
   }
 }
 
-function completeAssistantStatus(previousStatus: ChatAssistantStatus | undefined, finishedAt: number): ChatAssistantStatus {
+function completeAssistantStatus(
+  previousStatus: ChatAssistantStatus | undefined,
+  finishedAt: number,
+  privacyTimeline?: PrivacyTimeline,
+): ChatAssistantStatus {
   const startedAt = previousStatus?.startedAt ?? finishedAt
 
-  return {
+  const nextStatus: ChatAssistantStatus = {
     state: 'done',
     startedAt,
     finishedAt,
   }
+
+  if (privacyTimeline) {
+    nextStatus.privacyTimeline = privacyTimeline
+  }
+
+  return nextStatus
 }
 
 function createAssistantMessage(createMessageId: () => string, content: string, createdAt: number): ChatMessage {
@@ -109,7 +119,11 @@ export function reduceChatSocketEvent(
       nextMessages[pendingAssistantIndex] = {
         ...pendingMessage,
         privacyAnnotations: event.privacyAnnotations ?? pendingMessage.privacyAnnotations,
-        assistantStatus: completeAssistantStatus(pendingMessage.assistantStatus, Date.now()),
+        assistantStatus: completeAssistantStatus(
+          pendingMessage.assistantStatus,
+          Date.now(),
+          event.privacyTimeline,
+        ),
       }
     }
 
