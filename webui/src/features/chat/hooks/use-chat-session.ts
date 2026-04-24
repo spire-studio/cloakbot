@@ -26,9 +26,11 @@ type UseChatSessionOptions = {
   createMessageId?: () => string
   createSessionId?: () => string
   initialMessages?: ChatMessage[]
+  fetchJson?: <T>(url: string) => Promise<T>
 }
 
 const defaultInitialMessages: ChatMessage[] = []
+const activeSessionStorageKey = 'cloakbot.activeSessionId'
 
 function createDefaultSocket(url: string): SocketLike {
   return new WebSocket(url)
@@ -64,13 +66,42 @@ function createSessionRecord(id: string, initialMessages: ChatMessage[]): ChatSe
   }
 }
 
+function upsertSession(sessions: ChatSessionRecord[], nextSession: ChatSessionRecord) {
+  if (sessions.some((session) => session.id === nextSession.id)) {
+    return sessions.map((session) => (session.id === nextSession.id ? nextSession : session))
+  }
+  return [nextSession, ...sessions]
+}
+
 function isSocketWritable(socket: SocketLike | null): socket is SocketLike {
   return socket?.readyState === socketOpenReadyState
 }
 
-function createSocketUrl() {
+function createSocketUrl(sessionId: string) {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-  return `${protocol}//${window.location.host}/ws/chat`
+  return `${protocol}//${window.location.host}/ws/chat?session_id=${encodeURIComponent(sessionId)}`
+}
+
+async function defaultFetchJson<T>(url: string): Promise<T> {
+  const response = await fetch(url)
+  if (!response.ok) {
+    throw new Error(`Request failed: ${response.status}`)
+  }
+  return response.json() as Promise<T>
+}
+
+function readStoredActiveSessionId() {
+  if (typeof window === 'undefined') {
+    return ''
+  }
+  return window.localStorage.getItem(activeSessionStorageKey) ?? ''
+}
+
+function storeActiveSessionId(sessionId: string) {
+  if (typeof window === 'undefined') {
+    return
+  }
+  window.localStorage.setItem(activeSessionStorageKey, sessionId)
 }
 
 function createPendingAssistantMessage(createMessageId: () => string, startedAt: number): ChatMessage {
@@ -93,18 +124,23 @@ export function useChatSession(options: UseChatSessionOptions = {}) {
     createMessageId = createDefaultMessageId,
     createSessionId = createDefaultSessionId,
     initialMessages = defaultInitialMessages,
+    fetchJson = defaultFetchJson,
   } = options
 
   const createSocketRef = useRef(createSocket)
   const createMessageIdRef = useRef(createMessageId)
   const createSessionIdRef = useRef(createSessionId)
+  const fetchJsonRef = useRef(fetchJson)
   const initialMessagesRef = useRef(initialMessages)
   const activeSessionIdRef = useRef('')
   const inFlightAssistantSessionIdRef = useRef<string | null>(null)
   const sessionsRef = useRef<ChatSessionRecord[]>([])
 
   const [bootstrap] = useState(() => {
-    const initialSessionId = createSessionId()
+    const initialSessionId =
+      createSessionId === createDefaultSessionId
+        ? (readStoredActiveSessionId() || createSessionId())
+        : createSessionId()
     const initialSession = createSessionRecord(initialSessionId, initialMessages)
     return {
       sessions: [initialSession],
@@ -122,8 +158,9 @@ export function useChatSession(options: UseChatSessionOptions = {}) {
     createSocketRef.current = createSocket
     createMessageIdRef.current = createMessageId
     createSessionIdRef.current = createSessionId
+    fetchJsonRef.current = fetchJson
     initialMessagesRef.current = initialMessages
-  }, [createSocket, createMessageId, createSessionId, initialMessages])
+  }, [createSocket, createMessageId, createSessionId, fetchJson, initialMessages])
 
   useEffect(() => {
     sessionsRef.current = sessions
@@ -134,7 +171,11 @@ export function useChatSession(options: UseChatSessionOptions = {}) {
   }, [activeSessionId])
 
   useEffect(() => {
-    const socket = createSocketRef.current(createSocketUrl())
+    if (!activeSessionId) {
+      return
+    }
+
+    const socket = createSocketRef.current(createSocketUrl(activeSessionId))
     socketRef.current = socket
 
     socket.onmessage = (event) => {
@@ -190,7 +231,62 @@ export function useChatSession(options: UseChatSessionOptions = {}) {
 
     return () => {
       socket.close()
-      socketRef.current = null
+      if (socketRef.current === socket) {
+        socketRef.current = null
+      }
+    }
+  }, [activeSessionId])
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadInitialHistory() {
+      try {
+        const list = await fetchJsonRef.current<{ sessions: Array<Pick<ChatSessionRecord, 'id' | 'title' | 'createdAt' | 'updatedAt'>> }>('/api/sessions')
+        if (cancelled || list.sessions.length === 0) {
+          return
+        }
+
+        const storedSessionId = readStoredActiveSessionId()
+        const selectedSessionId =
+          list.sessions.some((session) => session.id === storedSessionId)
+            ? storedSessionId
+            : list.sessions[0]?.id
+
+        setSessions((previousSessions) => {
+          const existingById = new Map(previousSessions.map((session) => [session.id, session]))
+          return list.sessions.map((session) => ({
+            ...(existingById.get(session.id) ?? createSessionRecord(session.id, [])),
+            ...session,
+          }))
+        })
+
+        if (selectedSessionId) {
+          setActiveSessionId(selectedSessionId)
+          storeActiveSessionId(selectedSessionId)
+          await loadSessionHistory(selectedSessionId, cancelled)
+        }
+      } catch {
+        return
+      }
+    }
+
+    async function loadSessionHistory(sessionId: string, isCancelled: boolean) {
+      try {
+        const session = await fetchJsonRef.current<ChatSessionRecord>(`/api/sessions/${encodeURIComponent(sessionId)}`)
+        if (isCancelled || cancelled) {
+          return
+        }
+        setSessions((previousSessions) => upsertSession(previousSessions, session))
+      } catch {
+        return
+      }
+    }
+
+    void loadInitialHistory()
+
+    return () => {
+      cancelled = true
     }
   }, [])
 
@@ -269,11 +365,18 @@ export function useChatSession(options: UseChatSessionOptions = {}) {
 
     setSessions((previousSessions) => [nextSession, ...previousSessions])
     setActiveSessionId(sessionId)
+    storeActiveSessionId(sessionId)
     setInput('')
   }
 
   const selectSession = (sessionId: string) => {
     setActiveSessionId(sessionId)
+    storeActiveSessionId(sessionId)
+    void fetchJsonRef.current<ChatSessionRecord>(`/api/sessions/${encodeURIComponent(sessionId)}`)
+      .then((session) => {
+        setSessions((previousSessions) => upsertSession(previousSessions, session))
+      })
+      .catch(() => {})
   }
 
   const activeSession = sessions.find((session) => session.id === activeSessionId) ?? sessions[0]

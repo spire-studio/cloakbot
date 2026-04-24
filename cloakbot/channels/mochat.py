@@ -11,13 +11,13 @@ from typing import Any
 
 import httpx
 from loguru import logger
+from pydantic import Field
 
 from cloakbot.bus.events import OutboundMessage
 from cloakbot.bus.queue import MessageBus
 from cloakbot.channels.base import BaseChannel
 from cloakbot.config.paths import get_runtime_subdir
 from cloakbot.config.schema import Base
-from pydantic import Field
 
 try:
     import socketio

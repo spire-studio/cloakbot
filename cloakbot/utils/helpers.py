@@ -399,7 +399,7 @@ def build_status_content(
     search_usage_text: str | None = None,
 ) -> str:
     """Build a human-readable runtime status snapshot.
-    
+
     Args:
         search_usage_text: Optional pre-formatted web search usage string
                            (produced by SearchUsageInfo.format()). When provided
@@ -431,7 +431,7 @@ def build_status_content(
     ]
     if search_usage_text:
         lines.append(search_usage_text)
-    return "\n".join(lines)    
+    return "\n".join(lines)
 
 
 def sync_workspace_templates(workspace: Path, silent: bool = False) -> list[str]:

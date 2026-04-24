@@ -1,3 +1,5 @@
+import { useEffect, useState } from 'react'
+
 import { PanelLeft, Plus } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -20,6 +22,8 @@ type NavigationPanelProps = {
   onToggleSidebar?: () => void
   collapsed?: boolean
 }
+
+type GatewayConnectionState = 'checking' | 'connected' | 'disconnected'
 
 export function NavigationPanel({
   sessions,
@@ -131,6 +135,92 @@ export function NavigationPanel({
           })}
         </div>
       </nav>
+
+      <GatewayStatus collapsed={collapsed} sectionPaddingClass={sectionPaddingClass} />
     </div>
+  )
+}
+
+function GatewayStatus({ collapsed, sectionPaddingClass }: { collapsed: boolean; sectionPaddingClass: string }) {
+  const [state, setState] = useState<GatewayConnectionState>('checking')
+  const [detail, setDetail] = useState('')
+
+  useEffect(() => {
+    let cancelled = false
+    let timeoutId: number | undefined
+
+    async function refreshStatus() {
+      try {
+        const response = await fetch('/api/status')
+        if (!response.ok) {
+          throw new Error(`Gateway status failed: ${response.status}`)
+        }
+
+        const payload = await response.json() as { ready?: boolean; model?: string; provider?: string }
+        if (cancelled) {
+          return
+        }
+
+        setState(payload.ready === false ? 'disconnected' : 'connected')
+        setDetail([payload.model, payload.provider].filter(Boolean).join(' · '))
+      } catch {
+        if (!cancelled) {
+          setState('disconnected')
+          setDetail('')
+        }
+      } finally {
+        if (!cancelled) {
+          timeoutId = window.setTimeout(refreshStatus, 15000)
+        }
+      }
+    }
+
+    void refreshStatus()
+
+    return () => {
+      cancelled = true
+      if (timeoutId) {
+        window.clearTimeout(timeoutId)
+      }
+    }
+  }, [])
+
+  const isOnline = state === 'connected'
+  const label = isOnline ? 'Gateway: Connected' : 'Gatewat: Disconnected'
+  return (
+    <div className={cn('border-t border-sidebar-border bg-sidebar-accent/55 py-3', sectionPaddingClass)}>
+      <div
+        className={cn(
+          'flex min-h-11 items-center gap-4 text-[12px] text-muted-foreground',
+          collapsed && 'justify-center px-0'
+        )}
+        aria-label={label}
+        title={detail && isOnline ? `${label}: ${detail}` : label}
+      >
+        <GatewayStatusDot isOnline={isOnline} />
+        {!collapsed && (
+          <span className="min-w-0 space-y-0.5">
+            <span className="block text-xs leading-4 text-muted-foreground">{label}</span>
+            {detail && isOnline && <span className="block truncate leading-5">{detail}</span>}
+          </span>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function GatewayStatusDot({ isOnline }: { isOnline: boolean }) {
+  return (
+    <span className="relative mx-1 flex h-2.5 w-2.5 shrink-0" aria-hidden="true">
+      {isOnline && (
+        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-status-connected/50" />
+      )}
+      <span
+        className={cn(
+          'relative inline-flex h-2.5 w-2.5 rounded-full',
+          isOnline ? 'bg-status-connected' : 'bg-muted-foreground/50'
+        )}
+      />
+    </span>
   )
 }

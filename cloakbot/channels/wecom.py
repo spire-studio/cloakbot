@@ -7,13 +7,13 @@ from collections import OrderedDict
 from typing import Any
 
 from loguru import logger
+from pydantic import Field
 
 from cloakbot.bus.events import OutboundMessage
 from cloakbot.bus.queue import MessageBus
 from cloakbot.channels.base import BaseChannel
 from cloakbot.config.paths import get_media_dir
 from cloakbot.config.schema import Base
-from pydantic import Field
 
 WECOM_AVAILABLE = importlib.util.find_spec("wecom_aibot_sdk") is not None
 

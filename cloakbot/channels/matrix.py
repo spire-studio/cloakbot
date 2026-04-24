@@ -29,10 +29,11 @@ try:
         RoomMessageMedia,
         RoomMessageText,
         RoomSendError,
+        RoomSendResponse,
         RoomTypingError,
         SyncError,
-        UploadError, RoomSendResponse,
-)
+        UploadError,
+    )
     from nio.crypto.attachments import decrypt_attachment
     from nio.exceptions import EncryptionError
 except ImportError as e:
@@ -107,7 +108,7 @@ class _StreamBuf:
 
     :ivar text: Stores the text content of the buffer.
     :type text: str
-    :ivar event_id: Identifier for the associated event. None indicates no 
+    :ivar event_id: Identifier for the associated event. None indicates no
         specific event association.
     :type event_id: str | None
     :ivar last_edit: Timestamp of the most recent edit to the buffer.
@@ -140,19 +141,19 @@ def _build_matrix_text_content(
 ) -> dict[str, object]:
     """
     Constructs and returns a dictionary representing the matrix text content with optional
-    HTML formatting and reference to an existing event for replacement. This function is 
+    HTML formatting and reference to an existing event for replacement. This function is
     primarily used to create content payloads compatible with the Matrix messaging protocol.
 
     :param text: The plain text content to include in the message.
     :type text: str
-    :param event_id: Optional ID of the event to replace. If provided, the function will 
-        include information indicating that the message is a replacement of the specified 
+    :param event_id: Optional ID of the event to replace. If provided, the function will
+        include information indicating that the message is a replacement of the specified
         event.
     :type event_id: str | None
     :param thread_relates_to: Optional Matrix thread relation metadata. For edits this is
         stored in ``m.new_content`` so the replacement remains in the same thread.
     :type thread_relates_to: dict[str, object] | None
-    :return: A dictionary containing the matrix text content, potentially enriched with 
+    :return: A dictionary containing the matrix text content, potentially enriched with
         HTML formatting and replacement metadata if applicable.
     :rtype: dict[str, object]
     """
@@ -534,7 +535,7 @@ class MatrixChannel(BaseChannel):
                 return
 
             await self._stop_typing_keepalive(chat_id, clear_typing=True)
-            
+
             content = _build_matrix_text_content(
                 buf.text,
                 buf.event_id,
@@ -548,7 +549,7 @@ class MatrixChannel(BaseChannel):
             buf = _StreamBuf()
             self._stream_bufs[chat_id] = buf
         buf.text += delta
-    
+
         if not buf.text.strip():
             return
 

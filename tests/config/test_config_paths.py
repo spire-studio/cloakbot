@@ -8,6 +8,7 @@ from cloakbot.config.paths import (
     get_legacy_sessions_dir,
     get_logs_dir,
     get_media_dir,
+    get_privacy_vault_dir,
     get_runtime_subdir,
     get_workspace_path,
     is_default_workspace,
@@ -41,6 +42,10 @@ def test_shared_and_legacy_paths_remain_global() -> None:
 def test_workspace_path_is_explicitly_resolved() -> None:
     assert get_workspace_path() == Path.home() / ".cloakbot" / "workspace"
     assert get_workspace_path("~/custom-workspace") == Path.home() / "custom-workspace"
+
+
+def test_privacy_vault_dir_is_workspace_scoped(tmp_path: Path) -> None:
+    assert get_privacy_vault_dir(tmp_path) == tmp_path / "privacy_vault"
 
 
 def test_is_default_workspace_distinguishes_default_and_custom_paths() -> None:

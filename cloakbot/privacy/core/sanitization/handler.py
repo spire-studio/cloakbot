@@ -6,7 +6,7 @@ import re
 
 from cloakbot.privacy.core.sanitization.alias_resolver import resolve_existing_placeholder
 from cloakbot.privacy.core.state.vault import PLACEHOLDER_RE, _SessionMap
-from cloakbot.privacy.core.types import REGISTRY, DetectionResult, ComputableEntity
+from cloakbot.privacy.core.types import REGISTRY, ComputableEntity, DetectionResult
 
 _IS_PLACEHOLDER_RE = re.compile(r"^<<[A-Z]+(?:_[A-Z]+)*_\d+>>$")
 

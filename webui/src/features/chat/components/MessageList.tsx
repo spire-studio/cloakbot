@@ -1,9 +1,11 @@
-import { Check, Copy } from 'lucide-react'
+import { Check, ChevronDown, ChevronRight, Copy } from 'lucide-react'
 import { useEffect, useRef, useState, type RefObject } from 'react'
 
 import { Button } from '@/components/ui/button'
+import { Chip } from '@/components/ui/chip'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import type { ChatAssistantStatus, ChatMessage } from '@/features/chat/types'
+import type { PrivacyTimeline, PrivacyTimelineEvent } from '@/features/privacy/types'
 import { AnnotatedMarkdown } from '@/features/privacy/lib/annotated-markdown'
 import { cn } from '@/lib/utils'
 
@@ -123,28 +125,131 @@ function formatMessageTime(timestamp: number) {
 }
 
 function AssistantStatusLine({ assistantStatus }: { assistantStatus: ChatAssistantStatus }) {
-  const statusLabel =
-    assistantStatus.state === 'thinking'
-      ? 'Thinking'
-      : `Done in ${formatAssistantDuration(assistantStatus.startedAt, assistantStatus.finishedAt)}`
+  const [timelineOpen, setTimelineOpen] = useState(false)
+
+  if (assistantStatus.state === 'thinking') {
+    return (
+      <div className="mb-2 flex w-full justify-start" aria-live="polite">
+        <div className="text-[15px] leading-[1.7] text-card-foreground">
+          <span>Thinking</span>
+          <span aria-hidden="true" className="ml-0.5 inline-flex w-[1.5rem] justify-start">
+            <span className="chat-thinking-dot">.</span>
+            <span className="chat-thinking-dot [animation-delay:0.2s]">.</span>
+            <span className="chat-thinking-dot [animation-delay:0.4s]">.</span>
+          </span>
+          <span className="sr-only">Bot is thinking</span>
+        </div>
+      </div>
+    )
+  }
+
+  const statusLabel = `Done in ${formatAssistantDuration(assistantStatus.startedAt, assistantStatus.finishedAt)}`
+  const timeline = assistantStatus.privacyTimeline
+
+  if (!timeline || timeline.events.length === 0) {
+    return (
+      <div className="mb-2 flex w-full justify-start" aria-live="polite">
+        <div className="text-[15px] leading-[1.7] text-card-foreground">
+          <span>{statusLabel}</span>
+        </div>
+      </div>
+    )
+  }
 
   return (
-    <div className="mb-2 flex w-full justify-start" aria-live="polite">
-      <div className="text-[15px] leading-[1.7] text-card-foreground">
-        <span>{statusLabel}</span>
-        {assistantStatus.state === 'thinking' ? (
-          <>
-            <span aria-hidden="true" className="ml-0.5 inline-flex w-[1.5rem] justify-start">
-              <span className="chat-thinking-dot">.</span>
-              <span className="chat-thinking-dot [animation-delay:0.2s]">.</span>
-              <span className="chat-thinking-dot [animation-delay:0.4s]">.</span>
-            </span>
-            <span className="sr-only">Bot is thinking</span>
-          </>
-        ) : null}
-      </div>
+    <div className="mb-2 w-full" aria-live="polite">
+      <button
+        type="button"
+        className="flex max-w-full items-center gap-2 rounded-md py-1 pl-0 pr-1.5 text-left text-[13px] leading-none text-muted-foreground transition-colors hover:bg-secondary/70 hover:text-foreground focus-visible:bg-secondary/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        onClick={() => setTimelineOpen((current) => !current)}
+        aria-expanded={timelineOpen}
+      >
+        {timelineOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+        <span className="text-foreground">{statusLabel}</span>
+        <Chip>Privacy trace</Chip>
+        <Chip>{timeline.events.length} events</Chip>
+        <Chip>{formatDurationMs(timeline.totalDurationMs)}</Chip>
+      </button>
+
+      {timelineOpen && (
+        <div className="mt-2 max-w-full rounded-lg border border-border bg-card p-3 text-xs text-muted-foreground shadow-[0_4px_18px_var(--shadow-soft)]">
+          <div className="mb-2 flex flex-wrap items-center gap-1.5">
+            <Chip variant="fill">Trace {shortTraceId(timeline.traceId)}</Chip>
+            {Object.entries(timeline.stageDurationsMs).map(([stage, duration]) => (
+              <Chip key={`${timeline.turnId}-${stage}`}>{formatEventLabel(stage)} {formatDurationMs(duration)}</Chip>
+            ))}
+          </div>
+
+          <ol className="space-y-1.5">
+            {timeline.events.map((event) => (
+              <li
+                key={`${event.sequence}-${event.eventType}`}
+                className="grid grid-cols-[2.25rem_minmax(0,1fr)] gap-2 rounded-md border border-border/70 bg-[var(--surface-subtle)] px-2.5 py-2"
+              >
+                <div className="font-mono text-[11px] text-muted-foreground">#{event.sequence}</div>
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="truncate font-medium text-foreground">{formatEventLabel(event.eventType)}</span>
+                    <Chip className={privacyStatusClasses(event.status)}>{event.status}</Chip>
+                    <Chip>{event.stage}</Chip>
+                    {event.durationMs !== null && <Chip>{formatDurationMs(event.durationMs)}</Chip>}
+                  </div>
+                  <div className="mt-1 truncate font-mono text-[11px] text-muted-foreground">
+                    {formatPayloadSummary(event)}
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
     </div>
   )
+}
+
+function privacyStatusClasses(status: PrivacyTimelineEvent['status']) {
+  if (status === 'failed') {
+    return 'border-[var(--privacy-high-border)] bg-[var(--privacy-high-bg)] text-[var(--privacy-high-text)]'
+  }
+  if (status === 'succeeded') {
+    return 'border-[var(--privacy-low-border)] bg-[var(--privacy-low-bg)] text-[var(--privacy-low-text)]'
+  }
+  return 'border-[var(--privacy-medium-border)] bg-[var(--privacy-medium-bg)] text-[var(--privacy-medium-text)]'
+}
+
+function formatEventLabel(value: string) {
+  return value
+    .replaceAll('.', ' ')
+    .replaceAll('_', ' ')
+    .replace(/\b\w/g, (character) => character.toUpperCase())
+}
+
+function formatPayloadSummary(event: PrivacyTimelineEvent) {
+  const entries = Object.entries(event.payload)
+  if (entries.length === 0) {
+    return event.spanId
+  }
+
+  return entries
+    .slice(0, 3)
+    .map(([key, value]) => `${key}: ${String(value)}`)
+    .join(' | ')
+}
+
+function formatDurationMs(durationMs: number) {
+  if (durationMs < 1000) {
+    return `${durationMs}ms`
+  }
+
+  return `${(durationMs / 1000).toFixed(1)}s`
+}
+
+function shortTraceId(traceId: PrivacyTimeline['traceId']) {
+  if (traceId.length <= 18) {
+    return traceId
+  }
+
+  return `${traceId.slice(0, 8)}...${traceId.slice(-6)}`
 }
 
 function formatAssistantDuration(startedAt: number, finishedAt: number) {
