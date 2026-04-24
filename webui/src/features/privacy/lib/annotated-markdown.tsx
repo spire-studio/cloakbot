@@ -2,6 +2,7 @@ import { cloneElement, type ComponentPropsWithoutRef, type ReactElement, type Re
 import ReactMarkdown, { type ExtraProps } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
+import { Chip } from '@/components/ui/chip'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 
@@ -49,6 +50,16 @@ const PRIVACY_HIGHLIGHT_CLASS_NAME =
 
 function formatEntityLabel(value: string) {
   return value.replaceAll('_', ' ')
+}
+
+function privacySeverityClasses(severity: PrivacyAnnotation['severity']) {
+  if (severity === 'high') {
+    return 'border-[var(--privacy-high-border)] bg-[var(--privacy-high-bg)] text-[var(--privacy-high-text)]'
+  }
+  if (severity === 'medium') {
+    return 'border-[var(--privacy-medium-border)] bg-[var(--privacy-medium-bg)] text-[var(--privacy-medium-text)]'
+  }
+  return 'border-[var(--privacy-low-border)] bg-[var(--privacy-low-bg)] text-[var(--privacy-low-text)]'
 }
 
 function isTextNode(node: MarkdownNode): node is MarkdownTextNode {
@@ -120,8 +131,11 @@ function AnnotationTooltipBody({ annotation }: { annotation: PrivacyAnnotation }
   if (isLocalComputation) {
     return (
       <div className="space-y-1.5">
-        <div className="text-[11px] tracking-[0.08em] text-muted-foreground">
-          Local Computation
+        <div className="flex items-center gap-2">
+          <div className="text-[11px] tracking-[0.08em] text-muted-foreground">
+            Local Computation
+          </div>
+          <Chip className={privacySeverityClasses(annotation.severity)}>{annotation.severity}</Chip>
         </div>
         {annotation.formula ? (
           <div className="font-mono text-xs leading-6 text-foreground">
@@ -139,8 +153,11 @@ function AnnotationTooltipBody({ annotation }: { annotation: PrivacyAnnotation }
 
   return (
     <div className="space-y-1.5">
-      <div className="text-[11px] tracking-[0.08em] text-muted-foreground">
-        Privacy-Protected Entity
+      <div className="flex items-center gap-2">
+        <div className="text-[11px] tracking-[0.08em] text-muted-foreground">
+          Privacy-Protected Entity
+        </div>
+        <Chip className={privacySeverityClasses(annotation.severity)}>{annotation.severity}</Chip>
       </div>
       <div className="text-sm font-medium text-foreground">{annotation.canonical}</div>
       <div className="text-xs text-muted-foreground">

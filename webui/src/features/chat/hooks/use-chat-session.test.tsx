@@ -6,6 +6,7 @@ import { useChatSession } from './use-chat-session'
 const openReadyState = 1
 
 afterEach(() => {
+  window.localStorage.clear()
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
 })

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import type { PrivacySnapshot, PrivacyTurn } from '@/features/privacy/types'
+import type { PrivacySnapshot, PrivacyTimeline, PrivacyTurn } from '@/features/privacy/types'
 
 import type { ChatSessionState } from '../types'
 
@@ -23,6 +23,26 @@ function createState(overrides: Partial<ChatSessionState> = {}): ChatSessionStat
 }
 
 describe('reduceChatSocketEvent', () => {
+  const nextTimeline: PrivacyTimeline = {
+    turnId: 'turn-2',
+    traceId: 'webui:test:turn-2',
+    totalDurationMs: 42,
+    stageDurationsMs: { sanitize: 12 },
+    events: [
+      {
+        eventType: 'turn.sanitize.succeeded',
+        sequence: 1,
+        stage: 'sanitized',
+        status: 'succeeded',
+        spanId: 'turn-2:sanitize:completed',
+        parentSpanId: 'turn-2:sanitize',
+        timestamp: '2026-04-24T00:00:00Z',
+        durationMs: 12,
+        payload: { was_sanitized: true },
+      },
+    ],
+  }
+
   it('appends assistant_message and applies privacy payloads', () => {
     vi.spyOn(Date, 'now').mockReturnValue(1000)
 
@@ -175,6 +195,7 @@ describe('reduceChatSocketEvent', () => {
           },
         ],
         privacyTurn: nextTurn,
+        privacyTimeline: nextTimeline,
       },
       () => 'unused-id',
     )
@@ -184,6 +205,7 @@ describe('reduceChatSocketEvent', () => {
       state: 'done',
       startedAt: 1000,
       finishedAt: 4000,
+      privacyTimeline: nextTimeline,
     })
     expect(result.privacyTurns).toEqual([nextTurn])
   })

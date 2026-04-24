@@ -12,6 +12,8 @@ from typing import Any
 from loguru import logger
 from pydantic import BaseModel, Field
 
+from cloakbot.config.paths import get_privacy_vault_dir
+
 # Canonical placeholder format: <<TAG_N>>
 PLACEHOLDER_RE = re.compile(r"<<[A-Z]+(?:_[A-Z]+)*_\d+>>")
 _TOKEN_RE = re.compile(r"^<<([A-Z]+(?:_[A-Z]+)*)_(\d+)>>$")
@@ -235,6 +237,15 @@ class _SessionMap(BaseModel):
 
 
 _cache: dict[str, _SessionMap] = {}
+_workspace: Path | None = None
+
+
+def set_vault_workspace(workspace: str | Path) -> None:
+    global _workspace
+    next_workspace = Path(workspace).expanduser()
+    if _workspace != next_workspace:
+        _cache.clear()
+    _workspace = next_workspace
 
 
 def _safe_key(session_key: str) -> str:
@@ -242,7 +253,7 @@ def _safe_key(session_key: str) -> str:
 
 
 def _map_path(session_key: str) -> Path:
-    maps_dir = Path.home() / ".cloakbot" / "sanitizer_maps"
+    maps_dir = get_privacy_vault_dir(_workspace) / "maps"
     maps_dir.mkdir(parents=True, exist_ok=True)
     return maps_dir / f"{_safe_key(session_key)}.json"
 

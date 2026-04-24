@@ -40,6 +40,14 @@ def get_workspace_path(workspace: str | None = None) -> Path:
     return ensure_dir(path)
 
 
+def get_privacy_vault_dir(workspace: str | Path | None = None) -> Path:
+    """Return the workspace-scoped privacy vault directory."""
+    base = Path(workspace).expanduser() if workspace is not None else get_workspace_path()
+    path = ensure_dir(base / "privacy_vault")
+    path.chmod(0o700)
+    return path
+
+
 def is_default_workspace(workspace: str | Path | None) -> bool:
     """Return whether a workspace resolves to cloakbot's default workspace path."""
     current = Path(workspace).expanduser() if workspace is not None else Path.home() / ".cloakbot" / "workspace"

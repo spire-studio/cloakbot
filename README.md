@@ -269,7 +269,7 @@ cloakbot/
     └── start_vllm.sh                Start vLLM server
 ```
 
-Session-level placeholder mappings are persisted as JSON under `~/.cloakbot/sanitizer_maps/`, so the Vault can reuse the same placeholder mapping across turns in the same session. CloakBot now supports **multi-turn conversation privacy** by carrying forward placeholder mappings across turns while still restoring user-visible outputs locally. Computable placeholders also store normalized values for later local math execution.
+Session-level placeholder mappings are persisted as JSON under `~/.cloakbot/workspace/privacy_vault/maps/`, so the Vault can reuse the same placeholder mapping across turns in the same session. CloakBot now supports **multi-turn conversation privacy** by carrying forward placeholder mappings across turns while still restoring user-visible outputs locally. Computable placeholders also store normalized values for later local math execution.
 
 ---
 

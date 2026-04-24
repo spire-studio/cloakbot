@@ -27,7 +27,7 @@ chmod 600 ~/.cloakbot/config.json
 The Vault holds plaintext `token ↔ raw value` mappings for the current session. Protect it accordingly:
 
 ```bash
-chmod 700 ~/.cloakbot/vault/
+chmod 700 ~/.cloakbot/workspace/privacy_vault/
 ```
 
 Do not log vault contents, sync vault files to cloud storage, or leave stale vaults from old sessions on disk.
@@ -74,7 +74,7 @@ Requires `bwrap` (`apt install bubblewrap`). Not available on macOS or Windows.
 If you suspect a key or session has been compromised:
 
 1. Revoke all remote/local LLM API keys and channel bot tokens immediately.
-2. Delete session Vault files under `~/.cloakbot/vault/`.
+2. Delete session Vault files under `~/.cloakbot/workspace/privacy_vault/`.
 3. Review logs for unauthorized access attempts.
 4. Update to the latest release.
 5. Report to maintainers via the channels above.

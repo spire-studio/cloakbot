@@ -13,6 +13,26 @@ export type PrivacyTurn = {
   localComputations: LocalComputation[]
 }
 
+export type PrivacyTimelineEvent = {
+  eventType: string
+  sequence: number
+  stage: 'raw' | 'sanitized' | 'postprocessed'
+  status: 'started' | 'succeeded' | 'failed'
+  spanId: string
+  parentSpanId: string | null
+  timestamp: string
+  durationMs: number | null
+  payload: Record<string, unknown>
+}
+
+export type PrivacyTimeline = {
+  turnId: string
+  traceId: string
+  totalDurationMs: number
+  stageDurationsMs: Record<string, number>
+  events: PrivacyTimelineEvent[]
+}
+
 export type PrivacyAnnotation = {
   annotation_type?: 'entity' | 'local_computation'
   placeholder: string

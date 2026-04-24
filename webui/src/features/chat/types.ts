@@ -1,6 +1,7 @@
 import type {
   PrivacyAnnotation,
   PrivacySnapshot,
+  PrivacyTimeline,
   PrivacyTurn,
 } from '@/features/privacy/types'
 
@@ -22,6 +23,7 @@ export type ChatAssistantStatus =
       state: 'done'
       startedAt: number
       finishedAt: number
+      privacyTimeline?: PrivacyTimeline
     }
 
 export type ChatSessionState = {
@@ -42,11 +44,25 @@ export type ChatSessionRecord = {
 
 export type ChatSocketEvent =
   | {
+      type: 'session'
+      sessionId: string
+    }
+  | {
+      type: 'status'
+      data: Record<string, string | boolean>
+    }
+  | {
+      type: 'progress'
+      content: string
+      toolHint: boolean
+    }
+  | {
       type: 'assistant_message'
       content: string
       privacyAnnotations?: PrivacyAnnotation[]
       privacy?: PrivacySnapshot
       privacyTurn?: PrivacyTurn
+      privacyTimeline?: PrivacyTimeline
     }
   | {
       type: 'assistant_delta'
@@ -57,6 +73,7 @@ export type ChatSocketEvent =
       privacyAnnotations?: PrivacyAnnotation[]
       privacy?: PrivacySnapshot
       privacyTurn?: PrivacyTurn
+      privacyTimeline?: PrivacyTimeline
     }
   | {
       type: 'privacy_snapshot'

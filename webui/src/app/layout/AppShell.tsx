@@ -57,46 +57,37 @@ export function AppShell({ tabContent }: AppShellProps) {
 
   return (
     <div className="h-svh overflow-hidden bg-background">
-      <div className="h-svh">
-        <div className="hidden h-full overflow-hidden md:flex">
-          <aside
-            aria-label="Session Rail"
-            className={
-              desktopSidebarCollapsed
-                ? 'w-[80px] shrink-0 border-r border-sidebar-border bg-sidebar/96 transition-[width] duration-200'
-                : 'w-[272px] shrink-0 border-r border-sidebar-border bg-sidebar/96 transition-[width] duration-200'
-            }
-          >
-            <NavigationPanel
-              sessions={chatNavigation.sessions}
-              activeSessionId={chatNavigation.activeSessionId}
-              currentView={currentView}
-              onSelectGlobalView={handleGlobalViewChange}
-              onSelectSession={(id) => {
-                setCurrentView('chat')
-                chatNavigation.onSelectSession(id)
-              }}
-              onStartNewSession={() => {
-                setCurrentView('chat')
-                chatNavigation.onStartNewSession()
-              }}
-              onToggleSidebar={() => setDesktopSidebarCollapsed((prev) => !prev)}
-              collapsed={desktopSidebarCollapsed}
-            />
-          </aside>
-          <WorkspacePanel
+      <div className="flex h-svh overflow-hidden">
+        <aside
+          aria-label="Session Rail"
+          className={
+            desktopSidebarCollapsed
+              ? 'hidden w-[80px] shrink-0 border-r border-sidebar-border bg-sidebar/96 transition-[width] duration-200 md:block'
+              : 'hidden w-[272px] shrink-0 border-r border-sidebar-border bg-sidebar/96 transition-[width] duration-200 md:block'
+          }
+        >
+          <NavigationPanel
+            sessions={chatNavigation.sessions}
+            activeSessionId={chatNavigation.activeSessionId}
             currentView={currentView}
-            onOpenNavigation={() => setMobileNavigationOpen(true)}
-            className="h-full"
-          >
-            {content}
-          </WorkspacePanel>
-        </div>
+            onSelectGlobalView={handleGlobalViewChange}
+            onSelectSession={(id) => {
+              setCurrentView('chat')
+              chatNavigation.onSelectSession(id)
+            }}
+            onStartNewSession={() => {
+              setCurrentView('chat')
+              chatNavigation.onStartNewSession()
+            }}
+            onToggleSidebar={() => setDesktopSidebarCollapsed((prev) => !prev)}
+            collapsed={desktopSidebarCollapsed}
+          />
+        </aside>
 
         <WorkspacePanel
           currentView={currentView}
           onOpenNavigation={() => setMobileNavigationOpen(true)}
-          className="md:hidden"
+          className="h-full"
         >
           {content}
         </WorkspacePanel>

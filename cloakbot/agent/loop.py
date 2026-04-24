@@ -15,10 +15,10 @@ from loguru import logger
 from cloakbot.agent.context import ContextBuilder
 from cloakbot.agent.hook import AgentHook, AgentHookContext, CompositeHook
 from cloakbot.agent.memory import Consolidator, Dream
-from cloakbot.agent.runner import AgentRunSpec, AgentRunner
+from cloakbot.agent.runner import AgentRunner, AgentRunSpec
+from cloakbot.agent.skills import BUILTIN_SKILLS_DIR
 from cloakbot.agent.subagent import SubagentManager
 from cloakbot.agent.tools.cron import CronTool
-from cloakbot.agent.skills import BUILTIN_SKILLS_DIR
 from cloakbot.agent.tools.filesystem import EditFileTool, ListDirTool, ReadFileTool, WriteFileTool
 from cloakbot.agent.tools.message import MessageTool
 from cloakbot.agent.tools.registry import ToolRegistry
@@ -27,12 +27,13 @@ from cloakbot.agent.tools.shell import ExecTool
 from cloakbot.agent.tools.spawn import SpawnTool
 from cloakbot.agent.tools.web import WebFetchTool, WebSearchTool
 from cloakbot.bus.events import InboundMessage, OutboundMessage
-from cloakbot.command import CommandContext, CommandRouter, register_builtin_commands
 from cloakbot.bus.queue import MessageBus
+from cloakbot.command import CommandContext, CommandRouter, register_builtin_commands
 from cloakbot.config.schema import AgentDefaults
-from cloakbot.providers.base import LLMProvider
 from cloakbot.privacy import Intent, post_llm_hook, pre_llm_hook
-from cloakbot.privacy.transparency.report import build_session_privacy_snapshot
+from cloakbot.privacy.webui import WEBUI_PRIVACY_METADATA_KEY, build_webui_privacy_payload
+from cloakbot.privacy.webui.history import append_webui_privacy_payload
+from cloakbot.providers.base import LLMProvider
 from cloakbot.session.manager import Session, SessionManager
 from cloakbot.utils.helpers import image_placeholder_text, truncate_text
 from cloakbot.utils.runtime import EMPTY_FINAL_RESPONSE_MESSAGE
@@ -40,18 +41,6 @@ from cloakbot.utils.runtime import EMPTY_FINAL_RESPONSE_MESSAGE
 if TYPE_CHECKING:
     from cloakbot.config.schema import ChannelsConfig, ExecToolConfig, WebToolsConfig
     from cloakbot.cron.service import CronService
-
-
-def _build_webui_privacy_turn_payload(turn_ctx) -> dict[str, Any]:
-    return {
-        "turnId": turn_ctx.turn_id,
-        "intent": turn_ctx.intent.value,
-        "remotePrompt": turn_ctx.sanitized_input,
-        "localComputations": [
-            computation.model_dump(mode="json")
-            for computation in turn_ctx.local_computations
-        ],
-    }
 
 
 class _LoopHook(AgentHook):
@@ -226,6 +215,9 @@ class AgentLoop:
         self._last_usage: dict[str, int] = {}
         self._extra_hooks: list[AgentHook] = hooks or []
 
+        from cloakbot.privacy.core.state.vault import set_vault_workspace
+
+        set_vault_workspace(workspace)
         self.context = ContextBuilder(workspace, timezone=timezone)
         self.sessions = session_manager or SessionManager(workspace)
         self.tools = ToolRegistry()
@@ -471,21 +463,15 @@ class AgentLoop:
                     async def on_stream_end(
                         *,
                         resuming: bool = False,
-                        privacy: dict[str, Any] | None = None,
-                        privacy_annotations: list[dict[str, Any]] | None = None,
-                        privacy_turn: dict[str, Any] | None = None,
+                        webui_privacy: dict[str, Any] | None = None,
                     ) -> None:
                         nonlocal stream_segment
                         meta = dict(msg.metadata or {})
                         meta["_stream_end"] = True
                         meta["_resuming"] = resuming
                         meta["_stream_id"] = _current_stream_id()
-                        if privacy is not None:
-                            meta["privacy"] = privacy
-                        if privacy_annotations is not None:
-                            meta["privacyAnnotations"] = privacy_annotations
-                        if privacy_turn is not None:
-                            meta["privacyTurn"] = privacy_turn
+                        if webui_privacy is not None:
+                            meta[WEBUI_PRIVACY_METADATA_KEY] = webui_privacy
                         await self.bus.publish_outbound(OutboundMessage(
                             channel=msg.channel, chat_id=msg.chat_id,
                             content="",
@@ -667,21 +653,15 @@ class AgentLoop:
                 for i in range(0, len(finalized), chunk):
                     await on_stream(finalized[i : i + chunk])
                 if on_stream_end is not None:
-                    privacy = None
-                    privacy_annotations = None
-                    privacy_turn = None
+                    webui_privacy = None
                     if msg.channel == "webui":
-                        privacy = build_session_privacy_snapshot(session_key).model_dump(mode="json")
-                        privacy_annotations = [
-                            annotation.model_dump(mode="json")
-                            for annotation in turn_ctx.display_output_annotations
-                        ]
-                        privacy_turn = _build_webui_privacy_turn_payload(turn_ctx)
+                        webui_privacy = build_webui_privacy_payload(
+                            session_key,
+                            turn_ctx,
+                        ).model_dump(mode="json", by_alias=True)
                     await on_stream_end(
                         resuming=resuming,
-                        privacy=privacy,
-                        privacy_annotations=privacy_annotations,
-                        privacy_turn=privacy_turn,
+                        webui_privacy=webui_privacy,
                     )
 
             effective_stream: Callable[[str], Awaitable[None]] | None = _buffered_stream
@@ -706,6 +686,14 @@ class AgentLoop:
         turn_ctx.tool_calls_made = len(tools_used)
         final_content = await _finalize_response_text(final_content)
 
+        webui_privacy_payload = None
+        if msg.channel == "webui":
+            webui_privacy_payload = build_webui_privacy_payload(
+                session_key,
+                turn_ctx,
+            )
+            append_webui_privacy_payload(self.workspace, session_key, webui_privacy_payload)
+
         self._save_turn(session, all_msgs, 1 + len(history))
         self._clear_runtime_checkpoint(session)
         self.sessions.save(session)
@@ -718,13 +706,8 @@ class AgentLoop:
         logger.info("Response to {}:{}: {}", msg.channel, msg.sender_id, preview)
 
         meta = dict(msg.metadata or {})
-        if msg.channel == "webui":
-            meta["privacy"] = build_session_privacy_snapshot(session_key).model_dump(mode="json")
-            meta["privacyAnnotations"] = [
-                annotation.model_dump(mode="json")
-                for annotation in turn_ctx.display_output_annotations
-            ]
-            meta["privacyTurn"] = _build_webui_privacy_turn_payload(turn_ctx)
+        if webui_privacy_payload is not None:
+            meta[WEBUI_PRIVACY_METADATA_KEY] = webui_privacy_payload.model_dump(mode="json", by_alias=True)
         if on_stream is not None:
             meta["_streamed"] = True
         return OutboundMessage(
