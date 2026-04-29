@@ -47,7 +47,9 @@ class PrivacyRegistry(BaseModel):
 REGISTRY = PrivacyRegistry(
     general=[
         EntitySpec(
-            slug="person", tag="PERSON", description="names of individuals, handles, or pseudonyms."
+            slug="person",
+            tag="PERSON",
+            description="Full names (priority), first names, last names, handles, nicknames, or short aliases of individuals.",
         ),
         EntitySpec(slug="phone", tag="PHONE", description="phone numbers"),
         EntitySpec(slug="email", tag="EMAIL", description="email addresses"),

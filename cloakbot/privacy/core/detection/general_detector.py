@@ -22,6 +22,9 @@ The remote LLM's job is to answer the user's request while preserving task inten
 3. Instructional Bypass: Do NOT extract task instructions, formatting requirements, structural requests, or output constraints.
 4. Public Data Bypass: Do NOT extract public entities unless they act as private identifiers in context.
 5. Do NOT extract slot phrases or field references such as: "my name" in "What is my name", "my email" in "Send my email to Alice".
+6. Do NOT extract amounts of money, dates, timestamps, percentages, measurements, counts, or other computable numeric values as sensitive_text.
+7. For private IDs, account endings, invoice numbers, loan references, contract references, ticket numbers, and similar compact reference codes, prefer identifier over sensitive_text regardless of the code prefix or format.
+8. Use sensitive_text only as a last resort when the sensitive span is private free-form text and no more specific entity type applies.
 
 ━━━ Entity types ━━━
 {_TYPE_BLOCK}

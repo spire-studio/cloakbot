@@ -118,23 +118,46 @@ class TestPiiDetectorFacade:
         assert len(result.entities) == 2
         assert result.latency_ms == 10.0
 
-    async def test_detect_deduplicates_same_text_across_detectors(self) -> None:
+    async def test_detect_prefers_financial_over_credential_for_same_text(self) -> None:
         detector = PiiDetector()
         detector._general.detect = AsyncMock(
             return_value=GeneralDetectionResult(
                 raw_output='{"entities": []}',
-                entities=[_general("Alice", "person")],
+                entities=[_general("$430", "credential")],
                 latency_ms=1.0,
             )
         )
         detector._digit.detect = AsyncMock(
             return_value=DigitDetectionResult(
                 raw_output='{"entities": []}',
-                entities=[_computable("Alice", "value", "Alice")],
+                entities=[_computable("$430", "financial", 430)],
                 latency_ms=1.0,
             )
         )
 
-        result = await detector.detect("Alice")
+        result = await detector.detect("$430")
 
-        assert [entity.text for entity in result.entities] == ["Alice"]
+        assert [entity.text for entity in result.entities] == ["$430"]
+        assert [entity.entity_type for entity in result.entities] == ["financial"]
+
+    async def test_detect_prefers_specific_general_entity_over_numeric_guess(self) -> None:
+        detector = PiiDetector()
+        detector._general.detect = AsyncMock(
+            return_value=GeneralDetectionResult(
+                raw_output='{"entities": []}',
+                entities=[_general("555-010-8821", "phone")],
+                latency_ms=1.0,
+            )
+        )
+        detector._digit.detect = AsyncMock(
+            return_value=DigitDetectionResult(
+                raw_output='{"entities": []}',
+                entities=[_computable("555-010-8821", "amount", "5550108821")],
+                latency_ms=1.0,
+            )
+        )
+
+        result = await detector.detect("phone 555-010-8821")
+
+        assert [entity.text for entity in result.entities] == ["555-010-8821"]
+        assert [entity.entity_type for entity in result.entities] == ["phone"]
