@@ -110,6 +110,10 @@ def _extract_expression(snippet: str) -> str:
     return ast.unparse(expression_node)
 
 
+def extract_math_expression(snippet: str) -> str:
+    return _extract_expression(snippet)
+
+
 def execute_privacy_math(
     snippet: str,
     variables: dict[str, float],
@@ -170,6 +174,7 @@ def _light_touch_cleanup(text: str) -> str:
 __all__ = [
     "MathExecution",
     "execute_privacy_math",
+    "extract_math_expression",
     "extract_python_snippet",
     "extract_python_snippets",
     "format_result",

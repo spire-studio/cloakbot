@@ -21,6 +21,7 @@ build/
 *.pywz
 *.pyzz
 .venv/
+.omc/
 venv/
 docs/
 __pycache__/

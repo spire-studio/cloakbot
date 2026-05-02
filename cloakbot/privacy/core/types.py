@@ -3,7 +3,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import Dict, List, Union
 
-from pydantic import BaseModel, computed_field
+from pydantic import BaseModel, Field, computed_field
 
 
 class Severity(str, Enum):
@@ -16,6 +16,8 @@ class EntitySpec(BaseModel):
     slug: str
     tag: str
     description: str
+    include: List[str] = Field(default_factory=list)
+    exclude: List[str] = Field(default_factory=list)
     severity: Severity = Severity.HIGH
 
 
@@ -25,7 +27,18 @@ class PrivacyRegistry(BaseModel):
 
     def get_prompt_block(self, category: str) -> str:
         specs = getattr(self, category)
-        return "\n".join(f"  {s.slug:<20} – {s.description}" for s in specs)
+        blocks: list[str] = []
+        for spec in specs:
+            lines = [
+                f"{spec.slug}:",
+                f"  Meaning: {spec.description}",
+            ]
+            if spec.include:
+                lines.append(f"  Include: {', '.join(spec.include)}")
+            if spec.exclude:
+                lines.append(f"  Exclude: {', '.join(spec.exclude)}")
+            blocks.append("\n".join(lines))
+        return "\n".join(blocks)
 
     def get_enum_str(self, category: str) -> str:
         specs = getattr(self, category)
@@ -47,77 +60,95 @@ class PrivacyRegistry(BaseModel):
 REGISTRY = PrivacyRegistry(
     general=[
         EntitySpec(
-            slug="person", tag="PERSON", description="names of individuals, handles, or pseudonyms."
+            slug="person",
+            tag="PERSON",
+            description="people mentioned in a private user context",
+            include=["full names", "first names", "last names", "handles", "nicknames", "aliases"],
+            exclude=["roles", "pronouns"],
         ),
         EntitySpec(slug="phone", tag="PHONE", description="phone numbers"),
         EntitySpec(slug="email", tag="EMAIL", description="email addresses"),
         EntitySpec(
             slug="identifier",
             tag="ID",
-            description="unique IDs (SSN, passport, account, license plate)",
+            description="private compact reference codes",
+            include=["account IDs", "invoice IDs", "loan IDs", "ticket IDs", "case refs", "account endings"],
+            exclude=["money", "dates", "percentages", "plain numbers", "field labels", "template versions"],
         ),
         EntitySpec(
             slug="address",
             tag="ADDRESS",
-            description="physical addresses or specific locations",
+            description="private physical locations",
+            include=["street addresses", "mailing addresses", "units", "postal codes"],
+            exclude=["organization names"],
         ),
         EntitySpec(
             slug="credential",
             tag="CREDENTIAL",
-            description="passwords, API keys, secrets, tokens",
+            description="private access secrets",
+            include=["passwords", "API keys", "auth tokens", "secret phrases"],
         ),
-        EntitySpec(slug="ip_address", tag="IP", description="network identifiers (IPv4 or IPv6)"),
+        EntitySpec(slug="ip_address", tag="IP", description="IPv4 or IPv6 addresses"),
         EntitySpec(
             slug="url",
             tag="URL",
-            description="sensitive or private links and domains",
+            description="private or sensitive links",
+            include=["portals", "upload links", "private domains"],
+            exclude=["public sites"],
         ),
         EntitySpec(
             slug="medical",
             tag="MEDICAL",
-            description="health statuses, PHI, treatments",
+            description="private health information",
+            include=["diagnoses", "treatments", "insurance", "patient details"],
         ),
         EntitySpec(
             slug="org",
             tag="ORG",
-            description="names of companies, schools, or NGOs",
-        ),
-        EntitySpec(
-            slug="sensitive_text",
-            tag="DETAIL",
-            description="private plans, secrets, or project code names",
+            description="organization names mentioned in a private user context",
+            include=["companies", "vendors", "lenders", "payroll firms", "credit unions", "banks", "clinics", "schools"],
+            exclude=["street addresses"],
         ),
     ],
     computable=[
         EntitySpec(
             slug="financial",
             tag="FINANCE",
-            description="amounts of money, salaries, debts, budgets",
+            description="private money amounts",
+            include=["salary", "rent", "debt", "balance", "budget", "invoice amounts"],
         ),
         EntitySpec(
             slug="temporal",
             tag="DATE",
-            description="specific dates, timestamps, deadlines, milestones",
+            description="private time references",
+            include=["dates", "times", "deadlines", "milestones"],
+            exclude=["public years", "template years"],
         ),
         EntitySpec(
             slug="percentage",
             tag="PERCENTAGE",
-            description="percentages, percentage shares, or percentage rates",
+            description="private percentage values",
+            include=["rates", "shares", "percentage targets"],
         ),
         EntitySpec(
             slug="amount",
             tag="AMOUNT",
-            description="numeric counts, non-percentage ratios, or probability figures",
+            description="standalone private counts or ratios",
+            include=["counts", "ratios"],
+            exclude=["IDs", "labels", "template numbers", "address parts"],
         ),
         EntitySpec(
             slug="measurement",
             tag="METRIC",
-            description="physical metrics, medical vitals, scientific results",
+            description="private metrics with units",
+            include=["physical metrics", "medical vitals", "scientific results"],
         ),
         EntitySpec(
             slug="value",
             tag="VALUE",
-            description="numeric scores, ratings, ages, demographics, or spatial coordinates",
+            description="private numeric values",
+            include=["scores", "ratings", "ages", "demographics", "coordinates"],
+            exclude=["IDs", "money", "dates", "template numbers", "labels"],
         ),
     ],
 )

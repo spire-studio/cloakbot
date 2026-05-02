@@ -18,6 +18,24 @@ from cloakbot.privacy.core.types import (
 
 # Robust regex to catch placeholders with or without brackets, and various PII tags
 _TOKEN_PATTERN = re.compile(r"(?:<<)?[A-Z]{2,}(?:_[A-Z]+)*_\d+(?:>>)?")
+_ENTITY_PRIORITY = {
+    "email": 100,
+    "phone": 100,
+    "ip_address": 100,
+    "url": 100,
+    "address": 95,
+    "identifier": 95,
+    "person": 90,
+    "org": 90,
+    "medical": 90,
+    "financial": 85,
+    "temporal": 85,
+    "percentage": 85,
+    "credential": 70,
+    "measurement": 60,
+    "amount": 55,
+    "value": 50,
+}
 
 
 class PiiDetector:
@@ -39,19 +57,20 @@ class PiiDetector:
         )
         latency_ms = max(general_result.latency_ms, digit_result.latency_ms)
 
-        entities: list[DetectedEntity] = []
-        seen_text: set[str] = set()
+        entities_by_text: dict[str, DetectedEntity] = {}
         for entity in general_result.entities + digit_result.entities:
             # Central filter: Ignore anything that looks like our own internal tokens
             if _TOKEN_PATTERN.search(entity.text):
                 logger.debug("PiiDetector: ignoring internal token match '{}'", entity.text)
                 continue
 
-            if entity.text in seen_text:
+            existing = entities_by_text.get(entity.text)
+            if existing is not None and _entity_priority(existing) >= _entity_priority(entity):
                 continue
 
-            seen_text.add(entity.text)
-            entities.append(entity)
+            entities_by_text[entity.text] = entity
+
+        entities = list(entities_by_text.values())
 
         llm_raw_output = json.dumps(
             {
@@ -73,6 +92,10 @@ class PiiDetector:
             llm_raw_output=llm_raw_output,
             latency_ms=latency_ms,
         )
+
+
+def _entity_priority(entity: DetectedEntity) -> int:
+    return _ENTITY_PRIORITY.get(entity.entity_type, 0)
 
 
 __all__ = [
