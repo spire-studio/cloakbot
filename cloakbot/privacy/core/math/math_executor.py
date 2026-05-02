@@ -3,19 +3,29 @@ from __future__ import annotations
 import re
 
 from loguru import logger
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from cloakbot.privacy.core.math.math_helpers import (
     execute_privacy_math,
+    extract_math_expression,
     extract_python_snippets,
     format_result,
     resolve_expression,
 )
-from cloakbot.privacy.core.state.vault import get_map
+from cloakbot.privacy.core.state.vault import VaultComputation, _SessionMap, get_map, save_map
 from cloakbot.privacy.core.types import REGISTRY
 
 _PLACEHOLDER_RE = re.compile(r"^<<([A-Z]+(?:_[A-Z]+)*_\d+)>>$")
 _INPUT_TOKEN_RE = re.compile(r"<<([A-Z]+(?:_[A-Z]+)*_\d+)>>")
+_SNIPPET_BLOCK_RE = re.compile(
+    r"<python_snippet_(\d+)>\s*(.*?)\s*</python_snippet_\1>",
+    flags=re.DOTALL | re.IGNORECASE,
+)
+_CALC_MARKER_RE = re.compile(
+    r"\s*Local calculation result for python_snippet_(\d+):\s*(<<CALC_\d+>>)\.\s*"
+    r"Use CALC_\d+ as the numeric variable for this prior local calculation in future python snippets\.",
+    flags=re.IGNORECASE,
+)
 
 
 class LocalComputationRecord(BaseModel):
@@ -24,12 +34,20 @@ class LocalComputationRecord(BaseModel):
     resolved_expression: str
     result: float
     formatted_result: str
+    placeholder: str | None = None
+    source_placeholders: list[str] = Field(default_factory=list)
 
 
-def build_math_execution_instruction(sanitized_text: str) -> str:
+class PrivacyMathResult(BaseModel):
+    display_text: str
+    remote_history_text: str
+    computations: list[LocalComputationRecord] = Field(default_factory=list)
+
+
+def build_math_execution_instruction(sanitized_text: str, session_key: str | None = None) -> str:
     """Build detailed instructions for the remote LLM."""
-    # Note: we only extract tokens that are actually present in the current sanitized text
-    token_names = _extract_numeric_token_names(sanitized_text)
+    smap = get_map(session_key) if session_key is not None else None
+    token_names = _extract_numeric_token_names(sanitized_text, smap)
 
     lines = [
         "### PRIVACY MODE ENABLED ###",
@@ -44,7 +62,7 @@ def build_math_execution_instruction(sanitized_text: str) -> str:
         "4. OUTPUT BEHAVIOR: Each snippet block will be executed locally and replaced by its numeric result in the final output.",
         "5. For any numeric result derived from token values, do not compute or state the number directly in normal prose; emit a python_snippet block instead.",
         "6. If no calculation is needed, do not emit any python_snippet block.",
-        "7. Token families have different semantics: FINANCE_* are money values, PERCENTAGE_* are percent/share values, and AMOUNT_* are counts or non-percentage ratios.",
+        "7. Token families have different semantics: FINANCE_* are money values, PERCENTAGE_* are percent/share values, AMOUNT_* are counts or non-percentage ratios.",
         "",
         "Rules for python snippets:",
         "- Use only numeric token variables listed below.",
@@ -53,7 +71,8 @@ def build_math_execution_instruction(sanitized_text: str) -> str:
         "- Keep snippets minimal and arithmetic-only.",
         "- Do not include explanations, markdown, or extra text inside a snippet.",
         "- Do not nest snippets.",
-        "- If you want to reuse the result of a already generated python snippet, repeat that whole snippet again. ",
+        "- If you want to reuse the result of an already generated python snippet, use its CALC_* variable.",
+        "- Do not repeat prior executed snippets unless the user asks to recompute them.",
     ]
 
     if token_names:
@@ -72,67 +91,142 @@ async def apply_privacy_math_with_details(
     response: str,
     session_key: str,
 ) -> tuple[str, list[LocalComputationRecord]]:
-    """Execute snippets and replace them IN-PLACE with numeric results."""
-    snippets = extract_python_snippets(response)
-    if not snippets:
-        return response, []
+    result = await apply_privacy_math_for_turn(response, session_key)
+    return result.display_text, result.computations
+
+
+async def apply_privacy_math_for_turn(
+    response: str,
+    session_key: str,
+    *,
+    turn_id: str | None = None,
+) -> PrivacyMathResult:
+    """Execute new snippets locally and build separate display/history text."""
+    if not extract_python_snippets(response):
+        return PrivacyMathResult(display_text=response, remote_history_text=response)
 
     smap = get_map(session_key)
     values = _build_variable_values(smap)
-
-    final_text = response
+    display_parts: list[str] = []
+    history_parts: list[str] = []
     records: list[LocalComputationRecord] = []
+    cursor = 0
+    modified_vault = False
 
-    # Process each unique snippet index
-    for snippet_index, snippet_content in snippets:
+    for match in _SNIPPET_BLOCK_RE.finditer(response or ""):
+        snippet_index = int(match.group(1))
+        snippet_content = match.group(2).strip()
+        marker = _read_existing_calc_marker(response, match.end(), snippet_index)
+        marker_placeholder = marker[0] if marker is not None else None
+        marker_end = marker[1] if marker is not None else match.end()
+
+        display_parts.append(response[cursor:match.start()])
+        history_parts.append(response[cursor:match.end()])
+
         try:
-            execution = execute_privacy_math(snippet_content, values, snippet_index=snippet_index)
-            resolved_expression = resolve_expression(execution.expression, values)
-            records.append(
-                LocalComputationRecord(
-                    snippet_index=execution.snippet_index,
-                    expression=execution.expression,
-                    resolved_expression=resolved_expression,
-                    result=execution.result,
-                    formatted_result=format_result(execution.result),
-                )
+            computation, record, is_new = _resolve_or_execute_snippet(
+                snippet_content,
+                snippet_index,
+                values,
+                smap,
+                marker_placeholder=marker_placeholder,
+                turn_id=turn_id,
             )
+            records.append(record)
+            modified_vault = modified_vault or is_new
+            display_parts.append(computation.formatted_value)
+            if marker is None or marker_placeholder != computation.placeholder:
+                history_parts.append(_format_calc_marker(snippet_index, computation.placeholder))
+            else:
+                history_parts.append(response[match.end():marker_end])
+        except Exception as exc:
+            logger.warning("math-executer: snippet {} failed: {}", snippet_index, exc)
+            display_parts.append(snippet_content)
+            if marker is not None:
+                history_parts.append(response[match.end():marker_end])
 
-            # Replace the snippet tag with the result in the text
-            target_re = re.compile(
-                rf"<python_snippet_{snippet_index}>.*?</python_snippet_{snippet_index}>",
-                re.DOTALL | re.IGNORECASE,
-            )
-            final_text = target_re.sub(format_result(execution.result), final_text)
+        cursor = marker_end
 
-        except Exception as e:
-            logger.warning("math-executer: snippet {} failed: {}", snippet_index, e)
-            # Cleanup tags on failure
-            target_re = re.compile(
-                rf"<python_snippet_{snippet_index}>(.*?)</python_snippet_{snippet_index}>",
-                re.DOTALL | re.IGNORECASE,
-            )
-            final_text = target_re.sub(r"\1", final_text)
+    display_parts.append(response[cursor:])
+    history_parts.append(response[cursor:])
 
-    # CRITICAL: We NO LONGER call replace_symbolic_variables here.
-    # The final restoration stage in orchestrator.py will handle <<FINANCE_1>> -> $100,000 correctly.
+    if modified_vault:
+        save_map(session_key, smap)
 
-    return final_text.strip(), _deduplicate_records(records)
+    return PrivacyMathResult(
+        display_text=_clean_output("".join(display_parts)),
+        remote_history_text=_clean_output("".join(history_parts)),
+        computations=_deduplicate_records(records),
+    )
 
 
-def _extract_numeric_token_names(sanitized_text: str) -> list[str]:
+def _resolve_or_execute_snippet(
+    snippet_content: str,
+    snippet_index: int,
+    values: dict[str, float],
+    smap: _SessionMap,
+    *,
+    marker_placeholder: str | None,
+    turn_id: str | None,
+) -> tuple[VaultComputation, LocalComputationRecord, bool]:
+    existing = smap.get_computation(marker_placeholder) if marker_placeholder else None
+    if existing is not None:
+        existing.last_seen_turn = turn_id or existing.last_seen_turn
+        return existing, _record_from_computation(snippet_index, existing), False
+
+    expression = extract_math_expression(snippet_content)
+    existing = smap.find_computation(expression)
+    if existing is not None:
+        existing.last_seen_turn = turn_id or existing.last_seen_turn
+        return existing, _record_from_computation(snippet_index, existing), False
+
+    execution = execute_privacy_math(snippet_content, values, snippet_index=snippet_index)
+    resolved_expression = resolve_expression(execution.expression, values)
+    source_placeholders = _extract_source_placeholders(execution.expression, values)
+    computation, is_new = smap.get_or_create_computation(
+        expression=execution.expression,
+        resolved_expression=resolved_expression,
+        source_placeholders=source_placeholders,
+        value=execution.result,
+        formatted_value=format_result(execution.result),
+        turn_id=turn_id,
+    )
+    return computation, _record_from_computation(snippet_index, computation), is_new
+
+
+def _record_from_computation(
+    snippet_index: int,
+    computation: VaultComputation,
+) -> LocalComputationRecord:
+    return LocalComputationRecord(
+        snippet_index=snippet_index,
+        expression=computation.expression,
+        resolved_expression=computation.resolved_expression,
+        result=computation.value,
+        formatted_result=computation.formatted_value,
+        placeholder=computation.placeholder,
+        source_placeholders=computation.source_placeholders,
+    )
+
+
+def _extract_numeric_token_names(sanitized_text: str, smap: _SessionMap | None = None) -> list[str]:
     """Identify which tokens in the text are computable."""
-    # Only allow tokens whose TAG belongs to the computable category in REGISTRY
-    numeric_prefixes = tuple(REGISTRY.computable_tags)
+    numeric_prefixes = tuple([*REGISTRY.computable_tags, "CALC"])
 
-    seen = set()
-    names = []
+    seen: set[str] = set()
+    names: list[str] = []
     for match in _INPUT_TOKEN_RE.finditer(sanitized_text or ""):
         name = match.group(1)
-        if name.startswith(numeric_prefixes):
-            if name not in seen:
-                seen.add(name)
-                names.append(name)
+        if name.startswith(numeric_prefixes) and name not in seen:
+            seen.add(name)
+            names.append(name)
+
+    if smap is not None:
+        for placeholder in smap.placeholder_to_computation:
+            match = _PLACEHOLDER_RE.fullmatch(placeholder)
+            if match and match.group(1) not in seen:
+                seen.add(match.group(1))
+                names.append(match.group(1))
     return names
 
 
@@ -153,17 +247,47 @@ def _describe_numeric_token(name: str) -> str:
         return f"- {name}: measurement token"
     if name.startswith("VALUE_"):
         return f"- {name}: generic numeric value token"
+    if name.startswith("CALC_"):
+        return f"- {name}: prior local calculation result"
     return f"- {name}"
 
 
-def _build_variable_values(smap) -> dict[str, float]:
+def _build_variable_values(smap: _SessionMap) -> dict[str, float]:
     """Build a simple map of token names to their numeric values."""
     values = {}
     for placeholder, val in smap.placeholder_to_value.items():
         match = _PLACEHOLDER_RE.fullmatch(placeholder)
         if match and isinstance(val, (int, float)):
-            values[match.group(1)] = val
+            values[match.group(1)] = float(val)
     return values
+
+
+def _extract_source_placeholders(expression: str, values: dict[str, float]) -> list[str]:
+    names = sorted(values.keys(), key=len, reverse=True)
+    return [f"<<{name}>>" for name in names if re.search(rf"\b{re.escape(name)}\b", expression)]
+
+
+def _read_existing_calc_marker(
+    text: str,
+    start: int,
+    snippet_index: int,
+) -> tuple[str, int] | None:
+    match = _CALC_MARKER_RE.match(text or "", start)
+    if match is None or int(match.group(1)) != snippet_index:
+        return None
+    return match.group(2), match.end()
+
+
+def _format_calc_marker(snippet_index: int, placeholder: str) -> str:
+    variable = placeholder[2:-2]
+    return (
+        f"\n\nLocal calculation result for python_snippet_{snippet_index}: {placeholder}. "
+        f"Use {variable} as the numeric variable for this prior local calculation in future python snippets."
+    )
+
+
+def _clean_output(text: str) -> str:
+    return re.sub(r"\n{3,}", "\n\n", text.replace("\r\n", "\n")).strip()
 
 
 def _deduplicate_records(records: list[LocalComputationRecord]) -> list[LocalComputationRecord]:

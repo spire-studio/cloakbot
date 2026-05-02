@@ -685,6 +685,11 @@ class AgentLoop:
 
         turn_ctx.tool_calls_made = len(tools_used)
         final_content = await _finalize_response_text(final_content)
+        self._replace_last_assistant_content(
+            all_msgs,
+            1 + len(history),
+            turn_ctx.remote_history_output,
+        )
 
         webui_privacy_payload = None
         if msg.channel == "webui":
@@ -714,6 +719,20 @@ class AgentLoop:
             channel=msg.channel, chat_id=msg.chat_id, content=final_content,
             metadata=meta,
         )
+
+    @staticmethod
+    def _replace_last_assistant_content(
+        messages: list[dict],
+        skip: int,
+        content: str,
+    ) -> None:
+        """Replace the persisted assistant text with privacy-safe postprocessing output."""
+        if not content:
+            return
+        for message in reversed(messages[skip:]):
+            if message.get("role") == "assistant" and isinstance(message.get("content"), str):
+                message["content"] = content
+                return
 
     def _sanitize_persisted_blocks(
         self,
