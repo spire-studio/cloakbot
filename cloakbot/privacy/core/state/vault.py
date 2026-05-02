@@ -32,6 +32,19 @@ class VaultEntity(BaseModel):
     last_seen_turn: str | None = None
 
 
+class VaultComputation(BaseModel):
+    """A persisted local calculation that can be reused in later turns."""
+
+    placeholder: str
+    expression: str
+    resolved_expression: str
+    source_placeholders: list[str] = Field(default_factory=list)
+    value: float
+    formatted_value: str
+    created_turn: str | None = None
+    last_seen_turn: str | None = None
+
+
 class _SessionMap(BaseModel):
     """In-memory view of a session's placeholder registry."""
 
@@ -40,6 +53,7 @@ class _SessionMap(BaseModel):
     placeholder_to_original: dict[str, str] = Field(default_factory=dict)
     placeholder_to_entity: dict[str, VaultEntity] = Field(default_factory=dict)
     placeholder_to_value: dict[str, int | float | str] = Field(default_factory=dict)
+    placeholder_to_computation: dict[str, VaultComputation] = Field(default_factory=dict)
     counters: dict[str, int] = Field(default_factory=dict)
 
     def normalize_text(self, text: str) -> str:
@@ -131,6 +145,18 @@ class _SessionMap(BaseModel):
             if original not in entity.aliases:
                 entity.aliases.append(original)
 
+        for placeholder, computation in self.placeholder_to_computation.items():
+            if placeholder not in self.placeholder_to_entity:
+                self.placeholder_to_entity[placeholder] = VaultEntity(
+                    placeholder=placeholder,
+                    entity_type="local_computation",
+                    canonical=computation.formatted_value,
+                    aliases=[computation.formatted_value],
+                    value=computation.value,
+                    created_turn=computation.created_turn,
+                    last_seen_turn=computation.last_seen_turn,
+                )
+
         self.original_to_placeholder = {}
         self.normalized_to_placeholder = {}
         self.placeholder_to_original = {}
@@ -196,6 +222,59 @@ class _SessionMap(BaseModel):
         entity = self._ensure_entity(placeholder)
         entity.value = value
         self.placeholder_to_value[placeholder] = value
+
+    def find_computation(self, expression: str) -> VaultComputation | None:
+        """Return a prior local calculation for the same normalized expression."""
+        for computation in self.placeholder_to_computation.values():
+            if computation.expression == expression:
+                return computation
+        return None
+
+    def get_computation(self, placeholder: str) -> VaultComputation | None:
+        return self.placeholder_to_computation.get(placeholder)
+
+    def get_or_create_computation(
+        self,
+        *,
+        expression: str,
+        resolved_expression: str,
+        source_placeholders: list[str],
+        value: float,
+        formatted_value: str,
+        turn_id: str | None = None,
+    ) -> tuple[VaultComputation, bool]:
+        existing = self.find_computation(expression)
+        if existing is not None:
+            existing.last_seen_turn = turn_id or existing.last_seen_turn
+            return existing, False
+
+        tag = "CALC"
+        self.counters[tag] = self.counters.get(tag, 0) + 1
+        placeholder = f"<<{tag}_{self.counters[tag]}>>"
+        computation = VaultComputation(
+            placeholder=placeholder,
+            expression=expression,
+            resolved_expression=resolved_expression,
+            source_placeholders=source_placeholders,
+            value=value,
+            formatted_value=formatted_value,
+            created_turn=turn_id,
+            last_seen_turn=turn_id,
+        )
+        self.placeholder_to_computation[placeholder] = computation
+
+        entity = VaultEntity(
+            placeholder=placeholder,
+            entity_type="local_computation",
+            canonical=formatted_value,
+            aliases=[formatted_value],
+            value=value,
+            created_turn=turn_id,
+            last_seen_turn=turn_id,
+        )
+        self.placeholder_to_entity[placeholder] = entity
+        self._sync_entity_indexes(placeholder)
+        return computation, True
 
     def replace_known_originals(self, text: str) -> tuple[str, bool]:
         """Swap already known surface forms to stable placeholders before detection."""
@@ -290,6 +369,11 @@ def _load_map(session_key: str) -> _SessionMap:
                 placeholder: VaultEntity.model_validate(payload)
                 for placeholder, payload in raw_entities.items()
             }
+            raw_computations = data.get("placeholder_to_computation", {})
+            placeholder_to_computation = {
+                placeholder: VaultComputation.model_validate(payload)
+                for placeholder, payload in raw_computations.items()
+            }
 
             smap = _SessionMap(
                 original_to_placeholder=original_to_placeholder,
@@ -297,6 +381,7 @@ def _load_map(session_key: str) -> _SessionMap:
                 placeholder_to_original=placeholder_to_original,
                 placeholder_to_entity=placeholder_to_entity,
                 placeholder_to_value=data.get("placeholder_to_value", {}),
+                placeholder_to_computation=placeholder_to_computation,
                 counters=data.get("counters", {}),
             )
             smap.rebuild_indexes()

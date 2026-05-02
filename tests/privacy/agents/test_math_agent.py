@@ -5,9 +5,8 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from cloakbot.privacy.agents.workers.math_agent import MathAgent
-from cloakbot.privacy.core.math.math_executor import LocalComputationRecord
+from cloakbot.privacy.core.math.math_executor import LocalComputationRecord, PrivacyMathResult
 from cloakbot.privacy.hooks.context import Intent, TurnContext
-
 
 
 def _turn_context() -> TurnContext:
@@ -39,11 +38,12 @@ async def test_finalize_output_delegates_to_math_executor() -> None:
     ctx = _turn_context()
 
     with patch(
-        "cloakbot.privacy.agents.workers.math_agent.apply_privacy_math_with_details",
+        "cloakbot.privacy.agents.workers.math_agent.apply_privacy_math_for_turn",
         new=AsyncMock(
-            return_value=(
-                "finalized",
-                [
+            return_value=PrivacyMathResult(
+                display_text="finalized",
+                remote_history_text="history",
+                computations=[
                     LocalComputationRecord(
                         snippet_index=1,
                         expression="FINANCE_1 * PERCENTAGE_1",
@@ -57,6 +57,7 @@ async def test_finalize_output_delegates_to_math_executor() -> None:
     ) as mocked:
         result = await agent.finalize_output("response", ctx)
 
-    mocked.assert_awaited_once_with("response", "cli:test")
+    mocked.assert_awaited_once_with("response", "cli:test", turn_id="turn-1")
     assert result == "finalized"
+    assert ctx.remote_history_output == "history"
     assert ctx.local_computations[0].formatted_result == "10000"

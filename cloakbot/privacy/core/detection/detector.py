@@ -35,7 +35,6 @@ _ENTITY_PRIORITY = {
     "measurement": 60,
     "amount": 55,
     "value": 50,
-    "sensitive_text": 10,
 }
 
 

@@ -20,6 +20,7 @@ class TurnContext:
     turn_id: str
     raw_input: str
     remote_prompt: str = ""
+    remote_history_output: str = ""
     sanitized_input: str = ""
     sanitized_output: str = ""
     display_output: str = ""
