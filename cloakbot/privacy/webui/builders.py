@@ -8,6 +8,8 @@ from cloakbot.privacy.webui.contracts import (
     WebUIPrivacyTimeline,
     WebUIPrivacyTimelineEvent,
     WebUIPrivacyTurn,
+    WebUIToolApproval,
+    WebUIToolResult,
 )
 
 
@@ -17,6 +19,29 @@ def build_webui_privacy_turn(ctx: TurnContext) -> WebUIPrivacyTurn:
         intent=ctx.intent.value,
         remote_prompt=ctx.sanitized_input,
         local_computations=ctx.local_computations,
+        tool_results=[
+            WebUIToolResult(
+                tool_call_id=result.tool_call_id,
+                tool_name=result.tool_name,
+                remote_arguments=result.remote_arguments,
+                sanitized_output=result.sanitized_output,
+                was_sanitized=result.was_sanitized,
+            )
+            for result in ctx.tool_results
+        ],
+        tool_approvals=[
+            WebUIToolApproval(
+                approval_id=approval.approval_id,
+                tool_call_id=approval.tool_call_id,
+                tool_name=approval.tool_name,
+                privacy_class=approval.privacy_class,
+                remote_arguments=approval.remote_arguments,
+                restored_arguments=approval.restored_arguments,
+                detected_entities=approval.detected_entities,
+                status=approval.status,
+            )
+            for approval in ctx.tool_approvals
+        ],
     )
 
 

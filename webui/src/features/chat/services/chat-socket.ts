@@ -74,13 +74,21 @@ export function reduceChatSocketEvent(
 
     if (pendingAssistantIndex >= 0) {
       const pendingMessage = nextMessages[pendingAssistantIndex]
-      nextMessages[pendingAssistantIndex] = {
+      const updatedMessage: ChatMessage = {
         ...pendingMessage,
         content: event.content,
         privacyAnnotations: event.privacyAnnotations ?? pendingMessage.privacyAnnotations ?? [],
       }
+      if (event.toolApproval ?? pendingMessage.toolApproval) {
+        updatedMessage.toolApproval = event.toolApproval ?? pendingMessage.toolApproval
+      }
+      nextMessages[pendingAssistantIndex] = updatedMessage
     } else {
-      nextMessages.push(createAssistantMessage(createMessageId, event.content, Date.now()))
+      const nextMessage = createAssistantMessage(createMessageId, event.content, Date.now())
+      if (event.toolApproval) {
+        nextMessage.toolApproval = event.toolApproval
+      }
+      nextMessages.push(nextMessage)
     }
 
     return {

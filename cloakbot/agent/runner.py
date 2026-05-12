@@ -5,12 +5,17 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from loguru import logger
 
 from cloakbot.agent.hook import AgentHook, AgentHookContext
 from cloakbot.agent.tools.registry import ToolRegistry
+from cloakbot.privacy.tool_models import (
+    ToolApprovalRequest,
+    ToolApprovalRequiredError,
+    ToolPrivacyClass,
+)
 from cloakbot.providers.base import LLMProvider, ToolCallRequest
 from cloakbot.utils.helpers import (
     build_assistant_message,
@@ -31,6 +36,27 @@ from cloakbot.utils.runtime import (
 
 _DEFAULT_ERROR_MESSAGE = "Sorry, I encountered an error calling the AI model."
 _SNIP_SAFETY_BUFFER = 1024
+
+
+class ToolPrivacyInterceptorProtocol(Protocol):
+    async def prepare_tool_call(
+        self,
+        tool_call: ToolCallRequest,
+        *,
+        privacy_class: ToolPrivacyClass,
+    ) -> ToolCallRequest:
+        ...
+
+    async def sanitize_tool_result(
+        self,
+        tool_call: ToolCallRequest,
+        result: Any,
+        *,
+        privacy_class: ToolPrivacyClass,
+    ) -> Any:
+        ...
+
+
 @dataclass(slots=True)
 class AgentRunSpec:
     """Configuration for a single agent execution."""
@@ -55,6 +81,7 @@ class AgentRunSpec:
     provider_retry_mode: str = "standard"
     progress_callback: Any | None = None
     checkpoint_callback: Any | None = None
+    tool_privacy_interceptor: ToolPrivacyInterceptorProtocol | None = None
 
 
 @dataclass(slots=True)
@@ -68,6 +95,7 @@ class AgentRunResult:
     stop_reason: str = "completed"
     error: str | None = None
     tool_events: list[dict[str, str]] = field(default_factory=list)
+    approval_request: ToolApprovalRequest | None = None
 
 
 class AgentRunner:
@@ -134,11 +162,28 @@ class AgentRunner:
 
                 await hook.before_execute_tools(context)
 
-                results, new_events, fatal_error = await self._execute_tools(
-                    spec,
-                    response.tool_calls,
-                    external_lookup_counts,
-                )
+                try:
+                    results, new_events, fatal_error = await self._execute_tools(
+                        spec,
+                        response.tool_calls,
+                        external_lookup_counts,
+                    )
+                except ToolApprovalRequiredError as approval:
+                    final_content = _approval_message(approval.request)
+                    stop_reason = "tool_approval_required"
+                    context.final_content = final_content
+                    context.stop_reason = stop_reason
+                    await hook.after_iteration(context)
+                    return AgentRunResult(
+                        final_content=final_content,
+                        messages=messages,
+                        tools_used=tools_used,
+                        usage=usage,
+                        stop_reason=stop_reason,
+                        error=None,
+                        tool_events=tool_events,
+                        approval_request=approval.request,
+                    )
                 tool_events.extend(new_events)
                 context.tool_results = list(results)
                 context.tool_events = list(new_events)
@@ -381,14 +426,35 @@ class AgentRunner:
         external_lookup_counts: dict[str, int],
     ) -> tuple[Any, dict[str, str], BaseException | None]:
         hint = "\n\n[Analyze the error above and try a different approach.]"
+        execution_tool_call = tool_call
+        privacy_class = self._tool_privacy_class(spec, tool_call.name)
+        if spec.tool_privacy_interceptor is not None:
+            try:
+                execution_tool_call = await spec.tool_privacy_interceptor.prepare_tool_call(
+                    tool_call,
+                    privacy_class=privacy_class,
+                )
+            except ToolApprovalRequiredError:
+                raise
+            except Exception as exc:
+                event = {
+                    "name": tool_call.name,
+                    "status": "error",
+                    "detail": "tool input privacy restoration failed",
+                }
+                error = f"Error: Tool input privacy restoration failed: {type(exc).__name__}"
+                if spec.fail_on_tool_error:
+                    return error, event, exc
+                return error + hint, event, None
+
         lookup_error = repeated_external_lookup_error(
-            tool_call.name,
-            tool_call.arguments,
+            execution_tool_call.name,
+            execution_tool_call.arguments,
             external_lookup_counts,
         )
         if lookup_error:
             event = {
-                "name": tool_call.name,
+                "name": execution_tool_call.name,
                 "status": "error",
                 "detail": "repeated external lookup blocked",
             }
@@ -396,17 +462,17 @@ class AgentRunner:
                 return lookup_error + hint, event, RuntimeError(lookup_error)
             return lookup_error + hint, event, None
         prepare_call = getattr(spec.tools, "prepare_call", None)
-        tool, params, prep_error = None, tool_call.arguments, None
+        tool, params, prep_error = None, execution_tool_call.arguments, None
         if callable(prepare_call):
             try:
-                prepared = prepare_call(tool_call.name, tool_call.arguments)
+                prepared = prepare_call(execution_tool_call.name, execution_tool_call.arguments)
                 if isinstance(prepared, tuple) and len(prepared) == 3:
                     tool, params, prep_error = prepared
             except Exception:
                 pass
         if prep_error:
             event = {
-                "name": tool_call.name,
+                "name": execution_tool_call.name,
                 "status": "error",
                 "detail": prep_error.split(": ", 1)[-1][:120],
             }
@@ -415,12 +481,12 @@ class AgentRunner:
             if tool is not None:
                 result = await tool.execute(**params)
             else:
-                result = await spec.tools.execute(tool_call.name, params)
+                result = await spec.tools.execute(execution_tool_call.name, params)
         except asyncio.CancelledError:
             raise
         except BaseException as exc:
             event = {
-                "name": tool_call.name,
+                "name": execution_tool_call.name,
                 "status": "error",
                 "detail": str(exc),
             }
@@ -428,9 +494,27 @@ class AgentRunner:
                 return f"Error: {type(exc).__name__}: {exc}", event, exc
             return f"Error: {type(exc).__name__}: {exc}", event, None
 
+        if spec.tool_privacy_interceptor is not None:
+            try:
+                result = await spec.tool_privacy_interceptor.sanitize_tool_result(
+                    tool_call,
+                    result,
+                    privacy_class=privacy_class,
+                )
+            except Exception as exc:
+                event = {
+                    "name": execution_tool_call.name,
+                    "status": "error",
+                    "detail": "tool output privacy sanitization failed",
+                }
+                error = f"Error: Tool output privacy sanitization failed: {type(exc).__name__}"
+                if spec.fail_on_tool_error:
+                    return error, event, exc
+                return error + hint, event, None
+
         if isinstance(result, str) and result.startswith("Error"):
             event = {
-                "name": tool_call.name,
+                "name": execution_tool_call.name,
                 "status": "error",
                 "detail": result.replace("\n", " ").strip()[:120],
             }
@@ -444,7 +528,7 @@ class AgentRunner:
             detail = "(empty)"
         elif len(detail) > 120:
             detail = detail[:120] + "..."
-        return result, {"name": tool_call.name, "status": "ok", "detail": detail}, None
+        return result, {"name": execution_tool_call.name, "status": "ok", "detail": detail}, None
 
     async def _emit_checkpoint(
         self,
@@ -591,7 +675,12 @@ class AgentRunner:
         for tool_call in tool_calls:
             get_tool = getattr(spec.tools, "get", None)
             tool = get_tool(tool_call.name) if callable(get_tool) else None
-            can_batch = bool(tool and tool.concurrency_safe)
+            privacy_class = getattr(tool, "privacy_class", ToolPrivacyClass.LOCAL)
+            can_batch = bool(
+                tool
+                and tool.concurrency_safe
+                and privacy_class is ToolPrivacyClass.LOCAL
+            )
             if can_batch:
                 current.append(tool_call)
                 continue
@@ -602,3 +691,23 @@ class AgentRunner:
         if current:
             batches.append(current)
         return batches
+
+    @staticmethod
+    def _tool_privacy_class(spec: AgentRunSpec, tool_name: str) -> ToolPrivacyClass:
+        get_tool = getattr(spec.tools, "get", None)
+        tool = get_tool(tool_name) if callable(get_tool) else None
+        privacy_class = getattr(tool, "privacy_class", ToolPrivacyClass.LOCAL)
+        if isinstance(privacy_class, ToolPrivacyClass):
+            return privacy_class
+        try:
+            return ToolPrivacyClass(str(privacy_class))
+        except ValueError:
+            return ToolPrivacyClass.LOCAL
+
+
+def _approval_message(request: ToolApprovalRequest) -> str:
+    return (
+        f"Tool approval required for `{request.tool_name}`. "
+        "This call would expose sensitive data outside the remote model context. "
+        "Review the tool arguments and approve it to continue."
+    )

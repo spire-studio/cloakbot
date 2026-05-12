@@ -36,6 +36,7 @@ from cloakbot.privacy.webui import (
     WebUISessionEvent,
     WebUIStatusData,
     WebUIStatusEvent,
+    WebUIToolApproval,
     WebUIUserMessage,
 )
 from cloakbot.privacy.webui.history import load_webui_privacy_payloads
@@ -186,6 +187,21 @@ class WebUIChannel(BaseChannel):
                         payload = WebUIUserMessage.model_validate_json(await websocket.receive_text())
                     except ValidationError:
                         continue
+                    if payload.type == "tool_approval":
+                        if not payload.approval_id:
+                            continue
+                        await self._handle_message(
+                            sender_id=session_id,
+                            chat_id=session_id,
+                            content="",
+                            metadata={
+                                "tool_approval": True,
+                                "approval_id": payload.approval_id,
+                                "approved": payload.approved,
+                            },
+                        )
+                        continue
+
                     content = payload.content.strip()
                     if not content:
                         continue
@@ -257,8 +273,14 @@ class WebUIChannel(BaseChannel):
             }
 
             if role == "assistant":
-                payload = payloads[assistant_payload_index] if assistant_payload_index < len(payloads) else None
-                assistant_payload_index += 1
+                tool_approval = self._tool_approval_from_message(message)
+                if tool_approval is not None:
+                    entry["toolApproval"] = tool_approval.model_dump(mode="json", by_alias=True)
+                if tool_approval is None:
+                    payload = payloads[assistant_payload_index] if assistant_payload_index < len(payloads) else None
+                    assistant_payload_index += 1
+                else:
+                    payload = None
                 if payload is not None:
                     annotations = payload.privacy_annotations
                     entry["assistantStatus"] = {
@@ -344,10 +366,12 @@ class WebUIChannel(BaseChannel):
             return
 
         privacy_fields = self._privacy_event_fields(msg.metadata)
+        tool_approval = self._tool_approval_from_metadata(msg.metadata)
         await self._broadcast(
             msg.chat_id,
             WebUIAssistantMessageEvent(
                 content=msg.content,
+                tool_approval=tool_approval,
                 **privacy_fields,
             ).model_dump(mode="json", by_alias=True),
         )
@@ -364,6 +388,8 @@ class WebUIChannel(BaseChannel):
     ) -> None:
         meta = metadata or {}
         if meta.get("_stream_end"):
+            if meta.get("_resuming"):
+                return
             privacy_fields = self._privacy_event_fields(meta)
             await self._broadcast(
                 chat_id,
@@ -398,6 +424,27 @@ class WebUIChannel(BaseChannel):
             "privacy_turn": payload.privacy_turn,
             "privacy_timeline": payload.privacy_timeline,
         }
+
+    @staticmethod
+    def _tool_approval_from_metadata(metadata: dict[str, object]) -> WebUIToolApproval | None:
+        raw = metadata.get("tool_approval")
+        if raw is None or raw is True:
+            return None
+        return WebUIChannel._validate_tool_approval(raw)
+
+    @staticmethod
+    def _tool_approval_from_message(message: dict[str, object]) -> WebUIToolApproval | None:
+        return WebUIChannel._validate_tool_approval(message.get("tool_approval"))
+
+    @staticmethod
+    def _validate_tool_approval(raw: object) -> WebUIToolApproval | None:
+        if not isinstance(raw, dict):
+            return None
+        try:
+            return WebUIToolApproval.model_validate(raw)
+        except ValidationError:
+            logger.warning("webui: invalid tool approval payload skipped")
+            return None
 
     async def _broadcast(self, chat_id: str, event: dict[str, object]) -> None:
         clients = list(self._clients.get(chat_id, set()))

@@ -5,7 +5,6 @@
 .web
 .claude
 CLAUDE.md
-AGENTS.md
 .vscode/
 bridge/node_modules/
 *.pyc
@@ -23,7 +22,6 @@ build/
 .venv/
 .omc/
 venv/
-docs/
 __pycache__/
 poetry.lock
 .pytest_cache/
@@ -43,3 +41,4 @@ evals/
 
 # Sanitizer session maps (contain PII placeholders, stay local)
 ~/.cloakbot/sanitizer_maps/
+MagicMock/

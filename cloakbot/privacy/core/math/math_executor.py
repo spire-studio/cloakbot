@@ -121,7 +121,7 @@ async def apply_privacy_math_for_turn(
         marker_end = marker[1] if marker is not None else match.end()
 
         display_parts.append(response[cursor:match.start()])
-        history_parts.append(response[cursor:match.end()])
+        history_parts.append(response[cursor:match.start()])
 
         try:
             computation, record, is_new = _resolve_or_execute_snippet(
@@ -135,15 +135,11 @@ async def apply_privacy_math_for_turn(
             records.append(record)
             modified_vault = modified_vault or is_new
             display_parts.append(computation.formatted_value)
-            if marker is None or marker_placeholder != computation.placeholder:
-                history_parts.append(_format_calc_marker(snippet_index, computation.placeholder))
-            else:
-                history_parts.append(response[match.end():marker_end])
+            history_parts.append(computation.placeholder)
         except Exception as exc:
             logger.warning("math-executer: snippet {} failed: {}", snippet_index, exc)
             display_parts.append(snippet_content)
-            if marker is not None:
-                history_parts.append(response[match.end():marker_end])
+            history_parts.append(snippet_content)
 
         cursor = marker_end
 
@@ -276,14 +272,6 @@ def _read_existing_calc_marker(
     if match is None or int(match.group(1)) != snippet_index:
         return None
     return match.group(2), match.end()
-
-
-def _format_calc_marker(snippet_index: int, placeholder: str) -> str:
-    variable = placeholder[2:-2]
-    return (
-        f"\n\nLocal calculation result for python_snippet_{snippet_index}: {placeholder}. "
-        f"Use {variable} as the numeric variable for this prior local calculation in future python snippets."
-    )
 
 
 def _clean_output(text: str) -> str:

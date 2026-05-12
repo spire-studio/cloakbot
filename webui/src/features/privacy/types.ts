@@ -11,6 +11,32 @@ export type PrivacyTurn = {
   intent: 'chat' | 'math' | 'doc'
   remotePrompt: string
   localComputations: LocalComputation[]
+  toolResults?: ToolPrivacyResult[]
+  toolApprovals?: ToolApproval[]
+}
+
+export type ToolPrivacyResult = {
+  toolCallId: string
+  toolName: string
+  remoteArguments: Record<string, unknown>
+  sanitizedOutput: string
+  wasSanitized: boolean
+}
+
+export type ToolApproval = {
+  approvalId: string
+  toolCallId: string
+  toolName: string
+  privacyClass: 'local' | 'external' | 'side_effect'
+  remoteArguments: Record<string, unknown>
+  restoredArguments: Record<string, unknown>
+  detectedEntities: Array<{
+    text: string
+    entity_type: string
+    severity?: 'high' | 'medium' | 'low'
+    value?: string | number
+  }>
+  status: 'pending' | 'approved' | 'denied'
 }
 
 export type PrivacyTimelineEvent = {

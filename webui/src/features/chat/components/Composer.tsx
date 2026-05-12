@@ -28,6 +28,10 @@ export function Composer({
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (isImeComposition(event)) {
+      return
+    }
+
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault()
       if (!isSendDisabled) {
@@ -112,6 +116,10 @@ export function Composer({
       </div>
     </div>
   )
+}
+
+function isImeComposition(event: KeyboardEvent<HTMLTextAreaElement>) {
+  return event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229
 }
 
 function getTextareaMinHeight(textarea: HTMLTextAreaElement, layout: ComposerProps['layout']) {

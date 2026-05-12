@@ -1,5 +1,6 @@
 import { ArrowLeftRight, ChevronLeft, ChevronRight, Send, Shield, Terminal } from 'lucide-react'
 import type { ReactNode } from 'react'
+import { useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -23,6 +24,12 @@ type PanelSectionProps = {
   children: ReactNode
 }
 
+const inspectorTabs = [
+  { value: 'entities', label: 'Entities', icon: Shield },
+  { value: 'remote-prompts', label: 'Prompts', icon: Send },
+  { value: 'local-computations', label: 'Compute', icon: Terminal },
+] as const
+
 function PanelSection({ title, description, children }: PanelSectionProps) {
   return (
     <section className="space-y-3.5">
@@ -36,9 +43,12 @@ function PanelSection({ title, description, children }: PanelSectionProps) {
 }
 
 export function PrivacyPanel({ open, onToggle, snapshot, turns }: PrivacyPanelProps) {
+  const [activeTab, setActiveTab] = useState<(typeof inspectorTabs)[number]['value']>('entities')
   const totalComputations = turns.reduce((sum, turn) => sum + turn.localComputations.length, 0)
+  const totalToolResults = turns.reduce((sum, turn) => sum + (turn.toolResults?.length ?? 0), 0)
   const highSeverityCount = snapshot.entities.filter((entity) => entity.severity === 'high').length
   const mathTurnCount = turns.filter((turn) => turn.intent === 'math').length
+  const activeTabIndex = Math.max(0, inspectorTabs.findIndex((tab) => tab.value === activeTab))
 
   return (
     <aside
@@ -120,26 +130,43 @@ export function PrivacyPanel({ open, onToggle, snapshot, turns }: PrivacyPanelPr
               </div>
             </div>
             <div className="mt-2 rounded-md border border-border/70 bg-card/70 px-2 py-1.5">
-              <div className="text-[11px] text-muted-foreground">Local computations</div>
-              <div className="mt-0.5 text-sm font-semibold text-foreground">{totalComputations}</div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <div className="text-[11px] text-muted-foreground">Local computations</div>
+                  <div className="mt-0.5 text-sm font-semibold text-foreground">{totalComputations}</div>
+                </div>
+                <div>
+                  <div className="text-[11px] text-muted-foreground">Tool results</div>
+                  <div className="mt-0.5 text-sm font-semibold text-foreground">{totalToolResults}</div>
+                </div>
+              </div>
             </div>
           </div>
 
-          <Tabs defaultValue="entities" className="flex min-h-0 flex-1 flex-col">
+          <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as typeof activeTab)} className="flex min-h-0 flex-1 flex-col">
             <div className="px-4 pb-3">
-              <TabsList className="grid h-auto w-full grid-cols-3 gap-0.5">
-                <TabsTrigger value="entities" className="h-8 px-1.5">
-                  <Shield className="h-3.5 w-3.5 shrink-0" />
-                  <span>Entities</span>
-                </TabsTrigger>
-                <TabsTrigger value="remote-prompts" className="h-8 px-1.5">
-                  <Send className="h-3.5 w-3.5 shrink-0" />
-                  <span>Prompts</span>
-                </TabsTrigger>
-                <TabsTrigger value="local-computations" className="h-8 px-1.5">
-                  <Terminal className="h-3.5 w-3.5 shrink-0" />
-                  <span>Compute</span>
-                </TabsTrigger>
+              <TabsList className="relative grid h-10 w-full grid-cols-3 overflow-hidden border-0 bg-surface-subtle p-1 shadow-none">
+                <span
+                  aria-hidden="true"
+                  className="absolute left-1 top-1 bottom-1 rounded-md bg-card shadow-[0_0_0_1px_var(--surface-outline),0_6px_18px_var(--shadow-soft)] transition-transform duration-200 ease-out"
+                  style={{
+                    width: 'calc((100% - 0.5rem) / 3)',
+                    transform: `translateX(${activeTabIndex * 100}%)`,
+                  }}
+                />
+                {inspectorTabs.map((tab) => {
+                  const Icon = tab.icon
+                  return (
+                    <TabsTrigger
+                      key={tab.value}
+                      value={tab.value}
+                      className="relative z-10 h-8 border-0 bg-transparent px-1.5 shadow-none hover:border-transparent hover:bg-transparent data-[state=active]:border-transparent data-[state=active]:bg-transparent data-[state=active]:shadow-none"
+                    >
+                      <Icon className="h-3.5 w-3.5 shrink-0" />
+                      <span>{tab.label}</span>
+                    </TabsTrigger>
+                  )
+                })}
               </TabsList>
             </div>
 

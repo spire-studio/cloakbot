@@ -12,6 +12,7 @@ function createTurn(overrides: Partial<PrivacyTurn>): PrivacyTurn {
     intent: 'chat',
     remotePrompt: '<<PERSON_1>> says hello',
     localComputations: [],
+    toolResults: [],
     ...overrides,
   }
 }
@@ -59,6 +60,33 @@ describe('PromptLog', () => {
     ).toBeInTheDocument()
     expect(screen.getByText('Sanitized payload')).toBeInTheDocument()
     expect(screen.queryByText('Restored payload')).not.toBeInTheDocument()
+  })
+
+  it('renders sanitized tool results for each turn', () => {
+    render(
+      <PromptLog
+        turns={[
+          createTurn({
+            turnId: 'turn-1',
+            remotePrompt: 'Please inspect <<PRIVATE_URL_1>>',
+            toolResults: [
+              {
+                toolCallId: 'call-1',
+                toolName: 'read_file',
+                remoteArguments: { path: '<<PRIVATE_URL_1>>' },
+                sanitizedOutput: 'Owner: <<PERSON_1>>',
+                wasSanitized: true,
+              },
+            ],
+          }),
+        ]}
+      />,
+    )
+
+    expect(screen.getByText('read_file')).toBeInTheDocument()
+    expect(screen.getByText('Output sanitized')).toBeInTheDocument()
+    expect(screen.getByText((content) => content.includes('Owner: <<PERSON_1>>'))).toBeInTheDocument()
+    expect(screen.getAllByText((content) => content.includes('<<PRIVATE_URL_1>>')).length).toBeGreaterThan(0)
   })
 
   it('keeps sanitized payload visible when toggling a turn', async () => {

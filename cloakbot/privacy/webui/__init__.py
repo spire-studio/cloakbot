@@ -17,6 +17,8 @@ from cloakbot.privacy.webui.contracts import (
     WebUISessionEvent,
     WebUIStatusData,
     WebUIStatusEvent,
+    WebUIToolApproval,
+    WebUIToolResult,
     WebUIUserMessage,
 )
 
@@ -30,6 +32,8 @@ __all__ = [
     "WebUIPrivacyTimeline",
     "WebUIPrivacyTimelineEvent",
     "WebUIPrivacyTurn",
+    "WebUIToolApproval",
+    "WebUIToolResult",
     "WebUIProgressEvent",
     "WebUISessionEvent",
     "WebUIStatusData",

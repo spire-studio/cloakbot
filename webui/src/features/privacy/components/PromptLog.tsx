@@ -33,6 +33,7 @@ export function PromptLog({ turns }: PromptLogProps) {
   return (
     <div className="space-y-3">
       {turnOrder.map((turn, index) => {
+        const toolResults = turn.toolResults ?? []
         const fallbackExpandedTurnId = turnOrder[turnOrder.length - 1]?.turnId ?? null
         const currentExpandedTurnId =
           expandedTurnId && turnOrder.some((item) => item.turnId === expandedTurnId)
@@ -55,7 +56,7 @@ export function PromptLog({ turns }: PromptLogProps) {
                   {isNewest && <Chip variant="fill">Newest</Chip>}
                 </div>
                 <div className="mt-1 text-[12px] text-muted-foreground">
-                  {turn.intent} · {turn.remotePrompt.length} chars · Sanitized
+                  {turn.intent} · {turn.remotePrompt.length} chars · {toolResults.length} tool results · Sanitized
                 </div>
               </div>
               {isExpanded ? (
@@ -79,6 +80,26 @@ export function PromptLog({ turns }: PromptLogProps) {
                   <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-[var(--surface-subtle)] px-3 py-3 font-mono text-xs leading-6 text-foreground">
                     {turn.remotePrompt}
                   </pre>
+                  {toolResults.length > 0 && (
+                    <div className="mt-3 space-y-3">
+                      {toolResults.map((result) => (
+                        <section key={result.toolCallId} className="border-t border-border/70 pt-3">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Chip variant="fill">{result.toolName}</Chip>
+                            <Chip>{result.wasSanitized ? 'Output sanitized' : 'No output entities'}</Chip>
+                          </div>
+                          <div className="mt-2 space-y-2">
+                            <pre className="max-h-32 overflow-auto whitespace-pre-wrap break-words rounded-md bg-[var(--surface-subtle)] px-3 py-2 font-mono text-[11px] leading-5 text-muted-foreground">
+                              {JSON.stringify(result.remoteArguments, null, 2)}
+                            </pre>
+                            <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-md bg-[var(--surface-subtle)] px-3 py-2 font-mono text-xs leading-6 text-foreground">
+                              {result.sanitizedOutput}
+                            </pre>
+                          </div>
+                        </section>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

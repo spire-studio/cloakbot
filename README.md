@@ -33,6 +33,7 @@ After the remote LLM responds, CloakBot restores placeholders locally and append
 - [Multi-Agent System Design](#multi-agent-system-design)
 - [Architecture](#architecture)
 - [Roadmap](#roadmap)
+- [Engineering Knowledge Base](#engineering-knowledge-base)
 - [Setup](#setup)
 - [Running Tests](#running-tests)
 - [Design Decisions](#design-decisions)
@@ -163,19 +164,23 @@ CloakBot uses a **hybrid multi-agent architecture** inside the privacy layer: a 
 | **MathAgent** | Adds the snippet contract before the remote call and executes validated snippets locally after the call | Remote LLM + local executor |
 | **Restorer** | Restores placeholders with a single regex pass | Rule-based |
 | **Transparency Report** | Renders a per-turn markdown summary of masked entities | Rule-based |
-| **Tool Output Sanitizer** | Reusable helper for future tool-output enforcement in the main loop | Not fully wired yet |
+| **ToolPrivacyInterceptor** | Restores local tool inputs, gates sensitive non-local tool calls, and sanitizes tool outputs before model reuse | Rule-based + detector |
 
 ### Detector Passes (Defense in Depth)
 
-The current runtime performs **one mandatory detector pass before the remote LLM call**:
+The current runtime enforces input sanitization before the remote LLM call and
+tool-output sanitization when tool calls are routed through the privacy
+interceptor:
 
 ```
 Pass 1  user input        → prevent raw PII from leaving device
 Pass 2  LLM response      → planned, not wired yet
-Pass 3  tool call output  → helper exists, interceptor not wired yet
+Pass 3  tool call output  → sanitize results before model reuse
 ```
 
-`sanitize_tool_output()` and `tool_output_entities` already exist in the codebase, so the extension points are there. What is implemented today is input-side sanitization plus post-response restoration and math execution.
+`ToolPrivacyInterceptor` also restores placeholders before local tool execution
+and requests approval when sensitive restored arguments would be sent to
+non-local or side-effecting tools.
 
 ### Math Privacy (Goal 2)
 
@@ -204,19 +209,21 @@ So document privacy is a roadmap item, not a current feature.
 
 ### Tool Call Privacy (Goal 4)
 
-Tool privacy is also only **partially scaffolded** right now:
+Tool privacy is implemented through `ToolPrivacyInterceptor` and tool privacy
+classes:
 
 ```
 Implemented today:
-  sanitize_tool_output(text, session_key)  → reusable helper
-  TurnContext.tool_output_entities         → report slot
-
-Not wired yet:
-  runtime-level tool output enforcement    → pending
-  main tool loop pass 3 enforcement        → pending
+  sanitize_tool_output(text, session_key)
+  ToolPrivacyInterceptor.prepare_tool_call(...)
+  ToolPrivacyInterceptor.sanitize_tool_result(...)
+  TurnContext.tool_output_entities
+  ToolApprovalRequest for sensitive non-local tool inputs
 ```
 
-So CloakBot already has the core sanitizer entry point for tool results, but the main agent loop does not yet run every tool output through it.
+Tool classes declare `local`, `external`, or `side_effect` privacy behavior.
+External and side-effecting tools should receive the least permissive accurate
+class.
 
 ---
 
@@ -242,11 +249,12 @@ cloakbot/
 │   │   │   │   └── math_helpers.py  AST validation for arithmetic-only snippets
 │   │   │   └── state/
 │   │   │       └── vault.py         Session-scoped token/value map on disk
+│   │   ├── runtime/
+│   │   │   ├── pipeline.py      Top-level privacy coordinator
+│   │   │   ├── routing.py       chat/math/doc routing
+│   │   │   ├── registry.py      Worker registration and lookup
+│   │   │   └── tool_interceptor.py  Tool input/output privacy boundary
 │   │   ├── agents/
-│   │   │   ├── runtime/
-│   │   │   │   ├── orchestrator.py  Top-level privacy coordinator
-│   │   │   │   ├── task_router.py   chat/math/doc routing
-│   │   │   │   └── registry.py      Worker registration and lookup
 │   │   │   ├── classification/
 │   │   │   │   └── intent_analyzer.py   Local intent classification
 │   │   │   └── workers/
@@ -286,13 +294,13 @@ Session-level placeholder mappings are persisted as JSON under `~/.cloakbot/work
 - [x] MathAgent snippet contract plus local arithmetic execution
 - [x] Multi-turn conversation privacy protection
 - [x] Web UI polish and usability improvements
+- [x] ToolPrivacyInterceptor for tool input restoration and output sanitization
 
 ### 🔨 v0.2 — Trust Boundary Expansion
-- [ ] Tool-use Detector: enforce tool-use sanitization in the main loop
-- [ ] Real `ToolInterceptor` implementation
 - [ ] Concrete `DocAgent` implementation
 - [ ] Chunk-map-aggregate document flow with shared Vault
 - [ ] Dataset-specific schema and column sanitization
+- [ ] Response-side detector pass after remote LLM output
 
 ### 🚀 v0.3 — Production Readiness
 - [ ] Encrypted Vault persistence option
@@ -300,6 +308,14 @@ Session-level placeholder mappings are persisted as JSON under `~/.cloakbot/work
 - [ ] Better bilingual and quasi-identifier coverage
 - [ ] Policy-driven handling beyond the current registry defaults
 - [ ] Full end-to-end privacy integration tests
+
+---
+
+## Engineering Knowledge Base
+
+Agent-oriented architecture, reliability, security, and privacy-domain notes now
+live under [`docs/`](docs/README.md). Start with [`AGENTS.md`](AGENTS.md) for the
+short harness entry point, then follow the specific docs needed for the task.
 
 ---
 
@@ -363,7 +379,7 @@ uv run python -m cloakbot webui
 
 **Hook-based integration** — the privacy layer is largely isolated under `cloakbot/privacy/` and integrates into the main runtime through `pre_llm_hook` and `post_llm_hook` in [loop.py](/Users/laurieluo/Documents/github/my-repos/cloakbot/cloakbot/agent/loop.py:574).
 
-**Roadmap already scaffolded in code** — document intent and tool-output sanitization helpers already exist, but they are not fully wired into the runtime yet.
+**Roadmap already scaffolded in code** — document intent exists, but a dedicated document privacy pipeline is not implemented yet. Tool privacy now has a concrete interceptor.
 
 ---
 

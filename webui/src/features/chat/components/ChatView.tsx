@@ -17,6 +17,7 @@ type ChatViewProps = {
   input: string
   setInput: (value: string) => void
   onSend: () => void
+  onApproveToolCall: (approvalId: string) => void
   isAwaitingAssistant: boolean
   privacyPanelOpen: boolean
   setPrivacyPanelOpen: (value: boolean | ((previous: boolean) => boolean)) => void
@@ -31,6 +32,7 @@ export function ChatView({
   input,
   setInput,
   onSend,
+  onApproveToolCall,
   isAwaitingAssistant,
   privacyPanelOpen,
   setPrivacyPanelOpen,
@@ -124,7 +126,11 @@ export function ChatView({
           </div>
         ) : (
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-            <MessageList messages={messages} scrollRef={scrollRef} />
+            <MessageList
+              messages={messages}
+              scrollRef={scrollRef}
+              onApproveToolCall={onApproveToolCall}
+            />
             <Composer
               input={input}
               onInputChange={setInput}

@@ -1,4 +1,4 @@
-from cloakbot.privacy.hooks.context import TurnContext
+from cloakbot.privacy.hooks.context import ToolPrivacyRecord, TurnContext
 from cloakbot.privacy.protocol.contracts import EventType, PrivacyStage, ProtocolStatus
 from cloakbot.privacy.protocol.observability import emit_event, get_event_sink
 from cloakbot.privacy.webui import build_webui_privacy_payload
@@ -11,6 +11,15 @@ def test_build_webui_privacy_payload_includes_turn_and_timeline() -> None:
         turn_id="turn-1",
         raw_input="hello Alice",
         sanitized_input="hello <<PERSON_1>>",
+        tool_results=[
+            ToolPrivacyRecord(
+                tool_call_id="call-1",
+                tool_name="read_file",
+                remote_arguments={"path": "<<PRIVATE_URL_1>>"},
+                sanitized_output="Owner: <<PERSON_1>>",
+                was_sanitized=True,
+            )
+        ],
     )
 
     emit_event(
@@ -29,6 +38,15 @@ def test_build_webui_privacy_payload_includes_turn_and_timeline() -> None:
 
     assert payload["privacyTurn"]["turnId"] == "turn-1"
     assert payload["privacyTurn"]["remotePrompt"] == "hello <<PERSON_1>>"
+    assert payload["privacyTurn"]["toolResults"] == [
+        {
+            "toolCallId": "call-1",
+            "toolName": "read_file",
+            "remoteArguments": {"path": "<<PRIVATE_URL_1>>"},
+            "sanitizedOutput": "Owner: <<PERSON_1>>",
+            "wasSanitized": True,
+        }
+    ]
     assert payload["privacyTimeline"]["turnId"] == "turn-1"
     assert payload["privacyTimeline"]["events"][0]["eventType"] == "turn.sanitize.succeeded"
     assert payload["privacyTimeline"]["events"][0]["payload"] == {"was_sanitized": True}

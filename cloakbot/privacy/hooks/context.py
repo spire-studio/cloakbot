@@ -6,6 +6,7 @@ from enum import Enum
 from cloakbot.privacy.core.math.math_executor import LocalComputationRecord
 from cloakbot.privacy.core.sanitization.restorer import RestoredTokenAnnotation
 from cloakbot.privacy.core.types import DetectedEntity
+from cloakbot.privacy.tool_models import ToolApprovalRequest, ToolPrivacyRecord
 
 
 class Intent(str, Enum):
@@ -30,5 +31,7 @@ class TurnContext:
     user_input_entities: list[DetectedEntity] = field(default_factory=list)
     tool_input_entities: list[DetectedEntity] = field(default_factory=list)
     tool_output_entities: list[DetectedEntity] = field(default_factory=list)
+    tool_results: list[ToolPrivacyRecord] = field(default_factory=list)
+    tool_approvals: list[ToolApprovalRequest] = field(default_factory=list)
     was_sanitized: bool = False
     tool_calls_made: int = 0

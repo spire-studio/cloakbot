@@ -31,9 +31,15 @@ from cloakbot.bus.queue import MessageBus
 from cloakbot.command import CommandContext, CommandRouter, register_builtin_commands
 from cloakbot.config.schema import AgentDefaults
 from cloakbot.privacy import Intent, post_llm_hook, pre_llm_hook
+from cloakbot.privacy.runtime.tool_interceptor import ToolPrivacyInterceptor
+from cloakbot.privacy.tool_models import (
+    PendingToolApproval,
+    ToolApprovalRequest,
+    ToolTurnState,
+)
 from cloakbot.privacy.webui import WEBUI_PRIVACY_METADATA_KEY, build_webui_privacy_payload
 from cloakbot.privacy.webui.history import append_webui_privacy_payload
-from cloakbot.providers.base import LLMProvider
+from cloakbot.providers.base import LLMProvider, ToolCallRequest
 from cloakbot.session.manager import Session, SessionManager
 from cloakbot.utils.helpers import image_placeholder_text, truncate_text
 from cloakbot.utils.runtime import EMPTY_FINAL_RESPONSE_MESSAGE
@@ -162,6 +168,7 @@ class AgentLoop:
     """
 
     _RUNTIME_CHECKPOINT_KEY = "runtime_checkpoint"
+    _TOOL_APPROVAL_KEY = "pending_tool_approval"
 
     def __init__(
         self,
@@ -351,7 +358,8 @@ class AgentLoop:
         channel: str = "cli",
         chat_id: str = "direct",
         message_id: str | None = None,
-    ) -> tuple[str | None, list[str], list[dict]]:
+        tool_privacy_interceptor: ToolPrivacyInterceptor | None = None,
+    ) -> tuple[str | None, list[str], list[dict], ToolApprovalRequest | None]:
         """Run the agent iteration loop.
 
         *on_stream*: called with each content delta during streaming.
@@ -395,13 +403,14 @@ class AgentLoop:
             provider_retry_mode=self.provider_retry_mode,
             progress_callback=on_progress,
             checkpoint_callback=_checkpoint,
+            tool_privacy_interceptor=tool_privacy_interceptor,
         ))
         self._last_usage = result.usage
         if result.stop_reason == "max_iterations":
             logger.warning("Max iterations ({}) reached", self.max_iterations)
         elif result.stop_reason == "error":
             logger.error("LLM returned error: {}", (result.final_content or "")[:200])
-        return result.final_content, result.tools_used, result.messages
+        return result.final_content, result.tools_used, result.messages, result.approval_request
 
     async def run(self) -> None:
         """Run the agent loop, dispatching messages as tasks to stay responsive to /stop."""
@@ -549,7 +558,7 @@ class AgentLoop:
                 current_message=msg.content, channel=channel, chat_id=chat_id,
                 current_role=current_role,
             )
-            final_content, _, all_msgs = await self._run_agent_loop(
+            final_content, _, all_msgs, _approval_request = await self._run_agent_loop(
                 messages, session=session, channel=channel, chat_id=chat_id,
                 message_id=msg.metadata.get("message_id"),
             )
@@ -565,6 +574,12 @@ class AgentLoop:
 
         key = session_key or msg.session_key
         session = self.sessions.get_or_create(key)
+        if msg.metadata.get("tool_approval"):
+            return await self._process_tool_approval(
+                msg,
+                session,
+                on_progress=on_progress,
+            )
         if self._restore_runtime_checkpoint(session):
             self.sessions.save(session)
 
@@ -648,7 +663,14 @@ class AgentLoop:
                 _stream_buf.append(delta)
 
             async def _buffered_stream_end(*, resuming: bool = False) -> None:
+                if resuming:
+                    _stream_buf.clear()
+                    if on_stream_end is not None:
+                        await on_stream_end(resuming=True)
+                    return
+
                 finalized = await _finalize_response_text("".join(_stream_buf))
+                _stream_buf.clear()
                 chunk = 32
                 for i in range(0, len(finalized), chunk):
                     await on_stream(finalized[i : i + chunk])
@@ -670,7 +692,7 @@ class AgentLoop:
             effective_stream = on_stream
             effective_stream_end = on_stream_end
 
-        final_content, tools_used, all_msgs = await self._run_agent_loop(
+        final_content, tools_used, all_msgs, approval_request = await self._run_agent_loop(
             initial_messages,
             on_progress=on_progress or _bus_progress,
             on_stream=effective_stream,
@@ -678,13 +700,33 @@ class AgentLoop:
             session=session,
             channel=msg.channel, chat_id=msg.chat_id,
             message_id=msg.metadata.get("message_id"),
+            tool_privacy_interceptor=ToolPrivacyInterceptor(turn_ctx),
         )
+
+        if approval_request is not None:
+            return self._store_pending_tool_approval(
+                msg=msg,
+                session=session,
+                pending=PendingToolApproval(
+                    request=approval_request,
+                    messages=all_msgs,
+                    save_skip=1 + len(history),
+                    turn=ToolTurnState.from_context(turn_ctx),
+                ),
+                content=final_content or "",
+                save_user=True,
+            )
 
         if final_content is None or not final_content.strip():
             final_content = EMPTY_FINAL_RESPONSE_MESSAGE
 
         turn_ctx.tool_calls_made = len(tools_used)
         final_content = await _finalize_response_text(final_content)
+        self._replace_first_user_content(
+            all_msgs,
+            1 + len(history),
+            turn_ctx.sanitized_input,
+        )
         self._replace_last_assistant_content(
             all_msgs,
             1 + len(history),
@@ -720,6 +762,227 @@ class AgentLoop:
             metadata=meta,
         )
 
+    def _store_pending_tool_approval(
+        self,
+        *,
+        msg: InboundMessage,
+        session: Session,
+        pending: PendingToolApproval,
+        content: str,
+        save_user: bool,
+    ) -> OutboundMessage:
+        from datetime import datetime
+
+        session.metadata[self._TOOL_APPROVAL_KEY] = pending.model_dump(mode="json")
+        if save_user:
+            session.messages.append({
+                "role": "user",
+                "content": pending.turn.sanitized_input,
+                "timestamp": datetime.now().isoformat(),
+            })
+        session.messages.append({
+            "role": "assistant",
+            "content": content or _tool_approval_message(pending.request),
+            "timestamp": datetime.now().isoformat(),
+            "ui_only": True,
+            "tool_approval": pending.request.model_dump(mode="json"),
+        })
+        session.updated_at = datetime.now()
+        self.sessions.save(session)
+
+        meta = dict(msg.metadata or {})
+        meta["tool_approval"] = pending.request.model_dump(mode="json")
+        return OutboundMessage(
+            channel=msg.channel,
+            chat_id=msg.chat_id,
+            content=content or _tool_approval_message(pending.request),
+            metadata=meta,
+        )
+
+    async def _process_tool_approval(
+        self,
+        msg: InboundMessage,
+        session: Session,
+        on_progress: Callable[[str], Awaitable[None]] | None = None,
+    ) -> OutboundMessage:
+        raw_pending = session.metadata.get(self._TOOL_APPROVAL_KEY)
+        if not isinstance(raw_pending, dict):
+            return OutboundMessage(
+                channel=msg.channel,
+                chat_id=msg.chat_id,
+                content="No pending tool approval was found.",
+            )
+
+        pending = PendingToolApproval.model_validate(raw_pending)
+        approval_id = str(msg.metadata.get("approval_id") or "")
+        if approval_id != pending.request.approval_id:
+            return OutboundMessage(
+                channel=msg.channel,
+                chat_id=msg.chat_id,
+                content="That tool approval is no longer pending.",
+            )
+
+        approved = bool(msg.metadata.get("approved", True))
+        request = pending.request.approved() if approved else pending.request.denied()
+        self._mark_tool_approval_resolved(session, request)
+        if not approved:
+            session.metadata.pop(self._TOOL_APPROVAL_KEY, None)
+            self.sessions.save(session)
+            return OutboundMessage(
+                channel=msg.channel,
+                chat_id=msg.chat_id,
+                content=f"Tool call `{request.tool_name}` was not approved.",
+            )
+
+        turn_ctx = pending.turn.to_context()
+        turn_ctx.tool_approvals = [
+            request if approval.approval_id == request.approval_id else approval
+            for approval in turn_ctx.tool_approvals
+        ] or [request]
+        interceptor = ToolPrivacyInterceptor(turn_ctx)
+        tool_message = await self._execute_approved_tool(request, interceptor)
+        messages = [dict(message) for message in pending.messages]
+        messages.append(tool_message)
+
+        final_content, tools_used, all_msgs, next_approval = await self._run_agent_loop(
+            messages,
+            on_progress=on_progress,
+            session=session,
+            channel=msg.channel,
+            chat_id=msg.chat_id,
+            message_id=msg.metadata.get("message_id"),
+            tool_privacy_interceptor=interceptor,
+        )
+        turn_ctx.tool_calls_made += 1 + len(tools_used)
+
+        if next_approval is not None:
+            return self._store_pending_tool_approval(
+                msg=msg,
+                session=session,
+                pending=PendingToolApproval(
+                    request=next_approval,
+                    messages=all_msgs,
+                    save_skip=pending.save_skip,
+                    turn=ToolTurnState.from_context(turn_ctx),
+                ),
+                content=final_content or "",
+                save_user=False,
+            )
+
+        if final_content is None or not final_content.strip():
+            final_content = EMPTY_FINAL_RESPONSE_MESSAGE
+
+        final_content = await post_llm_hook(
+            final_content,
+            turn_ctx,
+            pending.turn.session_key,
+            include_report=msg.channel != "webui",
+        )
+        self._replace_last_assistant_content(
+            all_msgs,
+            pending.save_skip,
+            turn_ctx.remote_history_output,
+        )
+
+        webui_privacy_payload = None
+        if msg.channel == "webui":
+            webui_privacy_payload = build_webui_privacy_payload(
+                pending.turn.session_key,
+                turn_ctx,
+            )
+            append_webui_privacy_payload(
+                self.workspace,
+                pending.turn.session_key,
+                webui_privacy_payload,
+            )
+
+        self._save_turn(session, all_msgs, pending.save_skip + 1)
+        session.metadata.pop(self._TOOL_APPROVAL_KEY, None)
+        self._clear_runtime_checkpoint(session)
+        self.sessions.save(session)
+        self._schedule_background(self.consolidator.maybe_consolidate_by_tokens(session))
+
+        meta = dict(msg.metadata or {})
+        if webui_privacy_payload is not None:
+            meta[WEBUI_PRIVACY_METADATA_KEY] = webui_privacy_payload.model_dump(
+                mode="json",
+                by_alias=True,
+            )
+        return OutboundMessage(
+            channel=msg.channel,
+            chat_id=msg.chat_id,
+            content=final_content,
+            metadata=meta,
+        )
+
+    async def _execute_approved_tool(
+        self,
+        request: ToolApprovalRequest,
+        interceptor: ToolPrivacyInterceptor,
+    ) -> dict[str, Any]:
+        tool_call = ToolCallRequest(
+            id=request.tool_call_id,
+            name=request.tool_name,
+            arguments=request.remote_arguments,
+        )
+        execution_call = ToolCallRequest(
+            id=request.tool_call_id,
+            name=request.tool_name,
+            arguments=request.restored_arguments,
+        )
+        tool, params, prep_error = self.tools.prepare_call(
+            execution_call.name,
+            execution_call.arguments,
+        )
+        if prep_error:
+            result: Any = prep_error
+        else:
+            try:
+                assert tool is not None
+                result = await tool.execute(**params)
+            except Exception as exc:
+                result = f"Error: {type(exc).__name__}: {exc}"
+
+        sanitized = await interceptor.sanitize_tool_result(
+            tool_call,
+            result,
+            privacy_class=request.privacy_class,
+        )
+        spec = AgentRunSpec(
+            initial_messages=[],
+            tools=self.tools,
+            model=self.model,
+            max_iterations=self.max_iterations,
+            max_tool_result_chars=self.max_tool_result_chars,
+            workspace=self.workspace,
+            session_key=request.session_key,
+        )
+        return {
+            "role": "tool",
+            "tool_call_id": request.tool_call_id,
+            "name": request.tool_name,
+            "content": self.runner._normalize_tool_result(
+                spec,
+                request.tool_call_id,
+                request.tool_name,
+                sanitized,
+            ),
+        }
+
+    @staticmethod
+    def _mark_tool_approval_resolved(
+        session: Session,
+        request: ToolApprovalRequest,
+    ) -> None:
+        for message in reversed(session.messages):
+            raw = message.get("tool_approval")
+            if not isinstance(raw, dict):
+                continue
+            if raw.get("approval_id") != request.approval_id:
+                continue
+            message["tool_approval"] = request.model_dump(mode="json")
+            return
+
     @staticmethod
     def _replace_last_assistant_content(
         messages: list[dict],
@@ -731,6 +994,20 @@ class AgentLoop:
             return
         for message in reversed(messages[skip:]):
             if message.get("role") == "assistant" and isinstance(message.get("content"), str):
+                message["content"] = content
+                return
+
+    @staticmethod
+    def _replace_first_user_content(
+        messages: list[dict],
+        skip: int,
+        content: str,
+    ) -> None:
+        """Replace persisted current user text with sanitized user input only."""
+        if not content:
+            return
+        for message in messages[skip:]:
+            if message.get("role") == "user" and isinstance(message.get("content"), str):
                 message["content"] = content
                 return
 
@@ -897,3 +1174,10 @@ class AgentLoop:
             msg, session_key=session_key, on_progress=on_progress,
             on_stream=on_stream, on_stream_end=on_stream_end,
         )
+
+
+def _tool_approval_message(request: ToolApprovalRequest) -> str:
+    return (
+        f"Tool approval required for `{request.tool_name}`. "
+        "This call would expose sensitive data to a non-local or side-effecting tool."
+    )

@@ -152,8 +152,9 @@ async def test_apply_privacy_math_persists_calc_placeholder(monkeypatch) -> None
     result = await apply_privacy_math_for_turn(response, "cli:test", turn_id="turn-1")
 
     assert result.display_text == "Result below\n25000"
-    assert "<<CALC_1>>" in result.remote_history_text
-    assert "Local calculation result for python_snippet_1" in result.remote_history_text
+    assert result.remote_history_text == "Result below\n<<CALC_1>>"
+    assert "python_snippet_1" not in result.remote_history_text
+    assert "Local calculation result" not in result.remote_history_text
     assert smap.placeholder_to_value["<<CALC_1>>"] == 25000
     assert smap.placeholder_to_computation["<<CALC_1>>"].expression == "FINANCE_1 * 0.25"
     assert saved == [smap]
@@ -196,7 +197,7 @@ async def test_apply_privacy_math_reuses_existing_calc_placeholder(monkeypatch) 
     result = await apply_privacy_math_for_turn(response, "cli:test", turn_id="turn-2")
 
     assert result.display_text == "Result below\n25000"
-    assert computation.placeholder in result.remote_history_text
+    assert result.remote_history_text == f"Result below\n{computation.placeholder}"
     assert smap.counters["CALC"] == 1
     assert save_calls == []
 
@@ -235,4 +236,4 @@ async def test_apply_privacy_math_skips_execution_when_calc_marker_exists(monkey
     result = await apply_privacy_math_for_turn(response, "cli:test", turn_id="turn-2")
 
     assert result.display_text == "Result below\n25000"
-    assert result.remote_history_text == response
+    assert result.remote_history_text == f"Result below\n{computation.placeholder}"

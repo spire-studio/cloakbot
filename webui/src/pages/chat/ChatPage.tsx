@@ -32,6 +32,7 @@ export function ChatPage({ onSessionNavigationChange }: ChatPageProps) {
     input,
     setInput,
     sendMessage,
+    approveToolCall,
     isAwaitingAssistant,
   } = useChatSession()
   const [privacyPanelOpen, setPrivacyPanelOpen] = useState(
@@ -89,6 +90,7 @@ export function ChatPage({ onSessionNavigationChange }: ChatPageProps) {
       input={input}
       setInput={setInput}
       onSend={sendMessage}
+      onApproveToolCall={approveToolCall}
       isAwaitingAssistant={isAwaitingAssistant}
       privacyPanelOpen={privacyPanelOpen}
       setPrivacyPanelOpen={setPrivacyPanelOpen}

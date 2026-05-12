@@ -359,6 +359,59 @@ export function useChatSession(options: UseChatSessionOptions = {}) {
     setInput('')
   }
 
+  const approveToolCall = (approvalId: string) => {
+    const targetSessionId = activeSessionId ?? sessions[0]?.id
+    if (!targetSessionId || inFlightAssistantSessionIdRef.current !== null) {
+      return
+    }
+
+    const socket = socketRef.current
+    if (!isSocketWritable(socket)) {
+      return
+    }
+
+    try {
+      const startedAt = Date.now()
+      socket.send(JSON.stringify({
+        type: 'tool_approval',
+        approvalId,
+        approved: true,
+      }))
+      setSessions((previousSessions) =>
+        previousSessions.map((session) => {
+          if (session.id !== targetSessionId) {
+            return session
+          }
+
+          return {
+            ...session,
+            messages: [
+              ...session.messages.map((message) => {
+                if (message.toolApproval?.approvalId !== approvalId) {
+                  return message
+                }
+                return {
+                  ...message,
+                  toolApproval: {
+                    ...message.toolApproval,
+                    status: 'approved' as const,
+                  },
+                }
+              }),
+              createPendingAssistantMessage(() => createMessageIdRef.current(), startedAt),
+            ],
+            updatedAt: Date.now(),
+          }
+        }),
+      )
+      inFlightAssistantSessionIdRef.current = targetSessionId
+      setIsAwaitingAssistant(true)
+    } catch {
+      inFlightAssistantSessionIdRef.current = null
+      setIsAwaitingAssistant(false)
+    }
+  }
+
   const startNewSession = () => {
     const sessionId = createSessionIdRef.current()
     const nextSession = createSessionRecord(sessionId, initialMessagesRef.current)
@@ -392,6 +445,7 @@ export function useChatSession(options: UseChatSessionOptions = {}) {
     input,
     setInput,
     sendMessage,
+    approveToolCall,
     isAwaitingAssistant,
   }
 }
