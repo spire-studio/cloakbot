@@ -157,7 +157,7 @@ export function EntitySummary({ snapshot }: EntitySummaryProps) {
           No entities match this search.
         </div>
       ) : (
-        <div className="space-y-2 rounded-xl bg-card/80">
+        <div className="space-y-2">
           {filteredEntities.map((entity) => {
             const extraAliases = entity.aliases.filter((alias) => alias !== entity.canonical)
             const isExpanded = expandedRows.has(entity.placeholder)
