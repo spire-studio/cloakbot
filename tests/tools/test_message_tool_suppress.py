@@ -1,7 +1,7 @@
 """Test message tool suppress logic for final replies."""
 
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -42,7 +42,11 @@ class TestMessageToolSuppressLogic:
             mt.set_send_callback(AsyncMock(side_effect=lambda m: sent.append(m)))
 
         msg = InboundMessage(channel="feishu", sender_id="user1", chat_id="chat123", content="Send")
-        result = await loop._process_message(msg)
+        with patch(
+            "cloakbot.privacy.runtime.tool_interceptor.sanitize_tool_output",
+            new=AsyncMock(side_effect=lambda text, *_args, **_kwargs: (text, False, [])),
+        ):
+            result = await loop._process_message(msg)
 
         assert len(sent) == 1
         assert result is None  # suppressed
@@ -67,7 +71,11 @@ class TestMessageToolSuppressLogic:
             mt.set_send_callback(AsyncMock(side_effect=lambda m: sent.append(m)))
 
         msg = InboundMessage(channel="feishu", sender_id="user1", chat_id="chat123", content="Send email")
-        result = await loop._process_message(msg)
+        with patch(
+            "cloakbot.privacy.runtime.tool_interceptor.sanitize_tool_output",
+            new=AsyncMock(side_effect=lambda text, *_args, **_kwargs: (text, False, [])),
+        ):
+            result = await loop._process_message(msg)
 
         assert len(sent) == 1
         assert sent[0].channel == "email"
@@ -107,7 +115,7 @@ class TestMessageToolSuppressLogic:
         async def on_progress(content: str, *, tool_hint: bool = False) -> None:
             progress.append((content, tool_hint))
 
-        final_content, _, _ = await loop._run_agent_loop([], on_progress=on_progress)
+        final_content, _, _, _ = await loop._run_agent_loop([], on_progress=on_progress)
 
         assert final_content == "Done"
         assert progress == [

@@ -3,6 +3,7 @@ import type {
   PrivacySnapshot,
   PrivacyTimeline,
   PrivacyTurn,
+  ToolApproval,
 } from '@/features/privacy/types'
 
 export type ChatMessage = {
@@ -12,6 +13,7 @@ export type ChatMessage = {
   createdAt: number
   privacyAnnotations?: PrivacyAnnotation[]
   assistantStatus?: ChatAssistantStatus
+  toolApproval?: ToolApproval
 }
 
 export type ChatAssistantStatus =
@@ -63,6 +65,7 @@ export type ChatSocketEvent =
       privacy?: PrivacySnapshot
       privacyTurn?: PrivacyTurn
       privacyTimeline?: PrivacyTimeline
+      toolApproval?: ToolApproval
     }
   | {
       type: 'assistant_delta'

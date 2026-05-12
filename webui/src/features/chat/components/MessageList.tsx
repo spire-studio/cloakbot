@@ -1,20 +1,21 @@
-import { Check, ChevronDown, ChevronRight, Copy } from 'lucide-react'
+import { Check, ChevronDown, ChevronRight, Copy, ShieldCheck } from 'lucide-react'
 import { useEffect, useRef, useState, type RefObject } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Chip } from '@/components/ui/chip'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import type { ChatAssistantStatus, ChatMessage } from '@/features/chat/types'
-import type { PrivacyTimeline, PrivacyTimelineEvent } from '@/features/privacy/types'
+import type { PrivacyTimeline, PrivacyTimelineEvent, ToolApproval } from '@/features/privacy/types'
 import { AnnotatedMarkdown } from '@/features/privacy/lib/annotated-markdown'
 import { cn } from '@/lib/utils'
 
 type MessageListProps = {
   messages: ChatMessage[]
   scrollRef: RefObject<HTMLDivElement | null>
+  onApproveToolCall: (approvalId: string) => void
 }
 
-export function MessageList({ messages, scrollRef }: MessageListProps) {
+export function MessageList({ messages, scrollRef, onApproveToolCall }: MessageListProps) {
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null)
   const copiedResetTimeoutRef = useRef<number | null>(null)
 
@@ -88,6 +89,13 @@ export function MessageList({ messages, scrollRef }: MessageListProps) {
                 )}
               </div>
 
+              {message.role === 'assistant' && message.toolApproval ? (
+                <ToolApprovalPanel
+                  approval={message.toolApproval}
+                  onApprove={onApproveToolCall}
+                />
+              ) : null}
+
               <div
                 className={cn(
                   'mt-2 flex items-center gap-1.5 text-[11px] text-muted-foreground transition-opacity',
@@ -115,6 +123,69 @@ export function MessageList({ messages, scrollRef }: MessageListProps) {
       </div>
     </ScrollArea>
   )
+}
+
+function ToolApprovalPanel({
+  approval,
+  onApprove,
+}: {
+  approval: ToolApproval
+  onApprove: (approvalId: string) => void
+}) {
+  const isPending = approval.status === 'pending'
+
+  return (
+    <div className="mt-3 w-full rounded-lg border border-border bg-card p-3 text-sm shadow-[0_4px_18px_var(--shadow-soft)]">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-2">
+          <ShieldCheck className="h-4 w-4 shrink-0 text-muted-foreground" />
+          <div className="min-w-0">
+            <div className="truncate font-medium text-foreground">
+              {approval.toolName}
+            </div>
+            <div className="text-xs text-muted-foreground">
+              {formatPrivacyClass(approval.privacyClass)} tool
+            </div>
+          </div>
+        </div>
+        <Chip className={isPending ? 'border-[var(--privacy-medium-border)] bg-[var(--privacy-medium-bg)] text-[var(--privacy-medium-text)]' : 'border-[var(--privacy-low-border)] bg-[var(--privacy-low-bg)] text-[var(--privacy-low-text)]'}>
+          {approval.status}
+        </Chip>
+      </div>
+
+      {approval.detectedEntities.length > 0 ? (
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          {approval.detectedEntities.map((entity, index) => (
+            <Chip key={`${approval.approvalId}-${entity.entity_type}-${index}`}>
+              {formatEventLabel(entity.entity_type)}
+            </Chip>
+          ))}
+        </div>
+      ) : null}
+
+      <pre className="mt-3 max-h-36 overflow-auto rounded-md bg-[var(--surface-subtle)] p-2 font-mono text-[11px] leading-5 text-muted-foreground">
+        {JSON.stringify(approval.restoredArguments, null, 2)}
+      </pre>
+
+      {isPending ? (
+        <div className="mt-3 flex justify-end">
+          <Button
+            type="button"
+            size="sm"
+            className="h-8 rounded-md px-3"
+            onClick={() => onApprove(approval.approvalId)}
+          >
+            <ShieldCheck className="h-3.5 w-3.5" />
+            <span>Approve</span>
+          </Button>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+function formatPrivacyClass(value: ToolApproval['privacyClass']) {
+  return value.replaceAll('_', ' ')
 }
 
 function formatMessageTime(timestamp: number) {

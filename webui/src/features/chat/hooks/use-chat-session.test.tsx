@@ -524,4 +524,57 @@ describe('useChatSession', () => {
       },
     })
   })
+
+  it('sends a tool approval payload and marks the approval message approved', () => {
+    vi.spyOn(Date, 'now').mockReturnValue(1000)
+    const socket = {
+      send: vi.fn(),
+      close: vi.fn(),
+      readyState: openReadyState,
+      onmessage: null as ((event: MessageEvent<string>) => void) | null,
+    }
+
+    const { result } = renderHook(() =>
+      useChatSession({
+        createSocket: () => socket,
+        initialMessages: [
+          {
+            id: 'assistant-approval',
+            role: 'assistant',
+            content: 'Tool approval required',
+            createdAt: 1,
+            toolApproval: {
+              approvalId: 'approval-1',
+              toolCallId: 'call-1',
+              toolName: 'web_search',
+              privacyClass: 'external',
+              remoteArguments: { query: 'hello <<PERSON_1>>' },
+              restoredArguments: { query: 'hello Alice' },
+              detectedEntities: [],
+              status: 'pending',
+            },
+          },
+        ],
+      }),
+    )
+
+    act(() => {
+      result.current.approveToolCall('approval-1')
+    })
+
+    expect(socket.send).toHaveBeenCalledWith(JSON.stringify({
+      type: 'tool_approval',
+      approvalId: 'approval-1',
+      approved: true,
+    }))
+    expect(result.current.messages[0]?.toolApproval?.status).toBe('approved')
+    expect(result.current.messages.at(-1)).toMatchObject({
+      role: 'assistant',
+      content: '',
+      assistantStatus: {
+        state: 'thinking',
+        startedAt: 1000,
+      },
+    })
+  })
 })

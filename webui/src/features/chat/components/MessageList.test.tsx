@@ -1,6 +1,6 @@
 import { createRef } from 'react'
 import { fireEvent, render, screen } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import type { ChatMessage } from '@/features/chat/types'
 import type { PrivacyTimeline } from '@/features/privacy/types'
@@ -45,7 +45,7 @@ describe('MessageList', () => {
       },
     ]
 
-    render(<MessageList messages={messages} scrollRef={createRef<HTMLDivElement>()} />)
+    render(<MessageList messages={messages} scrollRef={createRef<HTMLDivElement>()} onApproveToolCall={() => {}} />)
 
     expect(screen.getByText('Thinking')).toBeInTheDocument()
     expect(screen.getByText('Bot is thinking')).toBeInTheDocument()
@@ -69,7 +69,7 @@ describe('MessageList', () => {
       },
     ]
 
-    render(<MessageList messages={messages} scrollRef={createRef<HTMLDivElement>()} />)
+    render(<MessageList messages={messages} scrollRef={createRef<HTMLDivElement>()} onApproveToolCall={() => {}} />)
 
     expect(screen.getByText('Done in 12s')).toBeInTheDocument()
     expect(screen.getByText('Done in 12s').compareDocumentPosition(screen.getByText('Hi'))).toBeTruthy()
@@ -91,7 +91,7 @@ describe('MessageList', () => {
       },
     ]
 
-    render(<MessageList messages={messages} scrollRef={createRef<HTMLDivElement>()} />)
+    render(<MessageList messages={messages} scrollRef={createRef<HTMLDivElement>()} onApproveToolCall={() => {}} />)
 
     const toggle = screen.getByRole('button', { name: /Done in 12s/i })
     expect(toggle).toHaveTextContent('Privacy trace')
@@ -100,5 +100,42 @@ describe('MessageList', () => {
 
     expect(screen.getByText('Turn Sanitize Succeeded')).toBeInTheDocument()
     expect(screen.getByText('was_sanitized: true')).toBeInTheDocument()
+  })
+
+  it('renders a pending tool approval action', () => {
+    const onApproveToolCall = vi.fn()
+    const messages: ChatMessage[] = [
+      {
+        id: 'assistant-approval',
+        role: 'assistant',
+        content: 'Tool approval required',
+        createdAt: 2,
+        toolApproval: {
+          approvalId: 'approval-1',
+          toolCallId: 'call-1',
+          toolName: 'web_search',
+          privacyClass: 'external',
+          remoteArguments: { query: 'hello <<PERSON_1>>' },
+          restoredArguments: { query: 'hello Alice' },
+          detectedEntities: [{ text: 'Alice', entity_type: 'person', severity: 'high' }],
+          status: 'pending',
+        },
+      },
+    ]
+
+    render(
+      <MessageList
+        messages={messages}
+        scrollRef={createRef<HTMLDivElement>()}
+        onApproveToolCall={onApproveToolCall}
+      />,
+    )
+
+    expect(screen.getByText('web_search')).toBeInTheDocument()
+    expect(screen.getByText('external tool')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /Approve/i }))
+
+    expect(onApproveToolCall).toHaveBeenCalledWith('approval-1')
   })
 })

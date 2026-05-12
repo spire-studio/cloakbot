@@ -7,7 +7,10 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from cloakbot.privacy.core.math.math_executor import LocalComputationRecord
 from cloakbot.privacy.core.sanitization.restorer import RestoredTokenAnnotation
+from cloakbot.privacy.core.types import DetectedEntity
+from cloakbot.privacy.tool_models import ToolApprovalStatus
 from cloakbot.privacy.transparency.report import SessionPrivacySnapshot
+from cloakbot.tool_privacy import ToolPrivacyClass
 
 WEBUI_PRIVACY_METADATA_KEY = "webuiPrivacy"
 
@@ -17,7 +20,10 @@ class WebUIModel(BaseModel):
 
 
 class WebUIUserMessage(WebUIModel):
-    content: str
+    type: Literal["message", "tool_approval"] = "message"
+    content: str = ""
+    approval_id: str | None = Field(default=None, alias="approvalId")
+    approved: bool = True
 
 
 class WebUIStatusData(BaseModel):
@@ -27,11 +33,34 @@ class WebUIStatusData(BaseModel):
     frontend_built: bool = Field(alias="frontendBuilt")
 
 
+class WebUIToolResult(WebUIModel):
+    tool_call_id: str = Field(alias="toolCallId")
+    tool_name: str = Field(alias="toolName")
+    remote_arguments: dict[str, Any] = Field(alias="remoteArguments")
+    sanitized_output: str = Field(alias="sanitizedOutput")
+    was_sanitized: bool = Field(alias="wasSanitized")
+
+
+class WebUIToolApproval(WebUIModel):
+    model_config = ConfigDict(extra="ignore", populate_by_name=True)
+
+    approval_id: str = Field(alias="approvalId")
+    tool_call_id: str = Field(alias="toolCallId")
+    tool_name: str = Field(alias="toolName")
+    privacy_class: ToolPrivacyClass = Field(alias="privacyClass")
+    remote_arguments: dict[str, Any] = Field(alias="remoteArguments")
+    restored_arguments: dict[str, Any] = Field(alias="restoredArguments")
+    detected_entities: list[DetectedEntity] = Field(default_factory=list, alias="detectedEntities")
+    status: ToolApprovalStatus
+
+
 class WebUIPrivacyTurn(WebUIModel):
     turn_id: str = Field(alias="turnId")
     intent: Literal["chat", "math", "doc"]
     remote_prompt: str = Field(alias="remotePrompt")
     local_computations: list[LocalComputationRecord] = Field(alias="localComputations")
+    tool_results: list[WebUIToolResult] = Field(default_factory=list, alias="toolResults")
+    tool_approvals: list[WebUIToolApproval] = Field(default_factory=list, alias="toolApprovals")
 
 
 class WebUIPrivacyTimelineEvent(WebUIModel):
@@ -89,6 +118,7 @@ class WebUIAssistantMessageEvent(WebUIModel):
     privacy_annotations: list[RestoredTokenAnnotation] | None = Field(default=None, alias="privacyAnnotations")
     privacy_turn: WebUIPrivacyTurn | None = Field(default=None, alias="privacyTurn")
     privacy_timeline: WebUIPrivacyTimeline | None = Field(default=None, alias="privacyTimeline")
+    tool_approval: WebUIToolApproval | None = Field(default=None, alias="toolApproval")
 
 
 class WebUIAssistantDeltaEvent(WebUIModel):

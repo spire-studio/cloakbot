@@ -15,6 +15,7 @@ from loguru import logger
 
 from cloakbot.agent.tools.base import Tool, tool_parameters
 from cloakbot.agent.tools.schema import IntegerSchema, StringSchema, tool_parameters_schema
+from cloakbot.tool_privacy import ToolPrivacyClass
 from cloakbot.utils.helpers import build_image_content_blocks
 
 if TYPE_CHECKING:
@@ -95,6 +96,10 @@ class WebSearchTool(Tool):
     @property
     def read_only(self) -> bool:
         return True
+
+    @property
+    def privacy_class(self) -> ToolPrivacyClass:
+        return ToolPrivacyClass.EXTERNAL
 
     async def execute(self, query: str, count: int | None = None, **kwargs: Any) -> str:
         provider = self.config.provider.strip().lower() or "brave"
@@ -248,6 +253,10 @@ class WebFetchTool(Tool):
     @property
     def read_only(self) -> bool:
         return True
+
+    @property
+    def privacy_class(self) -> ToolPrivacyClass:
+        return ToolPrivacyClass.EXTERNAL
 
     async def execute(
         self,

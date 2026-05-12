@@ -76,6 +76,22 @@ def test_save_turn_keeps_tool_results_under_16k() -> None:
     assert session.messages[0]["content"] == content
 
 
+def test_replace_first_user_content_removes_remote_only_instruction() -> None:
+    messages = [
+        {"role": "system", "content": "system"},
+        {
+            "role": "user",
+            "content": "Tax <<FINANCE_1>>\n\n### PRIVACY MODE ENABLED ###\nremote-only contract",
+        },
+        {"role": "assistant", "content": "ok"},
+    ]
+
+    AgentLoop._replace_first_user_content(messages, 1, "Tax <<FINANCE_1>>")
+
+    assert messages[1]["content"] == "Tax <<FINANCE_1>>"
+    assert "PRIVACY MODE" not in messages[1]["content"]
+
+
 def test_restore_runtime_checkpoint_rehydrates_completed_and_pending_tools() -> None:
     loop = _mk_loop()
     session = Session(

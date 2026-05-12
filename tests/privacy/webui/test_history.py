@@ -21,6 +21,7 @@ def test_webui_privacy_history_round_trips_payloads(tmp_path: Path) -> None:
             intent="chat",
             remotePrompt="hello <<PERSON_1>>",
             localComputations=[],
+            toolResults=[],
         ),
         privacyTimeline=WebUIPrivacyTimeline(
             turnId="turn-1",

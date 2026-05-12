@@ -5,6 +5,7 @@ from __future__ import annotations
 from loguru import logger
 
 from cloakbot.privacy.core.detection.detector import PiiDetector
+from cloakbot.privacy.core.detection.general_detector import scan_partial_candidates
 from cloakbot.privacy.core.sanitization.handler import apply_tokens
 from cloakbot.privacy.core.sanitization.restorer import (
     RestoredTokenAnnotation,
@@ -15,6 +16,15 @@ from cloakbot.privacy.core.state.vault import _SessionMap, get_map, save_map
 from cloakbot.privacy.core.types import DetectedEntity, DetectionResult
 
 _detector = PiiDetector()
+_ALIAS_PRONE_ENTITY_TYPES = {"person", "org"}
+
+
+def _alias_prone_vault_entries(smap: _SessionMap) -> list[dict[str, str]]:
+    return [
+        {"canonical": entity.canonical, "type": entity.entity_type}
+        for entity in smap.placeholder_to_entity.values()
+        if entity.entity_type in _ALIAS_PRONE_ENTITY_TYPES and entity.canonical
+    ]
 
 
 async def _sanitize_with_detection(
@@ -28,7 +38,13 @@ async def _sanitize_with_detection(
     pre_swapped, pre_swapped_modified = smap.replace_known_originals(text)
 
     try:
-        detection: DetectionResult = await _detector.detect(pre_swapped)
+        detection: DetectionResult = await _detector.detect(
+            pre_swapped,
+            partial_candidates=scan_partial_candidates(
+                pre_swapped,
+                _alias_prone_vault_entries(smap),
+            ),
+        )
     except Exception:
         if fail_open:
             logger.warning(

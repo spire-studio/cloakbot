@@ -37,6 +37,7 @@ function PanelSection({ title, description, children }: PanelSectionProps) {
 
 export function PrivacyPanel({ open, onToggle, snapshot, turns }: PrivacyPanelProps) {
   const totalComputations = turns.reduce((sum, turn) => sum + turn.localComputations.length, 0)
+  const totalToolResults = turns.reduce((sum, turn) => sum + (turn.toolResults?.length ?? 0), 0)
   const highSeverityCount = snapshot.entities.filter((entity) => entity.severity === 'high').length
   const mathTurnCount = turns.filter((turn) => turn.intent === 'math').length
 
@@ -120,8 +121,16 @@ export function PrivacyPanel({ open, onToggle, snapshot, turns }: PrivacyPanelPr
               </div>
             </div>
             <div className="mt-2 rounded-md border border-border/70 bg-card/70 px-2 py-1.5">
-              <div className="text-[11px] text-muted-foreground">Local computations</div>
-              <div className="mt-0.5 text-sm font-semibold text-foreground">{totalComputations}</div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <div className="text-[11px] text-muted-foreground">Local computations</div>
+                  <div className="mt-0.5 text-sm font-semibold text-foreground">{totalComputations}</div>
+                </div>
+                <div>
+                  <div className="text-[11px] text-muted-foreground">Tool results</div>
+                  <div className="mt-0.5 text-sm font-semibold text-foreground">{totalToolResults}</div>
+                </div>
+              </div>
             </div>
           </div>
 

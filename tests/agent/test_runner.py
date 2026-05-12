@@ -9,9 +9,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from cloakbot.config.schema import AgentDefaults
 from cloakbot.agent.tools.base import Tool
 from cloakbot.agent.tools.registry import ToolRegistry
+from cloakbot.bus.events import InboundMessage
+from cloakbot.config.schema import AgentDefaults
+from cloakbot.privacy.hooks.context import TurnContext
 from cloakbot.providers.base import LLMResponse, ToolCallRequest
 
 _MAX_TOOL_RESULT_CHARS = AgentDefaults().max_tool_result_chars
@@ -734,7 +736,7 @@ async def test_loop_max_iterations_message_stays_stable(tmp_path):
     loop.tools.execute = AsyncMock(return_value="ok")
     loop.max_iterations = 2
 
-    final_content, _, _ = await loop._run_agent_loop([])
+    final_content, _, _, _ = await loop._run_agent_loop([])
 
     assert final_content == (
         "I reached the maximum number of tool call iterations (2) "
@@ -761,7 +763,7 @@ async def test_loop_stream_filter_handles_think_only_prefix_without_crashing(tmp
     async def on_stream_end(*, resuming: bool = False) -> None:
         endings.append(resuming)
 
-    final_content, _, _ = await loop._run_agent_loop(
+    final_content, _, _, _ = await loop._run_agent_loop(
         [],
         on_stream=on_stream,
         on_stream_end=on_stream_end,
@@ -770,6 +772,86 @@ async def test_loop_stream_filter_handles_think_only_prefix_without_crashing(tmp
     assert final_content == "Hello"
     assert deltas == ["Hello"]
     assert endings == [False]
+
+
+@pytest.mark.asyncio
+async def test_process_message_drops_streamed_tool_call_prelude(tmp_path):
+    from cloakbot.agent.loop import AgentLoop
+    from cloakbot.bus.queue import MessageBus
+
+    bus = MessageBus()
+    provider = MagicMock()
+    provider.get_default_model.return_value = "test-model"
+    loop = AgentLoop(bus=bus, provider=provider, workspace=tmp_path)
+    loop.context.build_system_prompt = MagicMock(return_value="system")
+    loop.context.memory.get_token_estimate = MagicMock(return_value=0)
+    loop.consolidator.maybe_consolidate_by_tokens = AsyncMock()
+
+    def close_background(coro) -> None:
+        coro.close()
+
+    loop._schedule_background = close_background
+
+    call_count = {"n": 0}
+
+    async def chat_stream_with_retry(*, on_content_delta, **kwargs):
+        call_count["n"] += 1
+        if call_count["n"] == 1:
+            await on_content_delta("I will read the file.")
+            return LLMResponse(
+                content="I will read the file.",
+                tool_calls=[
+                    ToolCallRequest(
+                        id="call_1",
+                        name="list_dir",
+                        arguments={"path": "."},
+                    )
+                ],
+            )
+        await on_content_delta("Final answer")
+        return LLMResponse(content="Final answer", tool_calls=[])
+
+    async def fake_pre_llm_hook(*args, **kwargs):
+        return "read files", TurnContext(
+            session_key="webui:test",
+            turn_id="turn-1",
+            raw_input="read files",
+        )
+
+    async def fake_post_llm_hook(text, *args, **kwargs):
+        return text
+
+    provider.chat_stream_with_retry = chat_stream_with_retry
+    deltas: list[str] = []
+    endings: list[bool] = []
+
+    async def on_stream(delta: str) -> None:
+        deltas.append(delta)
+
+    async def on_stream_end(*, resuming: bool = False, **kwargs) -> None:
+        endings.append(resuming)
+
+    with patch("cloakbot.agent.loop.pre_llm_hook", new=fake_pre_llm_hook), patch(
+        "cloakbot.agent.loop.post_llm_hook",
+        new=fake_post_llm_hook,
+    ):
+        response = await loop._process_message(
+            InboundMessage(
+                channel="webui",
+                sender_id="user",
+                chat_id="test",
+                content="read files",
+                metadata={"_wants_stream": True},
+            ),
+            on_stream=on_stream,
+            on_stream_end=on_stream_end,
+        )
+
+    assert "".join(deltas) == "Final answer"
+    assert "I will read the file." not in "".join(deltas)
+    assert endings == [True, False]
+    assert response is not None
+    assert response.content == "Final answer"
 
 
 @pytest.mark.asyncio
@@ -785,7 +867,7 @@ async def test_loop_retries_think_only_final_response(tmp_path):
 
     loop.provider.chat_with_retry = chat_with_retry
 
-    final_content, _, _ = await loop._run_agent_loop([])
+    final_content, _, _, _ = await loop._run_agent_loop([])
 
     assert final_content == "Recovered answer"
     assert call_count["n"] == 2
