@@ -12,7 +12,6 @@ from cloakbot.privacy.tool_models import ToolApprovalRequest, ToolPrivacyRecord
 class Intent(str, Enum):
     CHAT = "chat"
     MATH = "math"
-    DOC = "doc"
 
 
 @dataclass

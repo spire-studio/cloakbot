@@ -56,7 +56,7 @@ class WebUIToolApproval(WebUIModel):
 
 class WebUIPrivacyTurn(WebUIModel):
     turn_id: str = Field(alias="turnId")
-    intent: Literal["chat", "math", "doc"]
+    intent: Literal["chat", "math"]
     remote_prompt: str = Field(alias="remotePrompt")
     local_computations: list[LocalComputationRecord] = Field(alias="localComputations")
     tool_results: list[WebUIToolResult] = Field(default_factory=list, alias="toolResults")

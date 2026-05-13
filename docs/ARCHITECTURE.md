@@ -48,7 +48,7 @@ Detailed behavior lives in `domains/privacy.md`.
   execution.
 - `cloakbot/privacy/runtime/tool_interceptor.py` - restores tool arguments for
   local execution, requests approval for non-local sensitive tool inputs, and
-  sanitizes tool results before model reuse.
+  sanitizes tool results, including file/document reads, before model reuse.
 - `cloakbot/privacy/protocol/` - strict event contracts, metrics, observability,
   and replay helpers.
 - `cloakbot/privacy/webui/` - backend contracts and builders for WebUI privacy

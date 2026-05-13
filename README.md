@@ -50,12 +50,13 @@ User message
         • Run GeneralPrivacyDetector + DigitPrivacyDetector locally via vLLM
         • Replace sensitive spans with typed tokens  e.g. "Alice" → <<PERSON_1>>
         • Persist session Vault (token ↔ raw mapping, plus numeric values when needed)
-        • Classify intent locally (chat / math / doc)
+        • Classify intent locally (chat / math)
         • Route turn to ChatAgent or MathAgent
   └─► [Remote LLM — Claude / GPT / Gemini]
         • Receives sanitized prompt only
         • For math turns: receives an extra contract to emit <python_snippet_N> blocks
         • Responds using placeholders instead of raw values
+        • Tool results are sanitized before reuse in later model calls
   └─► [post_llm_hook → local post-processing]
         • Execute arithmetic-only math snippets with real values from Vault
         • Restore <<PERSON_1>> → "Alice"
@@ -148,7 +149,9 @@ CloakBot uses a **hybrid multi-agent architecture** inside the privacy layer: a 
          Output → User ✓
 ```
 
-`Intent.DOC` is currently a deliberate routing policy that maps document turns to `ChatAgent`. There is no separate `DocAgent` yet.
+Document and dataset work is handled through normal chat/tool turns. Local tools
+may read raw files, but tool results are sanitized before they are reused by the
+remote model.
 
 ### Agents
 
@@ -158,24 +161,23 @@ CloakBot uses a **hybrid multi-agent architecture** inside the privacy layer: a 
 | **PiiDetector** | Runs the general detector and digit detector concurrently, then deduplicates results | Gemma 4 via vLLM |
 | **GeneralPrivacyDetector** | Extracts non-computable sensitive spans such as names, IDs, secrets, org names | Gemma 4 via vLLM |
 | **DigitPrivacyDetector** | Extracts sensitive numeric/temporal spans and normalizes values for later math | Gemma 4 via vLLM |
-| **IntentAnalyzer** | Classifies turns as `chat`, `math`, or `doc` | Gemma 4 via vLLM |
+| **IntentAnalyzer** | Classifies turns as `chat` or `math` | Gemma 4 via vLLM |
 | **Handler + Vault** | Applies `<<TAG_N>>` placeholders and persists the session mapping | Rule-based + JSON file |
 | **ChatAgent** | Sends sanitized text upstream and returns the response unchanged until restoration | Rule-based |
 | **MathAgent** | Adds the snippet contract before the remote call and executes validated snippets locally after the call | Remote LLM + local executor |
 | **Restorer** | Restores placeholders with a single regex pass | Rule-based |
 | **Transparency Report** | Renders a per-turn markdown summary of masked entities | Rule-based |
-| **ToolPrivacyInterceptor** | Restores local tool inputs, gates sensitive non-local tool calls, and sanitizes tool outputs before model reuse | Rule-based + detector |
+| **ToolPrivacyInterceptor** | Restores local tool inputs, gates sensitive non-local tool calls, and sanitizes tool outputs, including file/document reads, before model reuse | Rule-based + detector |
 
 ### Detector Passes (Defense in Depth)
 
 The current runtime enforces input sanitization before the remote LLM call and
 tool-output sanitization when tool calls are routed through the privacy
-interceptor:
+interceptor. Restored remote-model responses are not re-detected by design.
 
 ```
 Pass 1  user input        → prevent raw PII from leaving device
-Pass 2  LLM response      → planned, not wired yet
-Pass 3  tool call output  → sanitize results before model reuse
+Pass 2  tool call output  → sanitize results before model reuse
 ```
 
 `ToolPrivacyInterceptor` also restores placeholders before local tool execution
@@ -198,14 +200,20 @@ The local executor is deliberately narrow: it parses the snippet as Python AST, 
 
 ### Document & Dataset Privacy (Goal 3)
 
-This part of the README was ahead of the code. The current implementation does **not** ship a document or dataset privacy pipeline yet.
+Document privacy is part of tool privacy, not a separate document-worker pipeline.
+When the agent needs file, document, or dataset content, it uses local tools such
+as `read_file`, `grep`, or future structured readers. Those tools may inspect
+raw local content, but `ToolPrivacyInterceptor.sanitize_tool_result()` sanitizes
+the result before it is sent back to the remote model.
 
-What exists today:
-1. The intent analyzer can classify a turn as `doc`.
-2. The runtime preserves that intent.
-3. `Intent.DOC` is intentionally handled by `ChatAgent` until a dedicated document pipeline exists.
+This keeps one trust boundary for every tool-sourced document:
 
-So document privacy is a roadmap item, not a current feature.
+```
+local tool reads raw document
+  → tool result is sanitized with the session Vault
+  → remote model receives sanitized content only
+  → final user-visible answer may be restored locally
+```
 
 ### Tool Call Privacy (Goal 4)
 
@@ -251,7 +259,7 @@ cloakbot/
 │   │   │       └── vault.py         Session-scoped token/value map on disk
 │   │   ├── runtime/
 │   │   │   ├── pipeline.py      Top-level privacy coordinator
-│   │   │   ├── routing.py       chat/math/doc routing
+│   │   │   ├── routing.py       chat/math routing
 │   │   │   ├── registry.py      Worker registration and lookup
 │   │   │   └── tool_interceptor.py  Tool input/output privacy boundary
 │   │   ├── agents/
@@ -290,17 +298,15 @@ Session-level placeholder mappings are persisted as JSON under `~/.cloakbot/work
 - [x] Final output restoration via placeholder remap
 - [x] Web UI chat interface
 - [x] PrivacyRuntime with turn-scoped context
-- [x] Local intent analysis and chat/math/doc routing
+- [x] Local intent analysis and chat/math routing
 - [x] MathAgent snippet contract plus local arithmetic execution
 - [x] Multi-turn conversation privacy protection
 - [x] Web UI polish and usability improvements
 - [x] ToolPrivacyInterceptor for tool input restoration and output sanitization
 
 ### 🔨 v0.2 — Trust Boundary Expansion
-- [ ] Concrete `DocAgent` implementation
-- [ ] Chunk-map-aggregate document flow with shared Vault
-- [ ] Dataset-specific schema and column sanitization
-- [ ] Response-side detector pass after remote LLM output
+- [ ] Chunked sanitization for large file/document tool outputs
+- [ ] Dataset/table-specific tool output sanitization
 
 ### 🚀 v0.3 — Production Readiness
 - [ ] Encrypted Vault persistence option
@@ -379,7 +385,7 @@ uv run python -m cloakbot webui
 
 **Hook-based integration** — the privacy layer is largely isolated under `cloakbot/privacy/` and integrates into the main runtime through `pre_llm_hook` and `post_llm_hook` in [loop.py](/Users/laurieluo/Documents/github/my-repos/cloakbot/cloakbot/agent/loop.py:574).
 
-**Roadmap already scaffolded in code** — document intent exists, but a dedicated document privacy pipeline is not implemented yet. Tool privacy now has a concrete interceptor.
+**Documents are tool-sourced privacy data** — there is no separate document intent or document worker. Document and dataset protection belongs at the tool output boundary so file reads, grep results, and future structured readers all share the same sanitizer/Vault path.
 
 ---
 

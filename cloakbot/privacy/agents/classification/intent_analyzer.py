@@ -10,19 +10,17 @@ _INTENT_SYSTEM_PROMPT = """You are an intent classifier for a privacy pipeline.
 Classify the user's message into exactly one intent:
 - chat: normal conversation, Q&A, planning, coding, or explanations without core numeric computation tasks.
 - math: asks to compute, compare, forecast, or evaluate numeric scenarios.
-- doc: asks to process document/file/attachment content.
 
 Priority rules:
 1. If the message includes both explanation/chat and a concrete numeric calculation task, choose "math".
 2. If the message asks to process an attachment/document and also asks for calculations on that document, choose "math".
-3. Choose "doc" only when the core task is document processing without explicit numeric computation.
-4. Choose "chat" only when neither math nor doc applies.
-5. Information restatement is NOT computation. Example: "What is his monthly salary?" when the value is already present -> "chat".
-6. Use "math" only when an actual arithmetic operation or quantitative comparison is requested.
+3. Choose "chat" for document, file, attachment, and dataset processing without explicit numeric computation. Document privacy is enforced at the tool-output boundary, not by a separate document intent.
+4. Information restatement is NOT computation. Example: "What is his monthly salary?" when the value is already present -> "chat".
+5. Use "math" only when an actual arithmetic operation or quantitative comparison is requested.
 
 Return ONLY valid JSON:
 {
-  "intent": "<chat|math|doc>"
+  "intent": "<chat|math>"
 }
 """
 
@@ -47,8 +45,6 @@ class UserIntentAnalyzer:
         raw_intent = str(data.get("intent", "")).strip().lower()
         if raw_intent == Intent.MATH.value:
             return Intent.MATH
-        if raw_intent == Intent.DOC.value:
-            return Intent.DOC
         if raw_intent == Intent.CHAT.value:
             return Intent.CHAT
 

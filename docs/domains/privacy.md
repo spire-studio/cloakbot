@@ -24,9 +24,8 @@ should see placeholders, not raw sensitive values.
    sanitization handler.
 6. The session Vault stores placeholder identity, aliases, normalized values for
    computable entities, and local computation records.
-7. `IntentAnalyzer` classifies the raw user input as `chat`, `math`, or `doc`.
-8. `runtime/registry.py` maps `chat` to `ChatAgent`, `math` to `MathAgent`, and
-   `doc` to `ChatAgent`.
+7. `IntentAnalyzer` classifies the raw user input as `chat` or `math`.
+8. `runtime/registry.py` maps `chat` to `ChatAgent` and `math` to `MathAgent`.
 9. The remote LLM receives only the sanitized prompt.
 10. `post_llm_hook()` calls `PrivacyRuntime.finalize_turn()`.
 11. Math turns execute validated snippet blocks locally, then responses are
@@ -41,13 +40,15 @@ Local trusted zone:
 - Vault contents and placeholder mappings.
 - Local math execution.
 - Tool arguments after restoration when running local tools.
+- Raw local tool results before sanitization, including file and document
+  contents read by local tools.
 - Final token restoration and WebUI privacy payload construction.
 
 Remote or untrusted zone:
 
 - Remote LLM providers.
 - External tools and side-effecting tools.
-- Any tool result that will be fed back into the model.
+- Sanitized tool results that are fed back into the model.
 
 ## Token And Vault Invariants
 
@@ -84,6 +85,9 @@ The code now includes a concrete `ToolPrivacyInterceptor`:
 - Tool inputs are restored before local execution.
 - Non-local sensitive tool arguments trigger `ToolApprovalRequiredError`.
 - Tool results are sanitized before they can be reused by the model.
+- Document, file, and dataset content enters the remote boundary through this
+  same tool-result sanitization path; there is no separate document-worker
+  pipeline.
 - Tool records and approval requests are attached to `TurnContext` for reports
   and WebUI payloads.
 
@@ -99,15 +103,15 @@ When adding a tool, assign the least permissive accurate privacy class.
 
 - Input-side sanitization is mandatory in normal turns, but the current runtime
   uses `fail_open=True` from `AgentLoop.process_message()`.
-- `post_llm_hook()` restores placeholders and applies math finalization. It does
-  not currently run a second LLM-response PII detector pass despite the older
-  docstring wording.
+- `post_llm_hook()` restores placeholders and applies math finalization. By
+  design, restored remote-model responses do not run a second PII detector pass.
 - User-visible responses and WebUI display history may contain restored
   sensitive values by design. Use `sanitized_input`, WebUI `remotePrompt`, saved
   remote-history output, and privacy payloads to evaluate what crossed the
   remote model boundary.
-- `Intent.DOC` is recognized but intentionally routes to `ChatAgent`; there is
-  no dedicated document privacy pipeline yet.
+- Document-style requests are regular `chat` turns unless they require numeric
+  computation. Privacy for documents read by tools is enforced by
+  `ToolPrivacyInterceptor.sanitize_tool_result()`.
 - WebUI receives privacy snapshots, annotations, turn data, and timelines from
   `cloakbot/privacy/webui/builders.py`.
 

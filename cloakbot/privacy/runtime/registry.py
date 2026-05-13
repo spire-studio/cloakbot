@@ -8,7 +8,6 @@ from cloakbot.privacy.hooks.context import Intent
 _WORKERS: dict[Intent, BaseAgent] = {
     Intent.CHAT: ChatAgent(),
     Intent.MATH: MathAgent(),
-    Intent.DOC: ChatAgent(),
 }
 
 

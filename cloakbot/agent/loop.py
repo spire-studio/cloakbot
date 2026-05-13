@@ -646,8 +646,8 @@ class AgentLoop:
             )
 
         # ── Stream buffering for post-processing ───────────────────────────
-        # Buffer streamed tokens so post-response privacy checks and restoration
-        # run before user-visible output.
+        # Buffer streamed tokens so local post-processing and restoration run
+        # before user-visible output.
         _stream_buf: list[str] = []
 
         async def _finalize_response_text(raw_text: str) -> str:

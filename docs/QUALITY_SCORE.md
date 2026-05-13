@@ -9,7 +9,7 @@ strategy or known gaps change.
 | --- | --- | --- |
 | Privacy core | B+ | Broad unit coverage exists for detectors, Vault, sanitizer, math, routing, protocol, and WebUI builders. Local model availability remains an integration variable. |
 | Tool privacy | B | Interceptor and tests exist; approval and side-effect UX should keep receiving focused regression tests. |
-| WebUI privacy panel | B | Privacy payload rendering and chat socket behavior have tests; visual regressions still need manual or browser verification. |
+| WebUI privacy panel | B | Privacy payload rendering and chat socket behavior have tests; automated screenshot regression is not currently planned. |
 | Documentation harness | B | `docs/` now carries structured knowledge; no mechanical doc freshness check exists yet. |
 
 ## Required Checks By Change Type

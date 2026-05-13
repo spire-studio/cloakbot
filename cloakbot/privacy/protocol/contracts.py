@@ -50,7 +50,7 @@ class ContractMeta(BaseModel):
 class TurnContextPayload(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    intent: Literal["chat", "math", "doc"]
+    intent: Literal["chat", "math"]
     channel: Literal["cli", "gateway", "webui", "api"]
     privacy_stage: PrivacyStage
 
@@ -67,7 +67,7 @@ class AgentTaskSpec(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     task_id: str
-    task_type: Literal["intent_analysis", "math_exec", "doc_parse", "tool_chain"]
+    task_type: Literal["intent_analysis", "math_exec", "tool_chain"]
     mode: Literal["sync", "async"]
     priority: Literal["p0", "p1", "p2"]
     deadline_ms: int
