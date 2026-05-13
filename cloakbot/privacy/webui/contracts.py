@@ -10,6 +10,7 @@ from cloakbot.privacy.core.sanitization.restorer import RestoredTokenAnnotation
 from cloakbot.privacy.core.types import DetectedEntity
 from cloakbot.privacy.tool_models import ToolApprovalStatus
 from cloakbot.privacy.transparency.report import SessionPrivacySnapshot
+from cloakbot.privacy.visual_redaction import VisualPrivacyRedaction
 from cloakbot.tool_privacy import ToolPrivacyClass
 
 WEBUI_PRIVACY_METADATA_KEY = "webuiPrivacy"
@@ -39,6 +40,7 @@ class WebUIToolResult(WebUIModel):
     remote_arguments: dict[str, Any] = Field(alias="remoteArguments")
     sanitized_output: str = Field(alias="sanitizedOutput")
     was_sanitized: bool = Field(alias="wasSanitized")
+    visual_redactions: list[VisualPrivacyRedaction] = Field(default_factory=list, alias="visualRedactions")
 
 
 class WebUIToolApproval(WebUIModel):

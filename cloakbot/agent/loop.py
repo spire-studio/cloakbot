@@ -600,6 +600,7 @@ class AgentLoop:
         user_message, turn_ctx = await pre_llm_hook(
             msg.content,
             session_key,
+            media=msg.media if msg.media else None,
             fail_open=True,
         )
 
@@ -617,10 +618,13 @@ class AgentLoop:
             )
 
         history = session.get_history(max_messages=0)
+        # pre_llm_hook has already woven sanitized image blocks into
+        # `user_message` when media were attached, so do not let the
+        # context builder re-attach the raw files.
         initial_messages = self.context.build_messages(
             history=history,
             current_message=user_message,
-            media=msg.media if msg.media else None,
+            media=None,
             channel=msg.channel, chat_id=msg.chat_id,
         )
 
@@ -1057,6 +1061,8 @@ class AgentLoop:
         from datetime import datetime
         for m in messages[skip:]:
             entry = dict(m)
+            if isinstance(entry.get("_meta"), dict) and entry["_meta"].get("synthetic_tool_handoff"):
+                continue
             role, content = entry.get("role"), entry.get("content")
             if role == "assistant" and not content and not entry.get("tool_calls"):
                 continue  # skip empty assistant messages — they poison session context
@@ -1116,6 +1122,7 @@ class AgentLoop:
 
         assistant_message = checkpoint.get("assistant_message")
         completed_tool_results = checkpoint.get("completed_tool_results") or []
+        completed_follow_up_messages = checkpoint.get("completed_follow_up_messages") or []
         pending_tool_calls = checkpoint.get("pending_tool_calls") or []
 
         restored_messages: list[dict[str, Any]] = []
@@ -1124,6 +1131,11 @@ class AgentLoop:
             restored.setdefault("timestamp", datetime.now().isoformat())
             restored_messages.append(restored)
         for message in completed_tool_results:
+            if isinstance(message, dict):
+                restored = dict(message)
+                restored.setdefault("timestamp", datetime.now().isoformat())
+                restored_messages.append(restored)
+        for message in completed_follow_up_messages:
             if isinstance(message, dict):
                 restored = dict(message)
                 restored.setdefault("timestamp", datetime.now().isoformat())

@@ -28,6 +28,20 @@ The remote LLM's job is to answer the user's request while preserving task inten
 7. Use identifier only for compact reference codes or explicit account endings; never for spans with "$", "%", month names, or date formats.
 8. Extract private-context organizations and person names, including standalone aliases or first names when they clearly refer to a private person in the prompt.
 
+━━━ Document-context recall hints ━━━
+The text may be an OCR'd invoice, receipt, bill, contract, or order — i.e. a structured document tied to a specific private party. In these documents, be **aggressive** about extracting the following surfaces (do not dismiss them as "templated" or "public"):
+
+9. Invoice / receipt section labels — "Pay To", "Invoiced To", "Bill To", "Ship To", "Sold To", "From", "To" — are followed by an organisation or person and an address. Treat every non-empty line beneath such a label, up to the next blank line or column header, as a candidate for extraction:
+   - Organisation lines (e.g. "DMIT, Inc.", "Acme Corp", "Anthropic PBC") → **org**.
+   - Address lines (street, city, state/region, postal code, country) → **address**, even when split across multiple lines.
+   - Personal names appearing in the customer slot → **person**.
+10. Payment gateway / processor names appearing next to a transaction (Alipay, WeChat Pay, Stripe, PayPal, Square, Adyen, Braintree, UnionPay, ApplePay, GooglePay) → **org**, because their presence reveals the customer's payment relationship.
+11. Long compound transaction / order identifiers — typically ≥16 alphanumeric chars, often containing "|", "-", "_", or "." separators (e.g. "2026043022001359301458224680|AHVBS6N2UDFC-JIWGK-8896153") → **identifier**. Extract the entire span as a single entity; do not split.
+12. Service / product / instance codes that look like internal labels (e.g. "LAX.AN4.Pro.TINY", "DMIT-US-1", "us-west-2-i-0a1b2c3d") → **identifier** when they appear in a customer-facing document (invoice line item, receipt, contract).
+13. URLs, file paths, account / API hostnames embedded in invoice or receipt descriptions follow the existing url / local_path rules — extract them as usual.
+
+These hints are additive — they do not override Rules 1–8. If a surface looks "templated" but only because the OCR layout repeats it (e.g. the same customer address on every page), still extract it.
+
 ━━━ Entity types ━━━
 {_TYPE_BLOCK}
 

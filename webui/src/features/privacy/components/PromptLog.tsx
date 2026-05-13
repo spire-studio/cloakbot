@@ -87,11 +87,27 @@ export function PromptLog({ turns }: PromptLogProps) {
                           <div className="flex flex-wrap items-center gap-2">
                             <Chip variant="fill">{result.toolName}</Chip>
                             <Chip>{result.wasSanitized ? 'Output sanitized' : 'No output entities'}</Chip>
+                            {(result.visualRedactions?.length ?? 0) > 0 && (
+                              <Chip>
+                                Visual redaction ·{' '}
+                                {result.visualRedactions?.reduce((total, item) => total + item.redactionBoxes, 0)} boxes
+                              </Chip>
+                            )}
                           </div>
                           <div className="mt-2 space-y-2">
                             <pre className="max-h-32 overflow-auto whitespace-pre-wrap break-words rounded-md bg-[var(--surface-subtle)] px-3 py-2 font-mono text-[11px] leading-5 text-muted-foreground">
                               {JSON.stringify(result.remoteArguments, null, 2)}
                             </pre>
+                            {(result.visualRedactions?.length ?? 0) > 0 && (
+                              <div className="rounded-md border border-border/70 bg-[var(--surface-subtle)] px-3 py-2 text-[11px] leading-5 text-muted-foreground">
+                                {result.visualRedactions?.map((item, index) => (
+                                  <div key={`${item.sourcePath ?? 'visual'}-${index}`}>
+                                    {item.status} · {item.detectedItems} detected · {item.redactionBoxes} boxes
+                                    {item.labels.length > 0 && ` · ${item.labels.join(', ')}`}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
                             <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-md bg-[var(--surface-subtle)] px-3 py-2 font-mono text-xs leading-6 text-foreground">
                               {result.sanitizedOutput}
                             </pre>

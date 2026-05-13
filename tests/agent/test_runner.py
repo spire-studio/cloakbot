@@ -37,7 +37,7 @@ def _make_loop(tmp_path):
 
 @pytest.mark.asyncio
 async def test_runner_preserves_reasoning_fields_and_tool_results():
-    from cloakbot.agent.runner import AgentRunSpec, AgentRunner
+    from cloakbot.agent.runner import AgentRunner, AgentRunSpec
 
     provider = MagicMock()
     captured_second_call: list[dict] = []
@@ -95,7 +95,7 @@ async def test_runner_preserves_reasoning_fields_and_tool_results():
 @pytest.mark.asyncio
 async def test_runner_calls_hooks_in_order():
     from cloakbot.agent.hook import AgentHook, AgentHookContext
-    from cloakbot.agent.runner import AgentRunSpec, AgentRunner
+    from cloakbot.agent.runner import AgentRunner, AgentRunSpec
 
     provider = MagicMock()
     call_count = {"n": 0}
@@ -171,7 +171,7 @@ async def test_runner_calls_hooks_in_order():
 @pytest.mark.asyncio
 async def test_runner_streaming_hook_receives_deltas_and_end_signal():
     from cloakbot.agent.hook import AgentHook, AgentHookContext
-    from cloakbot.agent.runner import AgentRunSpec, AgentRunner
+    from cloakbot.agent.runner import AgentRunner, AgentRunSpec
 
     provider = MagicMock()
     streamed: list[str] = []
@@ -215,7 +215,7 @@ async def test_runner_streaming_hook_receives_deltas_and_end_signal():
 
 @pytest.mark.asyncio
 async def test_runner_returns_max_iterations_fallback():
-    from cloakbot.agent.runner import AgentRunSpec, AgentRunner
+    from cloakbot.agent.runner import AgentRunner, AgentRunSpec
 
     provider = MagicMock()
     provider.chat_with_retry = AsyncMock(return_value=LLMResponse(
@@ -245,7 +245,7 @@ async def test_runner_returns_max_iterations_fallback():
 
 @pytest.mark.asyncio
 async def test_runner_returns_structured_tool_error():
-    from cloakbot.agent.runner import AgentRunSpec, AgentRunner
+    from cloakbot.agent.runner import AgentRunner, AgentRunSpec
 
     provider = MagicMock()
     provider.chat_with_retry = AsyncMock(return_value=LLMResponse(
@@ -276,7 +276,7 @@ async def test_runner_returns_structured_tool_error():
 
 @pytest.mark.asyncio
 async def test_runner_persists_large_tool_results_for_follow_up_calls(tmp_path):
-    from cloakbot.agent.runner import AgentRunSpec, AgentRunner
+    from cloakbot.agent.runner import AgentRunner, AgentRunSpec
 
     provider = MagicMock()
     captured_second_call: list[dict] = []
@@ -389,7 +389,7 @@ def test_persist_tool_result_logs_cleanup_failures(monkeypatch, tmp_path):
 
 @pytest.mark.asyncio
 async def test_runner_replaces_empty_tool_result_with_marker():
-    from cloakbot.agent.runner import AgentRunSpec, AgentRunner
+    from cloakbot.agent.runner import AgentRunner, AgentRunSpec
 
     provider = MagicMock()
     captured_second_call: list[dict] = []
@@ -427,7 +427,7 @@ async def test_runner_replaces_empty_tool_result_with_marker():
 
 @pytest.mark.asyncio
 async def test_runner_uses_raw_messages_when_context_governance_fails():
-    from cloakbot.agent.runner import AgentRunSpec, AgentRunner
+    from cloakbot.agent.runner import AgentRunner, AgentRunSpec
 
     provider = MagicMock()
     captured_messages: list[dict] = []
@@ -460,7 +460,7 @@ async def test_runner_uses_raw_messages_when_context_governance_fails():
 
 @pytest.mark.asyncio
 async def test_runner_retries_empty_final_response_with_summary_prompt():
-    from cloakbot.agent.runner import AgentRunSpec, AgentRunner
+    from cloakbot.agent.runner import AgentRunner, AgentRunSpec
 
     provider = MagicMock()
     calls: list[dict] = []
@@ -502,7 +502,7 @@ async def test_runner_retries_empty_final_response_with_summary_prompt():
 
 @pytest.mark.asyncio
 async def test_runner_uses_specific_message_after_empty_finalization_retry():
-    from cloakbot.agent.runner import AgentRunSpec, AgentRunner
+    from cloakbot.agent.runner import AgentRunner, AgentRunSpec
     from cloakbot.utils.runtime import EMPTY_FINAL_RESPONSE_MESSAGE
 
     provider = MagicMock()
@@ -528,7 +528,7 @@ async def test_runner_uses_specific_message_after_empty_finalization_retry():
 
 
 def test_snip_history_drops_orphaned_tool_results_from_trimmed_slice(monkeypatch):
-    from cloakbot.agent.runner import AgentRunSpec, AgentRunner
+    from cloakbot.agent.runner import AgentRunner, AgentRunSpec
 
     provider = MagicMock()
     tools = MagicMock()
@@ -578,7 +578,7 @@ def test_snip_history_drops_orphaned_tool_results_from_trimmed_slice(monkeypatch
 
 @pytest.mark.asyncio
 async def test_runner_keeps_going_when_tool_result_persistence_fails():
-    from cloakbot.agent.runner import AgentRunSpec, AgentRunner
+    from cloakbot.agent.runner import AgentRunner, AgentRunSpec
 
     provider = MagicMock()
     captured_second_call: list[dict] = []
@@ -647,7 +647,7 @@ class _DelayTool(Tool):
 
 @pytest.mark.asyncio
 async def test_runner_batches_read_only_tools_before_exclusive_work():
-    from cloakbot.agent.runner import AgentRunSpec, AgentRunner
+    from cloakbot.agent.runner import AgentRunner, AgentRunSpec
 
     tools = ToolRegistry()
     shared_events: list[str] = []
@@ -685,7 +685,7 @@ async def test_runner_batches_read_only_tools_before_exclusive_work():
 
 @pytest.mark.asyncio
 async def test_runner_blocks_repeated_external_fetches():
-    from cloakbot.agent.runner import AgentRunSpec, AgentRunner
+    from cloakbot.agent.runner import AgentRunner, AgentRunSpec
 
     provider = MagicMock()
     captured_final_call: list[dict] = []
@@ -875,7 +875,7 @@ async def test_loop_retries_think_only_final_response(tmp_path):
 
 @pytest.mark.asyncio
 async def test_runner_tool_error_sets_final_content():
-    from cloakbot.agent.runner import AgentRunSpec, AgentRunner
+    from cloakbot.agent.runner import AgentRunner, AgentRunSpec
 
     provider = MagicMock()
 
@@ -942,7 +942,7 @@ async def test_subagent_max_iterations_announces_existing_fallback(tmp_path, mon
 async def test_runner_accumulates_usage_and_preserves_cached_tokens():
     """Runner should accumulate prompt/completion tokens across iterations
     and preserve cached_tokens from provider responses."""
-    from cloakbot.agent.runner import AgentRunSpec, AgentRunner
+    from cloakbot.agent.runner import AgentRunner, AgentRunSpec
 
     provider = MagicMock()
     call_count = {"n": 0}
@@ -985,7 +985,7 @@ async def test_runner_accumulates_usage_and_preserves_cached_tokens():
 async def test_runner_passes_cached_tokens_to_hook_context():
     """Hook context.usage should contain cached_tokens."""
     from cloakbot.agent.hook import AgentHook, AgentHookContext
-    from cloakbot.agent.runner import AgentRunSpec, AgentRunner
+    from cloakbot.agent.runner import AgentRunner, AgentRunSpec
 
     provider = MagicMock()
     captured_usage: list[dict] = []

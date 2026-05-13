@@ -62,6 +62,26 @@ def test_save_turn_keeps_image_placeholder_without_meta() -> None:
     assert session.messages[0]["content"] == [{"type": "text", "text": "[image]"}]
 
 
+def test_save_turn_skips_synthetic_tool_handoff_user_message() -> None:
+    loop = _mk_loop()
+    session = Session(key="test:synthetic-handoff")
+
+    loop._save_turn(
+        session,
+        [{
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "synthetic handoff"},
+                {"type": "image_url", "image_url": {"url": "data:image/png;base64,abc"}, "_meta": {"path": "/vault/redacted.png"}},
+            ],
+            "_meta": {"synthetic_tool_handoff": True},
+        }],
+        skip=0,
+    )
+
+    assert session.messages == []
+
+
 def test_save_turn_keeps_tool_results_under_16k() -> None:
     loop = _mk_loop()
     session = Session(key="test:tool-result")
@@ -122,6 +142,13 @@ def test_restore_runtime_checkpoint_rehydrates_completed_and_pending_tools() -> 
                         "content": "ok",
                     }
                 ],
+                "completed_follow_up_messages": [
+                    {
+                        "role": "user",
+                        "content": [{"type": "text", "text": "follow up"}],
+                        "_meta": {"synthetic_tool_handoff": True},
+                    }
+                ],
                 "pending_tool_calls": [
                     {
                         "id": "call_pending",
@@ -139,8 +166,9 @@ def test_restore_runtime_checkpoint_rehydrates_completed_and_pending_tools() -> 
     assert session.metadata.get(AgentLoop._RUNTIME_CHECKPOINT_KEY) is None
     assert session.messages[0]["role"] == "assistant"
     assert session.messages[1]["tool_call_id"] == "call_done"
-    assert session.messages[2]["tool_call_id"] == "call_pending"
-    assert "interrupted before this tool finished" in session.messages[2]["content"].lower()
+    assert session.messages[2]["role"] == "user"
+    assert session.messages[3]["tool_call_id"] == "call_pending"
+    assert "interrupted before this tool finished" in session.messages[3]["content"].lower()
 
 
 def test_restore_runtime_checkpoint_dedupes_overlapping_tail() -> None:

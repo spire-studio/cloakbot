@@ -168,6 +168,9 @@ remote model.
 | **Restorer** | Restores placeholders with a single regex pass | Rule-based |
 | **Transparency Report** | Renders a per-turn markdown summary of masked entities | Rule-based |
 | **ToolPrivacyInterceptor** | Restores local tool inputs, gates sensitive non-local tool calls, and sanitizes tool outputs, including file/document reads, before model reuse | Rule-based + detector |
+| **ToolPrivacyDetector** | Chunked, content-type-aware detection over long tool outputs (read_file, web_fetch, MCP JSON). Per-chunk concurrency + timeout, cross-chunk dedup, fail-closed on partial chunk failure | Gemma 4 via vLLM |
+| **Chunkers** (`chunking/`) | Content-aware splitting — plaintext (paragraph + overlap), JSON (path-flatten), HTML (meta + mailto + body), Markdown (heading + fence-aware) | Rule-based |
+| **VisualPrivacyPipeline** (`visual_redaction.py`) | Visual detection + OCR-anchored bbox redaction with placeholder-text overlay rendered inside each black bar; sibling region-map text block; cross-modal recall bridge (text-side entities forwarded as visual needles, visual placeholders back-substituted into OCR text); fail-closed default | Gemma 4 via vLLM + Pillow + Tesseract |
 
 ### Detector Passes (Defense in Depth)
 
@@ -176,13 +179,35 @@ tool-output sanitization when tool calls are routed through the privacy
 interceptor. Restored remote-model responses are not re-detected by design.
 
 ```
-Pass 1  user input        → prevent raw PII from leaving device
-Pass 2  tool call output  → sanitize results before model reuse
+Pass 1  user input             → prevent raw PII from leaving device
+Pass 1b user-attached images   → same, but routed through the visual pipeline
+Pass 2  tool call output       → sanitize results before model reuse
+Pass 2b large tool outputs     → chunked detection + cross-chunk vault coalesce
+Pass 2c visual tool results    → OCR + visual placeholder overlay + region map
 ```
+
+Long tool outputs (read_file on a big markdown, a web_fetch HTML page, MCP JSON)
+cross a configurable threshold into `ToolPrivacyDetector`, which sniffs the
+content type, splits via the matching chunker, runs the local detector
+concurrently per chunk under a per-chunk timeout, then dedupes detected
+entities so the same email seen in chunks #2 and #7 lands on one
+placeholder. If any chunk fails (timeout, malformed model output), the
+interceptor fails closed and replaces the payload with a text placeholder
+rather than forwarding a partially-detected result.
+
+User-attached images and image-bearing tool results share `process_visual_blocks`,
+which (a) runs OCR + text-side sanitize first so the Vault has placeholders
+ready, (b) feeds text-side entities into the visual matcher as additional
+needles to cover spans the multimodal model overlooked, (c) renders each
+vault placeholder *inside* its redaction box so the remote model can refer to
+redacted regions by name, (d) appends a region-map text block per image, and
+(e) back-substitutes any newly-allocated placeholder into the OCR sanitized
+text so the two modalities ship the same view.
 
 `ToolPrivacyInterceptor` also restores placeholders before local tool execution
 and requests approval when sensitive restored arguments would be sent to
-non-local or side-effecting tools.
+non-local or side-effecting tools. Strings that are entirely vault placeholders
+short-circuit detection to prevent nested-token corruption.
 
 ### Math Privacy (Goal 2)
 
@@ -243,25 +268,34 @@ cloakbot/
 │   ├── privacy/                 ← CloakBot's privacy layer
 │   │   ├── core/
 │   │   │   ├── detection/
-│   │   │   │   ├── detector.py      General + digit detector facade
-│   │   │   │   ├── general_detector.py  Non-computable entity extraction via local vLLM
-│   │   │   │   ├── digit_detector.py    Sensitive numeric/temporal extraction via local vLLM
+│   │   │   │   ├── detector.py      General + digit detector facade (user input)
+│   │   │   │   ├── tool_detector.py Chunked tool-output detector + per-chunk concurrency / timeout / fail-closed signal
+│   │   │   │   ├── chunking/
+│   │   │   │   │   ├── base.py          Chunker protocol + Chunk dataclass
+│   │   │   │   │   ├── sniffer.py       Content-type sniffer (text/json/html/markdown)
+│   │   │   │   │   ├── text.py          Paragraph-aware plaintext chunker + overlap window
+│   │   │   │   │   ├── json_chunker.py  JSON path-flatten chunker
+│   │   │   │   │   ├── html.py          HTML chunker (meta + mailto + visible body)
+│   │   │   │   │   └── markdown.py      Markdown chunker (heading split, fence-aware)
+│   │   │   │   ├── general_detector.py  Non-computable entity extraction via local vLLM (invoice-aware prompt)
+│   │   │   │   ├── digit_detector.py    Sensitive numeric/temporal extraction via local vLLM (unit/multiplier-aware)
 │   │   │   │   └── llm_json.py      JSON completion helpers for local models
 │   │   │   ├── sanitization/
-│   │   │   │   ├── sanitize.py      Public sanitize/remap entry points
+│   │   │   │   ├── sanitize.py      Public sanitize/remap entry points (+ sanitize_tool_output_chunked)
 │   │   │   │   ├── handler.py       Placeholder-safe token application
 │   │   │   │   ├── restorer.py      Reverse lookup and restoration
-│   │   │   │   └── alias_resolver.py  Reuse placeholders across turns
+│   │   │   │   └── alias_resolver.py  Reuse placeholders across turns (PERSON + ORG substring, NFKC-normalised)
 │   │   │   ├── math/
 │   │   │   │   ├── math_executor.py Remote snippet contract + local execution
 │   │   │   │   └── math_helpers.py  AST validation for arithmetic-only snippets
 │   │   │   └── state/
 │   │   │       └── vault.py         Session-scoped token/value map on disk
 │   │   ├── runtime/
-│   │   │   ├── pipeline.py      Top-level privacy coordinator
+│   │   │   ├── pipeline.py      Top-level privacy coordinator (prepare_turn(text, media=...))
 │   │   │   ├── routing.py       chat/math routing
 │   │   │   ├── registry.py      Worker registration and lookup
-│   │   │   └── tool_interceptor.py  Tool input/output privacy boundary
+│   │   │   └── tool_interceptor.py  Tool input/output privacy boundary + chunked routing + severity-driven approval
+│   │   ├── visual_redaction.py  Visual detection + OCR-anchored redaction + placeholder overlay + region map + cross-modal recall bridge
 │   │   ├── agents/
 │   │   │   ├── classification/
 │   │   │   │   └── intent_analyzer.py   Local intent classification
@@ -269,9 +303,9 @@ cloakbot/
 │   │   │       ├── chat_agent.py    Standard sanitized chat flow
 │   │   │       └── math_agent.py    Local execution of remote-generated snippets
 │   │   ├── hooks/
-│   │   │   ├── pre_llm.py           Sanitize before the remote LLM call
+│   │   │   ├── pre_llm.py           Sanitize before the remote LLM call (now accepts media=...)
 │   │   │   ├── post_llm.py          Restore after the remote LLM call
-│   │   │   └── context.py           Turn-scoped privacy state
+│   │   │   └── context.py           Turn-scoped privacy state (incl. user_input_visual_redactions / vault_artifacts)
 │   │   └── transparency/
 │   │       └── report.py            Per-turn privacy report rendering
 │   ├── providers/

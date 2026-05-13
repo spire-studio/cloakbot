@@ -167,17 +167,35 @@ CloakBot 在隐私层内部采用**混合多智能体架构**：本地 Orchestra
 | **Restorer** | 通过单次正则扫描恢复占位符 | 规则引擎 |
 | **Transparency Report** | 生成每轮隐私报告（Markdown） | 规则引擎 |
 | **ToolPrivacyInterceptor** | 恢复本地工具输入、拦截敏感的非本地工具调用，并在工具结果回流模型前脱敏，包括文件/文档读取结果 | 规则引擎 + 检测器 |
+| **ToolPrivacyDetector** | 针对长工具输出（read_file、web_fetch、MCP JSON）的分块、内容类型感知检测，每块独立超时、跨块去重、单块失败即 fail-closed | Gemma 4 via vLLM |
+| **Chunkers** (`chunking/`) | 内容感知切分——纯文本（按段+重叠窗口）、JSON（路径扁平化）、HTML（meta + mailto + 可见正文）、Markdown（标题切分 + 围栏保留） | 规则引擎 |
+| **VisualPrivacyPipeline** (`visual_redaction.py`) | 视觉检测 + OCR 锚定 bbox 涂黑，并在黑条**内部**渲染占位符 token；为每张图配套一段 region-map 文本块；跨模态召回桥（文本端实体回喂给视觉匹配器、视觉新分配的占位符回写 OCR 文本）；默认 fail-closed | Gemma 4 via vLLM + Pillow + Tesseract |
 
 ### 检测分层（纵深防御）
 
 当前运行时会在远端 LLM 调用前执行输入脱敏；当工具调用经过隐私拦截器时，也会对工具结果做回流前脱敏。已恢复的远端模型响应按设计不再做二次检测。
 
 ```
-Pass 1  用户输入        → 防止原始 PII 离开设备
-Pass 2  工具调用输出    → 回流模型前脱敏
+Pass 1   用户输入           → 防止原始 PII 离开设备
+Pass 1b  用户附带的图片     → 同上，但走视觉管线
+Pass 2   工具调用输出       → 回流模型前脱敏
+Pass 2b  超大工具输出       → 分块检测 + 跨块 vault 合流
+Pass 2c  视觉工具结果       → OCR + 视觉占位符叠加 + region map
 ```
 
-`ToolPrivacyInterceptor` 还会在本地工具执行前恢复占位符，并在敏感参数将被发送到非本地或有副作用工具时创建审批请求。
+超过阈值的工具输出（大的 markdown 文件、整张 HTML 网页、嵌套 JSON）会进入
+`ToolPrivacyDetector`：先 sniff 内容类型，分发到对应 chunker，按块并发跑本地
+检测器（带每块超时），再按文本去重——同一邮箱出现在 chunk #2 和 #7 会合到同一
+个 placeholder。任一块失败（超时或解析失败），拦截器 fail-closed 把整段输出
+替换成文本占位符，绝不放部分检测的结果出去。
+
+用户上传图片和图像工具结果共用 `process_visual_blocks`：(a) 先跑 OCR + 文本端
+脱敏让 vault 先备好占位符，(b) 文本端检出的实体作为额外 needle 喂给视觉匹配
+器，弥补多模态模型漏召回，(c) 在每个黑条**内部**渲染占位符 token 让远端模型
+能按名引用，(d) 每张图后追加一段 region-map 文本块，(e) 把视觉新分配的占位
+符回写到 OCR 文本里，确保两路输出一致。
+
+`ToolPrivacyInterceptor` 还会在本地工具执行前恢复占位符，并在敏感参数将被发送到非本地或有副作用工具时创建审批请求。完全由占位符组成的字符串会短路检测器，避免嵌套 token 损坏。
 
 ### 数学隐私（Goal 2）
 
@@ -234,25 +252,34 @@ cloakbot/
 │   ├── privacy/                 ← CloakBot 隐私层
 │   │   ├── core/
 │   │   │   ├── detection/
-│   │   │   │   ├── detector.py      General + digit 检测入口
-│   │   │   │   ├── general_detector.py  本地 vLLM 非可计算实体抽取
-│   │   │   │   ├── digit_detector.py    本地 vLLM 数字/时间实体抽取
+│   │   │   │   ├── detector.py      General + digit 检测入口（用户输入）
+│   │   │   │   ├── tool_detector.py 分块工具输出检测器 + 每块并发/超时/fail-closed 信号
+│   │   │   │   ├── chunking/
+│   │   │   │   │   ├── base.py          Chunker 协议 + Chunk 数据结构
+│   │   │   │   │   ├── sniffer.py       内容类型嗅探（text/json/html/markdown）
+│   │   │   │   │   ├── text.py          按段切分 + 重叠窗口的纯文本 chunker
+│   │   │   │   │   ├── json_chunker.py  JSON 路径扁平化 chunker
+│   │   │   │   │   ├── html.py          HTML chunker（meta + mailto + 可见正文）
+│   │   │   │   │   └── markdown.py      Markdown chunker（按标题切分，围栏保留）
+│   │   │   │   ├── general_detector.py  本地 vLLM 非可计算实体抽取（invoice 召回增强）
+│   │   │   │   ├── digit_detector.py    本地 vLLM 数字/时间实体抽取（单位/数量乘数感知）
 │   │   │   │   └── llm_json.py      本地模型 JSON 完成辅助
 │   │   │   ├── sanitization/
-│   │   │   │   ├── sanitize.py      对外脱敏/恢复接口
+│   │   │   │   ├── sanitize.py      对外脱敏/恢复接口（+ sanitize_tool_output_chunked）
 │   │   │   │   ├── handler.py       占位符替换逻辑
 │   │   │   │   ├── restorer.py      占位符恢复
-│   │   │   │   └── alias_resolver.py  跨轮复用占位符
+│   │   │   │   └── alias_resolver.py  跨轮复用占位符（PERSON + ORG 子串、NFKC 归一化）
 │   │   │   ├── math/
 │   │   │   │   ├── math_executor.py 远端代码约束 + 本地执行
 │   │   │   │   └── math_helpers.py  算术 AST 安全校验
 │   │   │   └── state/
-│   │   │       └── vault.py         会话级 token/value 持久化
+│   │   │       └── vault.py         会话级 token/value 持久化（normalize_text 支持全角/重音）
 │   │   ├── runtime/
-│   │   │   ├── pipeline.py      顶层隐私协调器
+│   │   │   ├── pipeline.py      顶层隐私协调器（prepare_turn(text, media=...) 接住用户上传图片）
 │   │   │   ├── routing.py       chat/math 路由
 │   │   │   ├── registry.py      Worker 注册与查找
-│   │   │   └── tool_interceptor.py  工具输入/输出隐私边界
+│   │   │   └── tool_interceptor.py  工具输入/输出隐私边界 + 大 payload 走 chunked + 严重度审批闸
+│   │   ├── visual_redaction.py  视觉检测 + OCR 锚定 bbox 涂黑 + 占位符叠加 + region map + 跨模态召回桥
 │   │   ├── agents/
 │   │   │   ├── classification/
 │   │   │   │   └── intent_analyzer.py   本地意图分析
@@ -260,9 +287,9 @@ cloakbot/
 │   │   │       ├── chat_agent.py    标准脱敏聊天流程
 │   │   │       └── math_agent.py    远端生成、本地执行数学片段
 │   │   ├── hooks/
-│   │   │   ├── pre_llm.py           远端调用前脱敏
+│   │   │   ├── pre_llm.py           远端调用前脱敏（现支持 media=...）
 │   │   │   ├── post_llm.py          远端调用后恢复
-│   │   │   └── context.py           单轮隐私上下文
+│   │   │   └── context.py           单轮隐私上下文（含 user_input_visual_redactions / vault_artifacts）
 │   │   └── transparency/
 │   │       └── report.py            每轮隐私报告渲染
 │   ├── providers/

@@ -97,6 +97,13 @@ REGISTRY = PrivacyRegistry(
             exclude=["public sites"],
         ),
         EntitySpec(
+            slug="local_path",
+            tag="LOCAL_PATH",
+            description="local filesystem paths or file URLs on the user's machine",
+            include=["absolute paths", "relative paths", "home-directory paths", "file:// URLs"],
+            exclude=["http URLs", "https URLs"],
+        ),
+        EntitySpec(
             slug="medical",
             tag="MEDICAL",
             description="private health information",

@@ -29,15 +29,14 @@ describe('PromptLog', () => {
       <PromptLog
         turns={[
           createTurn({ turnId: 'turn-1', intent: 'chat', remotePrompt: 'first sanitized' }),
-          createTurn({ turnId: 'turn-2', intent: 'doc', remotePrompt: 'second sanitized' }),
+          createTurn({ turnId: 'turn-2', intent: 'chat', remotePrompt: 'second sanitized' }),
         ]}
       />,
     )
 
     expect(screen.getByRole('button', { name: /Turn 1/i })).toHaveAttribute('aria-expanded', 'false')
     expect(screen.getByRole('button', { name: /Turn 2/i })).toHaveAttribute('aria-expanded', 'true')
-    expect(screen.getByText((content) => content.includes('chat') && content.includes('Sanitized'))).toBeInTheDocument()
-    expect(screen.getByText((content) => content.includes('doc') && content.includes('Sanitized'))).toBeInTheDocument()
+    expect(screen.getAllByText((content) => content.includes('chat') && content.includes('Sanitized')).length).toBe(2)
     expect(screen.queryByRole('button', { name: 'Restored' })).not.toBeInTheDocument()
   })
 
@@ -87,6 +86,41 @@ describe('PromptLog', () => {
     expect(screen.getByText('Output sanitized')).toBeInTheDocument()
     expect(screen.getByText((content) => content.includes('Owner: <<PERSON_1>>'))).toBeInTheDocument()
     expect(screen.getAllByText((content) => content.includes('<<PRIVATE_URL_1>>')).length).toBeGreaterThan(0)
+  })
+
+  it('renders visual redaction summaries for tool results', () => {
+    render(
+      <PromptLog
+        turns={[
+          createTurn({
+            turnId: 'turn-1',
+            remotePrompt: 'Please inspect <<PRIVATE_URL_1>>',
+            toolResults: [
+              {
+                toolCallId: 'call-1',
+                toolName: 'read_file',
+                remoteArguments: { path: '<<PRIVATE_URL_1>>' },
+                sanitizedOutput: '[redacted image]',
+                wasSanitized: true,
+                visualRedactions: [
+                  {
+                    sourcePath: '/tmp/invoice.png',
+                    status: 'redacted',
+                    detectedItems: 2,
+                    redactionBoxes: 3,
+                    labels: ['invoice_number', 'amount'],
+                  },
+                ],
+              },
+            ],
+          }),
+        ]}
+      />,
+    )
+
+    expect(screen.getByText(/Visual redaction/i)).toBeInTheDocument()
+    expect(screen.getByText(/redacted · 2 detected · 3 boxes/i)).toBeInTheDocument()
+    expect(screen.getByText(/invoice_number, amount/i)).toBeInTheDocument()
   })
 
   it('keeps sanitized payload visible when toggling a turn', async () => {

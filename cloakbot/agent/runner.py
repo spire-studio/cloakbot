@@ -56,6 +56,9 @@ class ToolPrivacyInterceptorProtocol(Protocol):
     ) -> Any:
         ...
 
+    def take_follow_up_messages(self, tool_call_id: str) -> list[dict[str, Any]]:
+        ...
+
 
 @dataclass(slots=True)
 class AgentRunSpec:
@@ -198,6 +201,7 @@ class AgentRunner:
                     await hook.after_iteration(context)
                     break
                 completed_tool_results: list[dict[str, Any]] = []
+                completed_follow_up_messages: list[dict[str, Any]] = []
                 for tool_call, result in zip(response.tool_calls, results):
                     tool_message = {
                         "role": "tool",
@@ -212,6 +216,11 @@ class AgentRunner:
                     }
                     messages.append(tool_message)
                     completed_tool_results.append(tool_message)
+                    if spec.tool_privacy_interceptor is not None:
+                        completed_follow_up_messages.extend(
+                            spec.tool_privacy_interceptor.take_follow_up_messages(tool_call.id)
+                        )
+                messages.extend(completed_follow_up_messages)
                 await self._emit_checkpoint(
                     spec,
                     {
@@ -220,6 +229,7 @@ class AgentRunner:
                         "model": spec.model,
                         "assistant_message": assistant_message,
                         "completed_tool_results": completed_tool_results,
+                        "completed_follow_up_messages": completed_follow_up_messages,
                         "pending_tool_calls": [],
                     },
                 )
@@ -446,6 +456,8 @@ class AgentRunner:
                 if spec.fail_on_tool_error:
                     return error, event, exc
                 return error + hint, event, None
+            if execution_tool_call.name != tool_call.name:
+                privacy_class = self._tool_privacy_class(spec, execution_tool_call.name)
 
         lookup_error = repeated_external_lookup_error(
             execution_tool_call.name,
@@ -497,7 +509,7 @@ class AgentRunner:
         if spec.tool_privacy_interceptor is not None:
             try:
                 result = await spec.tool_privacy_interceptor.sanitize_tool_result(
-                    tool_call,
+                    execution_tool_call,
                     result,
                     privacy_class=privacy_class,
                 )

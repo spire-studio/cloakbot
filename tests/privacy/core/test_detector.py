@@ -269,3 +269,35 @@ class TestPiiDetectorFacade:
 
         assert [entity.text for entity in result.entities] == ["555-010-8821"]
         assert [entity.entity_type for entity in result.entities] == ["phone"]
+
+    async def test_detect_adds_local_path_entity_deterministically(self) -> None:
+        detector = PiiDetector()
+        detector._general.detect = AsyncMock(
+            return_value=GeneralDetectionResult(
+                raw_output='{"entities": []}',
+                entities=[],
+                latency_ms=1.0,
+            )
+        )
+        detector._digit.detect = AsyncMock(
+            return_value=DigitDetectionResult(
+                raw_output='{"entities": []}',
+                entities=[],
+                latency_ms=1.0,
+            )
+        )
+
+        result = await detector.detect(
+            "/Users/laurieluo/Documents/github/my-repos/cloakbot/gamma4-image-test/data/invoice.jpg\n"
+            "Please read this invoice."
+        )
+
+        assert [
+            (entity.text, entity.entity_type)
+            for entity in result.entities
+        ] == [
+            (
+                "/Users/laurieluo/Documents/github/my-repos/cloakbot/gamma4-image-test/data/invoice.jpg",
+                "local_path",
+            )
+        ]
