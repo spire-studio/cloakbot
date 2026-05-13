@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from cloakbot.privacy.core.sanitization.handler import apply_tokens
-from cloakbot.privacy.core.types import GeneralEntity, ComputableEntity, DetectionResult
 from cloakbot.privacy.core.state.vault import _SessionMap
+from cloakbot.privacy.core.types import ComputableEntity, DetectionResult, GeneralEntity
 
 
 def _general(text: str, entity_type: str) -> GeneralEntity:
@@ -176,3 +176,17 @@ def test_apply_tokens_uses_percentage_placeholder_tag() -> None:
     assert modified is True
     assert text == "bonus rate <<PERCENTAGE_1>>"
     assert smap.placeholder_to_value["<<PERCENTAGE_1>>"] == 0.1
+
+
+def test_apply_tokens_uses_local_path_placeholder_tag() -> None:
+    smap = _empty_map()
+    detection = _detection(
+        "read /Users/me/invoice.jpg",
+        [_general("/Users/me/invoice.jpg", "local_path")],
+    )
+
+    text, modified = apply_tokens(detection, smap)
+
+    assert modified is True
+    assert text == "read <<LOCAL_PATH_1>>"
+    assert smap.placeholder_to_entity["<<LOCAL_PATH_1>>"].entity_type == "local_path"

@@ -26,6 +26,7 @@ def build_webui_privacy_turn(ctx: TurnContext) -> WebUIPrivacyTurn:
                 remote_arguments=result.remote_arguments,
                 sanitized_output=result.sanitized_output,
                 was_sanitized=result.was_sanitized,
+                visual_redactions=result.visual_redactions,
             )
             for result in ctx.tool_results
         ],

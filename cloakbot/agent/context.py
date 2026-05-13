@@ -100,7 +100,7 @@ class ContextBuilder:
     def build_messages(
         self,
         history: list[dict[str, Any]],
-        current_message: str,
+        current_message: str | list[dict[str, Any]],
         skill_names: list[str] | None = None,
         media: list[str] | None = None,
         channel: str | None = None,
@@ -129,8 +129,21 @@ class ContextBuilder:
         messages.append({"role": current_role, "content": merged})
         return messages
 
-    def _build_user_content(self, text: str, media: list[str] | None) -> str | list[dict[str, Any]]:
-        """Build user message content with optional base64-encoded images."""
+    def _build_user_content(
+        self,
+        text: str | list[dict[str, Any]],
+        media: list[str] | None,
+    ) -> str | list[dict[str, Any]]:
+        """Build user message content with optional base64-encoded images.
+
+        Accepts a pre-built block list as ``text`` so callers that have
+        already routed media through the privacy pipeline (see
+        ``PrivacyRuntime._prepare_media``) can pass the sanitized blocks
+        through unchanged. In that case ``media`` is ignored to avoid
+        re-attaching the raw files.
+        """
+        if isinstance(text, list):
+            return text
         if not media:
             return text
 

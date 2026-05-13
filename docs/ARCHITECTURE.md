@@ -38,17 +38,58 @@ Detailed behavior lives in `domains/privacy.md`.
 ## Important Modules
 
 - `cloakbot/privacy/runtime/pipeline.py` - `PrivacyRuntime.prepare_turn()` and
-  `finalize_turn()` coordinate one privacy turn.
+  `finalize_turn()` coordinate one privacy turn. `prepare_turn` accepts an
+  optional `media=[...]` list so user-attached images flow through the visual
+  pipeline *before* the context builder ever sees raw bytes.
 - `cloakbot/privacy/core/detection/` - local PII detectors and JSON parsing.
+  - `detector.py` is the user-input facade (general + digit detectors run
+    concurrently).
+  - `tool_detector.py` is the tool-output specialist. It runs the
+    content-type sniffer, dispatches to the right chunker, runs `PiiDetector`
+    per chunk under a semaphore with a per-chunk timeout, dedupes entities
+    across chunks, and emits a `chunks_failed` signal that the interceptor
+    uses to fail-closed on partial-detection cases.
+  - `chunking/` — `Chunker` protocol plus four content-aware chunkers
+    (`text`, `json_chunker`, `html`, `markdown`) and a conservative
+    `sniffer` that picks among them.
 - `cloakbot/privacy/core/sanitization/` - placeholder application, restoration,
-  alias reuse, and public sanitization facade.
+  alias reuse, and public sanitization facade. `sanitize.py` now exposes
+  `sanitize_tool_output_chunked` for tool outputs above the chunker threshold.
 - `cloakbot/privacy/core/state/vault.py` - session-scoped placeholder and
   computation registry persisted under the privacy vault directory.
+  `normalize_text` NFKC-normalises and strips combining marks so full-width
+  and accented duplicates coalesce onto one placeholder.
 - `cloakbot/privacy/core/math/` - remote snippet contract and local arithmetic
   execution.
 - `cloakbot/privacy/runtime/tool_interceptor.py` - restores tool arguments for
   local execution, requests approval for non-local sensitive tool inputs, and
   sanitizes tool results, including file/document reads, before model reuse.
+  It also persists sanitized read-file artifacts into the Vault and queues
+  synthetic multimodal follow-up messages for the runner when a redacted image
+  must be shown to the remote model. Routes large tool strings through
+  `sanitize_tool_output_chunked`, short ones through the single-shot path.
+  Skips detection on strings that are entirely placeholders (defence against
+  nested-token corruption) and supports an opt-in
+  `CLOAKBOT_APPROVAL_HIGH_SEVERITY_LOCAL` env var that extends the approval
+  gate to LOCAL tools whose restored arguments contain `Severity.HIGH`
+  entities.
+- `cloakbot/privacy/visual_redaction.py` - local visual privacy pass for image
+  blocks. Single `process_visual_blocks` helper shared by the tool-result and
+  user-prompt entry points so policy cannot diverge. Uses the configured
+  local vLLM/Gemma endpoint for sensitive-field identification and local
+  OCR/Pillow for coordinate-based redaction. Renders a vault placeholder
+  *inside* each redaction box so the downstream multimodal model can address
+  redactions by name, with per-token rendering deduped so adjacent boxes
+  sharing a placeholder don't cause the LLM to repeat the value in its reply.
+  Emits a sibling region-map text block alongside each image for text-only
+  models. Cross-modal recall bridge: text-side entities found by
+  `PiiDetector` are forwarded as additional needles into the visual matcher,
+  and any vault placeholder allocated by the visual phase is back-substituted
+  into the OCR sanitized text via `smap.replace_known_originals`. Fails
+  closed by default; configurable via `CLOAKBOT_VISUAL_FAIL_MODE`.
+- `cloakbot/agent/tools/filesystem.py` - `read_file` tries the PDF text
+  layer first (`fitz.get_text`) for digitally-issued PDFs; image-only PDFs
+  fall back to the rasterise + visual-redaction path.
 - `cloakbot/privacy/protocol/` - strict event contracts, metrics, observability,
   and replay helpers.
 - `cloakbot/privacy/webui/` - backend contracts and builders for WebUI privacy

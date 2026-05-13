@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from cloakbot.privacy.core.math.math_executor import LocalComputationRecord
 from cloakbot.privacy.core.types import DetectedEntity
+from cloakbot.privacy.visual_redaction import VisualPrivacyRedaction
 from cloakbot.tool_privacy import ToolPrivacyClass
 
 if TYPE_CHECKING:
@@ -24,6 +25,12 @@ class ToolPrivacyModel(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
 
+class ToolVaultArtifact(ToolPrivacyModel):
+    kind: str
+    path: str
+    media_type: str | None = Field(default=None, alias="mediaType")
+
+
 class ToolPrivacyRecord(ToolPrivacyModel):
     tool_call_id: str
     tool_name: str
@@ -31,6 +38,8 @@ class ToolPrivacyRecord(ToolPrivacyModel):
     remote_arguments: dict[str, Any]
     sanitized_output: str
     was_sanitized: bool
+    visual_redactions: list[VisualPrivacyRedaction] = Field(default_factory=list)
+    vault_artifacts: list[ToolVaultArtifact] = Field(default_factory=list, alias="vaultArtifacts")
 
 
 class ToolApprovalRequest(ToolPrivacyModel):

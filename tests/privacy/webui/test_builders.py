@@ -1,6 +1,7 @@
 from cloakbot.privacy.hooks.context import ToolPrivacyRecord, TurnContext
 from cloakbot.privacy.protocol.contracts import EventType, PrivacyStage, ProtocolStatus
 from cloakbot.privacy.protocol.observability import emit_event, get_event_sink
+from cloakbot.privacy.visual_redaction import VisualPrivacyRedaction
 from cloakbot.privacy.webui import build_webui_privacy_payload
 
 
@@ -18,6 +19,15 @@ def test_build_webui_privacy_payload_includes_turn_and_timeline() -> None:
                 remote_arguments={"path": "<<PRIVATE_URL_1>>"},
                 sanitized_output="Owner: <<PERSON_1>>",
                 was_sanitized=True,
+                visual_redactions=[
+                    VisualPrivacyRedaction(
+                        sourcePath="/tmp/invoice.png",
+                        status="redacted",
+                        detectedItems=2,
+                        redactionBoxes=3,
+                        labels=["invoice_number", "amount"],
+                    )
+                ],
             )
         ],
     )
@@ -45,6 +55,17 @@ def test_build_webui_privacy_payload_includes_turn_and_timeline() -> None:
             "remoteArguments": {"path": "<<PRIVATE_URL_1>>"},
             "sanitizedOutput": "Owner: <<PERSON_1>>",
             "wasSanitized": True,
+            "visualRedactions": [
+                {
+                    "sourcePath": "/tmp/invoice.png",
+                    "status": "redacted",
+                    "detectedItems": 2,
+                    "redactionBoxes": 3,
+                    "labels": ["invoice_number", "amount"],
+                    "reason": None,
+                    "regions": [],
+                }
+            ],
         }
     ]
     assert payload["privacyTimeline"]["turnId"] == "turn-1"

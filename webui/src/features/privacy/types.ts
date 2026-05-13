@@ -8,7 +8,7 @@ export type LocalComputation = {
 
 export type PrivacyTurn = {
   turnId: string
-  intent: 'chat' | 'math' | 'doc'
+  intent: 'chat' | 'math'
   remotePrompt: string
   localComputations: LocalComputation[]
   toolResults?: ToolPrivacyResult[]
@@ -21,6 +21,16 @@ export type ToolPrivacyResult = {
   remoteArguments: Record<string, unknown>
   sanitizedOutput: string
   wasSanitized: boolean
+  visualRedactions?: VisualPrivacyRedaction[]
+}
+
+export type VisualPrivacyRedaction = {
+  sourcePath: string | null
+  status: string
+  detectedItems: number
+  redactionBoxes: number
+  labels: string[]
+  reason?: string | null
 }
 
 export type ToolApproval = {

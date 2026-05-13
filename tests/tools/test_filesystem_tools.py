@@ -1,5 +1,6 @@
 """Tests for enhanced filesystem tools: ReadFileTool, EditFileTool, ListDirTool."""
 
+import fitz
 import pytest
 
 from cloakbot.agent.tools.filesystem import (
@@ -8,7 +9,6 @@ from cloakbot.agent.tools.filesystem import (
     ReadFileTool,
     _find_match,
 )
-
 
 # ---------------------------------------------------------------------------
 # ReadFileTool
@@ -70,6 +70,23 @@ class TestReadFileTool:
         assert result[0]["image_url"]["url"].startswith("data:image/png;base64,")
         assert result[0]["_meta"]["path"] == str(f)
         assert result[1] == {"type": "text", "text": f"(Image file: {f})"}
+
+    @pytest.mark.asyncio
+    async def test_pdf_file_returns_first_page_image_blocks(self, tool, tmp_path):
+        f = tmp_path / "invoice.pdf"
+        doc = fitz.open()
+        page = doc.new_page()
+        page.insert_text((72, 72), "Invoice #ABC-123")
+        doc.save(f)
+        doc.close()
+
+        result = await tool.execute(path=str(f))
+
+        assert isinstance(result, list)
+        assert result[0]["type"] == "image_url"
+        assert result[0]["image_url"]["url"].startswith("data:image/png;base64,")
+        assert result[0]["_meta"]["path"] == str(f)
+        assert result[1] == {"type": "text", "text": f"(PDF file rendered as page 1 image: {f})"}
 
     @pytest.mark.asyncio
     async def test_file_not_found(self, tool, tmp_path):

@@ -39,6 +39,13 @@ vllm_server.log
 datasets/
 evals/
 
+# Local privacy test fixtures (may contain real PII; keep out of the public repo)
+gamma4-image-test/
+
 # Sanitizer session maps (contain PII placeholders, stay local)
 ~/.cloakbot/sanitizer_maps/
 MagicMock/
+
+# Runtime-local privacy state (vault snapshots, session traces, debug dumps)
+privacy_vault/
+sessions/
