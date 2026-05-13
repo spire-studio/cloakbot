@@ -72,11 +72,32 @@ class TestReadFileTool:
         assert result[1] == {"type": "text", "text": f"(Image file: {f})"}
 
     @pytest.mark.asyncio
-    async def test_pdf_file_returns_first_page_image_blocks(self, tool, tmp_path):
+    async def test_pdf_with_text_layer_returns_extracted_text(self, tool, tmp_path):
+        """Digitally-issued PDFs hit the fast text-layer extraction path.
+
+        ``fitz.get_text`` is far cheaper and more accurate than the
+        rasterise + OCR path, so any PDF whose pages carry a non-empty
+        embedded text layer is short-circuited to plain text.
+        """
         f = tmp_path / "invoice.pdf"
         doc = fitz.open()
         page = doc.new_page()
         page.insert_text((72, 72), "Invoice #ABC-123")
+        doc.save(f)
+        doc.close()
+
+        result = await tool.execute(path=str(f))
+
+        assert isinstance(result, str)
+        assert "PDF text layer extracted" in result
+        assert "Invoice #ABC-123" in result
+
+    @pytest.mark.asyncio
+    async def test_pdf_without_text_layer_falls_back_to_image_blocks(self, tool, tmp_path):
+        """Image-only / scanned PDFs still route through the OCR path."""
+        f = tmp_path / "scan.pdf"
+        doc = fitz.open()
+        doc.new_page()  # blank page, no inserted text
         doc.save(f)
         doc.close()
 
