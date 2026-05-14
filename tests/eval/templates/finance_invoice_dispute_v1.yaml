@@ -1,0 +1,121 @@
+id: finance_invoice_dispute_v1
+domain: finance
+density: dense
+language: en
+description: >
+  Customer phoning a SaaS vendor about an unexpected line item on a recent
+  invoice. Heavy density of financial PII per turn: invoice IDs, account
+  IDs, dated charges, dispute amount, subtotal/tax/total triple, card
+  last-4. Tests both detectors' coordination — the digit detector must
+  catch each money line, the general detector must catch IDs and the
+  vendor/customer ORG pair without grabbing the digits inside them.
+
+slots:
+  customer:
+    type: PERSON
+    faker: name
+  vendor:
+    type: ORG
+    faker: company
+  invoice_id:
+    type: ID
+    faker: bothify
+    args: {text: "INV-####-????"}
+  next_invoice_id:
+    type: ID
+    faker: bothify
+    args: {text: "INV-####-????"}
+  account_id:
+    type: ID
+    faker: bothify
+    args: {text: "ACCT-########"}
+  card_last4:
+    type: ID
+    faker: bothify
+    args: {text: "####"}
+  email:
+    type: EMAIL
+    faker: company_email
+  phone:
+    type: PHONE
+    faker: phone_number
+  address:
+    type: ADDRESS
+    faker: address
+  invoice_date:
+    type: DATE
+    faker: date_this_year
+    format: "%B %-d, %Y"
+  due_date:
+    type: DATE
+    faker: date_this_year
+    format: "%B %-d, %Y"
+  next_due_date:
+    type: DATE
+    faker: date_this_year
+    format: "%B %-d, %Y"
+  disputed_amount:
+    type: FINANCE
+    choices:
+      - "$249.00"
+      - "$1,180.50"
+      - "$78.99"
+      - "$540.00"
+      - "$899.95"
+  tax_amount:
+    type: FINANCE
+    choices:
+      - "$26.45"
+      - "$94.20"
+      - "$8.32"
+      - "$42.30"
+      - "$71.99"
+  total_amount:
+    type: FINANCE
+    choices:
+      - "$2,749.45"
+      - "$4,194.20"
+      - "$987.31"
+      - "$3,082.30"
+      - "$5,071.94"
+  disputed_service:
+    type: ORG
+    choices:
+      - "Advanced Threat Protection add-on"
+      - "Premium SLA Support tier"
+      - "Multi-region replication credits"
+      - "Compliance Audit Pack"
+      - "Annual Penetration Test Voucher"
+
+turns:
+  - role: user
+    text: >-
+      Hi, this is {customer} calling about invoice {invoice_id} from
+      {vendor}. There's a charge of {disputed_amount} on it I don't
+      recognise. My account ID is {account_id}.
+  - role: assistant
+    text: >-
+      Thanks {customer}. Before I pull it up, can you confirm the dates and
+      total on that invoice so I know I have the right one?
+  - role: user
+    text: >-
+      It's dated {invoice_date}, due {due_date}, and the total is
+      {total_amount} including {tax_amount} tax.
+  - role: assistant
+    text: >-
+      I have it. The {disputed_amount} line is for "{disputed_service}". I
+      need to verify the account holder — what's your email and billing
+      address?
+  - role: user
+    text: >-
+      Email is {email} and the billing address is {address}. The card on
+      file ending in {card_last4} is the one that would have been charged.
+  - role: assistant
+    text: >-
+      Got it. I'll open a dispute and freeze the renewal pending review.
+      Anything else I should know?
+  - role: user
+    text: >-
+      Yes — my next invoice {next_invoice_id} is due {next_due_date}.
+      Please don't autopay against the card ending {card_last4} until
+      this is closed out. You can reach me back on {phone}.

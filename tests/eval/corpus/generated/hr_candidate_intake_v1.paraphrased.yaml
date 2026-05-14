@@ -1,0 +1,124 @@
+template_id: hr_candidate_intake_v1
+variants:
+- id: hr_candidate_intake_v1_p00
+  turns:
+  - role: user
+    text: Hello, I'm {candidate}. I'm following up on the senior engineering position
+      I applied to last week. My contact details are {phone} and {email}, and I believe
+      my first conversation was with {recruiter}.
+  - role: assistant
+    text: Hi {candidate} — yes, I see your application here. I just need to verify
+      a few details about your current situation before we continue.
+  - role: user
+    text: Of course. I'm with {current_employer} now, started on {start_date}, and
+      my current base salary is {current_salary}. For a new role, I'm looking for
+      about {expected_salary} plus equity.
+  - role: assistant
+    text: That helps, thank you. What was your employer before {current_employer}?
+  - role: user
+    text: Before this, I was at {prev_employer} through {prev_end_date}. Also, {reference_colleague}
+      from that team is happy to serve as a reference, and their LinkedIn is linkedin.com/in/{linkedin}.
+  - role: assistant
+    text: 'Great. One final step: I need your current address for the offer paperwork
+      and the last four digits of your SSN to initiate the background check.'
+  - role: user
+    text: Sure — my address is {address}, and the last four are {ssn_last4}. Is there
+      anything else you need to move me into the next round?
+- id: hr_candidate_intake_v1_p01
+  turns:
+  - role: user
+    text: Hi, calling about the senior engineering role. I'm {candidate}. I applied
+      last week, and I think {recruiter} was the recruiter I spoke with first.
+  - role: assistant
+    text: Hi {candidate}. I have your profile pulled up. Before we proceed, can you
+      give me a quick update on your current employment situation?
+  - role: user
+    text: Yes — you can reach me at {phone} or {email}. I'm currently at {current_employer},
+      started {start_date}, and my base pay is {current_salary}. I'd be looking for
+      roughly {expected_salary} and equity for this move.
+  - role: assistant
+    text: Understood, thanks. And what were you doing before {current_employer}?
+  - role: user
+    text: I was with {prev_employer} until {prev_end_date}. {reference_colleague}
+      from that team has offered to be a reference, and their LinkedIn handle is linkedin.com/in/{linkedin}.
+  - role: assistant
+    text: 'Excellent. I just need two more items: your current address for paperwork,
+      and the last four of your SSN so we can set up the background check.'
+  - role: user
+    text: Address is {address}; SSN last four is {ssn_last4}. Does that cover everything
+      needed for the next step?
+- id: hr_candidate_intake_v1_p02
+  turns:
+  - role: user
+    text: Hi there — this is {candidate}. I'm checking in on my application for the
+      senior engineering role. I applied last week, my phone is {phone}, my email
+      is {email}, and I believe I initially spoke with {recruiter}.
+  - role: assistant
+    text: Hello {candidate}. I found your record. Before I move ahead, I want to confirm
+      a few details about where you are currently.
+  - role: user
+    text: Absolutely. At the moment I'm at {current_employer}. I started there on
+      {start_date}, and my base compensation is {current_salary}. If I make a move,
+      I'd want something around {expected_salary} plus equity.
+  - role: assistant
+    text: Thanks, that's clear. Can you tell me where you were immediately before
+      {current_employer}?
+  - role: user
+    text: That was {prev_employer}, and I was there until {prev_end_date}. Also, {reference_colleague}
+      from that team can act as a reference; their LinkedIn is linkedin.com/in/{linkedin}.
+  - role: assistant
+    text: Perfect. To finish up, I need your current mailing address for the offer
+      packet and the last four digits of your SSN for the background-check setup.
+  - role: user
+    text: 'No problem: {address}. Last four of the SSN are {ssn_last4}. Anything further
+      before I can be advanced to the next round?'
+- id: hr_candidate_intake_v1_p03
+  turns:
+  - role: user
+    text: Hi, {candidate} here about the senior engineering opening. I sent in my
+      application last week. You can reach me at {phone} or {email}, and if I'm remembering
+      right, {recruiter} was my original point of contact.
+  - role: assistant
+    text: Hi {candidate}, thanks for calling. I've got your information in front of
+      me. Can I ask a couple of questions about your current role and expectations?
+  - role: user
+    text: Yes. I'm working at {current_employer} and started there {start_date}. My
+      current base is {current_salary}, and for a change I'd be aiming at about {expected_salary}
+      plus equity.
+  - role: assistant
+    text: Got it. And prior to {current_employer}, which company were you with?
+  - role: user
+    text: I was at {prev_employer} up until {prev_end_date}. {reference_colleague}
+      from that team is available as a reference, and you can look them up at linkedin.com/in/{linkedin}.
+  - role: assistant
+    text: Sounds good. The only remaining items I need are your current address for
+      the paperwork and the last four digits of your SSN to get the background check
+      started.
+  - role: user
+    text: It's {address}, and the last four are {ssn_last4}. Am I all set for the
+      next round after that?
+- id: hr_candidate_intake_v1_p04
+  turns:
+  - role: user
+    text: Hello, I'm calling regarding the senior engineering role. This is {candidate}.
+      I applied last week, and I may have first spoken with {recruiter}.
+  - role: assistant
+    text: Hi {candidate}. I do have your file open. Before we continue, I'd like to
+      confirm your current status and a few administrative details.
+  - role: user
+    text: Certainly. My contact info is {phone} and {email}. I'm currently employed
+      by {current_employer}; I joined on {start_date}. My base salary is {current_salary},
+      and for a transition I'd be targeting approximately {expected_salary} plus equity.
+  - role: assistant
+    text: 'Thank you. One other background question: where were you employed before
+      {current_employer}?'
+  - role: user
+    text: Previously I was with {prev_employer} until {prev_end_date}. In addition,
+      {reference_colleague} from that team has agreed to be a reference, and their
+      LinkedIn profile is linkedin.com/in/{linkedin}.
+  - role: assistant
+    text: Excellent. The last pieces I need are your current address for offer documentation
+      and the last four digits of your SSN so we can begin the background-check process.
+  - role: user
+    text: Understood. My address is {address}, and the last four digits are {ssn_last4}.
+      Is there anything else required to move me forward to the next round?

@@ -1,0 +1,96 @@
+template_id: medical_followup_v1
+variants:
+- id: medical_followup_v1_p00
+  turns:
+  - role: user
+    text: I need to arrange a follow-up for my mother, {patient}. Her birth date is
+      {dob}. She saw Dr. {doctor} last month about {diagnosis} and was started on
+      {medication}.
+  - role: assistant
+    text: I found {patient}'s chart. Before I set anything up, could you verify the
+      contact information we should use?
+  - role: user
+    text: Of course. The best phone number is {phone}, and the mailing address changed
+      to {address}. Her BlueCross member ID is {insurance_id}.
+  - role: assistant
+    text: Thanks, that's updated. I also see an unpaid {copay} copay from {patient}'s
+      last visit with Dr. {doctor}. Do you want that included in the new appointment
+      confirmation email?
+  - role: user
+    text: Yes, include it. And please book her specifically with Dr. {doctor}; she
+      gets nervous seeing someone new and is most comfortable with him.
+- id: medical_followup_v1_p01
+  turns:
+  - role: user
+    text: Hello. I'm trying to book my mother, {patient}, for a follow-up. She was
+      born {dob}, saw Dr. {doctor} last month for {diagnosis}, and he's had her taking
+      {medication} since then.
+  - role: assistant
+    text: I can help with that. I do have {patient} in the system, but first I'd like
+      to confirm the contact details we have on record.
+  - role: user
+    text: No problem — use {phone} for the phone number. Her mailing address is now
+      {address}, since we moved, and the BlueCross ID is {insurance_id}.
+  - role: assistant
+    text: Perfect. I should also mention there's still a {copay} balance from {patient}'s
+      prior appointment with Dr. {doctor}. Would you like that noted in the confirmation
+      email for the new visit?
+  - role: user
+    text: Yes, please add that. Also, it needs to be with Dr. {doctor} again — she
+      really trusts him and gets anxious if it's a different provider.
+- id: medical_followup_v1_p02
+  turns:
+  - role: user
+    text: Can you set up a follow-up for my mother? It's for {patient}, DOB {dob}.
+      Last month Dr. {doctor} saw her for {diagnosis} and started {medication}.
+  - role: assistant
+    text: Yes — I located {patient}. Before I finalize any booking, what phone, mailing
+      address, and insurance details should I confirm?
+  - role: user
+    text: Please use {phone}. The current mailing address is {address}, and her BlueCross
+      member ID is {insurance_id}.
+  - role: assistant
+    text: Thank you. I also see an outstanding copay of {copay} from {patient}'s last
+      appointment with Dr. {doctor}. Should that be included in the confirmation email
+      for this new visit?
+  - role: user
+    text: Definitely, yes. And please make sure the appointment is with Dr. {doctor}
+      only; she feels uneasy with unfamiliar providers and trusts him.
+- id: medical_followup_v1_p03
+  turns:
+  - role: user
+    text: Hi there — I want to get a follow-up visit on the calendar for my mom, {patient}.
+      Her DOB is {dob}. She met with Dr. {doctor} last month for {diagnosis}, and
+      he put her on {medication}.
+  - role: assistant
+    text: Happy to help. I found {patient}, but I want to make sure our contact information
+      is current before I book it.
+  - role: user
+    text: Sure. Her number is {phone}. We changed mailing addresses, so please use
+      {address}. And her BlueCross member ID is {insurance_id}.
+  - role: assistant
+    text: All set on that. I also noticed a remaining {copay} copay from {patient}'s
+      previous visit with Dr. {doctor}. Would you like me to reference that in the
+      appointment confirmation email?
+  - role: user
+    text: 'Yes, please do. And one important note: she should see Dr. {doctor} again,
+      because she trusts him and gets anxious with new clinicians.'
+- id: medical_followup_v1_p04
+  turns:
+  - role: user
+    text: I'm calling about my mother, {patient}. I'd like a follow-up scheduled.
+      She was born {dob}, and after seeing Dr. {doctor} last month for {diagnosis},
+      she was prescribed {medication}.
+  - role: assistant
+    text: Understood. I have {patient}'s record open. Before I book the visit, would
+      you confirm the contact details we should keep on file?
+  - role: user
+    text: Yes — the phone number is {phone}. Our mailing address was updated to {address},
+      and her BlueCross member ID is {insurance_id}.
+  - role: assistant
+    text: Great, thank you. I also need to mention that {patient} has an outstanding
+      copay of {copay} from the previous appointment with Dr. {doctor}. Should I include
+      that in the confirmation email for the upcoming visit?
+  - role: user
+    text: Yes, that's fine. And please schedule her with Dr. {doctor} specifically
+      — she really trusts him and becomes anxious with anyone unfamiliar.

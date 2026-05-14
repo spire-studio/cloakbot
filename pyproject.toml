@@ -90,6 +90,10 @@ dev = [
     "pytest-cov>=6.0.0,<7.0.0",
     "ruff>=0.1.0",
 ]
+eval = [
+    "faker>=30.0.0",
+    "pyyaml>=6.0.0",
+]
 
 [project.scripts]
 cloakbot = "cloakbot.cli.commands:app"
