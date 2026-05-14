@@ -39,6 +39,7 @@ The text may be an OCR'd invoice, receipt, bill, contract, or order — i.e. a s
 11. Long compound transaction / order identifiers — typically ≥16 alphanumeric chars, often containing "|", "-", "_", or "." separators (e.g. "2026043022001359301458224680|AHVBS6N2UDFC-JIWGK-8896153") → **identifier**. Extract the entire span as a single entity; do not split.
 12. Service / product / instance codes that look like internal labels (e.g. "LAX.AN4.Pro.TINY", "DMIT-US-1", "us-west-2-i-0a1b2c3d") → **identifier** when they appear in a customer-facing document (invoice line item, receipt, contract).
 13. URLs, file paths, account / API hostnames embedded in invoice or receipt descriptions follow the existing url / local_path rules — extract them as usual.
+14. Clinical context — when the prompt discusses healthcare, doctors, prescriptions, insurance, or patient care, be aggressive about extracting **medical** surfaces (diagnoses, drug+dose phrases, treatments, insurance plans) bound to a specific person. See the `medical` Examples below for canonical shapes. The full drug+dose+schedule phrase stays as ONE span — this overrides Rule 6 for medication spans that embed a dose.
 
 These hints are additive — they do not override Rules 1–8. If a surface looks "templated" but only because the OCR layout repeats it (e.g. the same customer address on every page), still extract it.
 
