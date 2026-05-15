@@ -364,9 +364,13 @@ def test_draw_redactions_label_call_count_is_one_per_placeholder() -> None:
     ):
         _draw_redactions(image, regions)
 
-    # Each distinct placeholder must produce exactly one label-render
-    # call, regardless of how many bboxes it binds to.
-    assert sorted(call_log) == ["<<ADDRESS_1>>", "<<ORG_1>>"]
+    # Every box gets its placeholder rendered now — the previous
+    # "one label per placeholder family" dedupe was removed because it
+    # left adjacent boxes visually anonymous (see the A2 visual eval
+    # find: a multi-bbox address looked like a partial leak in demos).
+    # Downstream duplicate-name confusion is handled at the prompt
+    # layer via the region-map text block, not in pixels.
+    assert sorted(call_log) == ["<<ADDRESS_1>>", "<<ADDRESS_1>>", "<<ORG_1>>"]
 
 
 @pytest.mark.asyncio

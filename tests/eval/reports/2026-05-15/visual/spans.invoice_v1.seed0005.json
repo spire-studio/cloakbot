@@ -1,0 +1,206 @@
+{
+  "seed": 5,
+  "template_id": "invoice_v1",
+  "width": 1240,
+  "height": 1600,
+  "spans": [
+    {
+      "text": "Scott, Howard and Vaughn",
+      "label": "vendor_name",
+      "entity_type": "org",
+      "bbox": [
+        700,
+        168,
+        915,
+        183
+      ]
+    },
+    {
+      "text": "3021 Harrison Gateway, Stephensshire, IA 02219",
+      "label": "billing_address",
+      "entity_type": "address",
+      "bbox": [
+        700,
+        195,
+        1028,
+        209
+      ]
+    },
+    {
+      "text": "rickywhite@moore-robles.com",
+      "label": "email",
+      "entity_type": "email",
+      "bbox": [
+        700,
+        219,
+        902,
+        233
+      ]
+    },
+    {
+      "text": "Jill Anderson",
+      "label": "customer_name",
+      "entity_type": "person",
+      "bbox": [
+        60,
+        168,
+        167,
+        180
+      ]
+    },
+    {
+      "text": "Unit 0332 Box 2453, DPO AP 89345",
+      "label": "billing_address",
+      "entity_type": "address",
+      "bbox": [
+        60,
+        195,
+        302,
+        209
+      ]
+    },
+    {
+      "text": "+1 (323) 640-5622",
+      "label": "phone",
+      "entity_type": "phone",
+      "bbox": [
+        60,
+        219,
+        184,
+        233
+      ]
+    },
+    {
+      "text": "cameron49@example.net",
+      "label": "email",
+      "entity_type": "email",
+      "bbox": [
+        60,
+        243,
+        233,
+        257
+      ]
+    },
+    {
+      "text": "INV-0951-T4E5",
+      "label": "invoice_number",
+      "entity_type": "identifier",
+      "bbox": [
+        74,
+        362,
+        191,
+        374
+      ]
+    },
+    {
+      "text": "2026-04-07",
+      "label": "date",
+      "entity_type": "temporal",
+      "bbox": [
+        447,
+        362,
+        534,
+        374
+      ]
+    },
+    {
+      "text": "2026-05-21",
+      "label": "date",
+      "entity_type": "temporal",
+      "bbox": [
+        820,
+        362,
+        907,
+        374
+      ]
+    },
+    {
+      "text": "$4,171.90",
+      "label": "amount",
+      "entity_type": "financial",
+      "bbox": [
+        1040,
+        485,
+        1116,
+        501
+      ]
+    },
+    {
+      "text": "$1,742.70",
+      "label": "amount",
+      "entity_type": "financial",
+      "bbox": [
+        1040,
+        521,
+        1116,
+        537
+      ]
+    },
+    {
+      "text": "$2,398.20",
+      "label": "amount",
+      "entity_type": "financial",
+      "bbox": [
+        1040,
+        557,
+        1116,
+        573
+      ]
+    },
+    {
+      "text": "$3,229.51",
+      "label": "amount",
+      "entity_type": "financial",
+      "bbox": [
+        1040,
+        593,
+        1116,
+        609
+      ]
+    },
+    {
+      "text": "$11,542.31",
+      "label": "amount",
+      "entity_type": "financial",
+      "bbox": [
+        1040,
+        659,
+        1124,
+        675
+      ]
+    },
+    {
+      "text": "Amex ending 8656",
+      "label": "account_number",
+      "entity_type": "identifier",
+      "bbox": [
+        107,
+        762,
+        256,
+        777
+      ]
+    },
+    {
+      "text": "US19 5406 1358 9525",
+      "label": "account_number",
+      "entity_type": "identifier",
+      "bbox": [
+        129,
+        798,
+        299,
+        810
+      ]
+    },
+    {
+      "text": "TXN-9W0G-70293137WHQXD",
+      "label": "transaction_id",
+      "entity_type": "identifier",
+      "bbox": [
+        152,
+        834,
+        386,
+        847
+      ]
+    }
+  ]
+}

@@ -13,9 +13,11 @@ We didn't trust ourselves to *say* CloakBot keeps its promise — we **built an 
 
 Current cross-domain baseline:
 
-- **Pair leak rate: 7.98%** (medical alone: 2.22%, down 87.5% from the pre-eval baseline of 17.78%)
-- **Token leak rate: 5.88%**
-- **Alias consistency across turns: 97.14%** (in the two domains with naturally-recurring entities — medical 95%, finance 100%)
+- **A1 (text) pair leak rate: 7.98%** (medical alone: 2.22%, down 87.5% from the pre-eval baseline of 17.78%)
+- **A1 token leak rate: 5.88%**
+- **A1 alias consistency across turns: 97.14%** (in the two domains with naturally-recurring entities — medical 95%, finance 100%)
+- **A2 (visual) span leak rate: 1.11%** across 180 ground-truth PII spans on 10 synthetic invoices (98.89% of full strings hidden after re-OCR)
+- **A2 token leak rate: 1.01%** (98.99% of identifier tokens hidden after re-OCR)
 - **100% recall** on EMAIL · PHONE · FINANCE · IP · URL
 - p50 turn latency 0.7 s, p95 0.9 – 6.2 s depending on domain
 
@@ -144,6 +146,56 @@ The key design choice: **GPT is not in the grading loop**. Faker emits the groun
 | `DATE` | 84.29% | 88.98% | 140 | 22 | weekday-based dates ("Friday at 3:21 PM") slip |
 | **`ORG`** | **71.67%** | **71.20%** | 60 | 17 | **weakest remaining type** — short / hyphenated company names |
 
+### A2 — visual leak eval (10 seeds × `invoice_v1`)
+
+CloakBot's visual pipeline redacts images by painting placeholder-labeled black bars over each PII region. To check that the redaction is **OCR-resistant** (i.e. a downstream multimodal model can't recover the original text from the redacted PNG), we built a second runner alongside `text_leak_eval.py`:
+
+```
+generators/render_invoice.py     ← deterministic Faker-driven PIL invoice
+                                   with ground-truth bboxes per span
+                                     ↓
+runners/visual_leak_eval.py      ← feeds GT spans into
+                                   redact_visual_content_blocks as
+                                   text-side entities, then re-OCRs
+                                   the redacted PNG with Tesseract and
+                                   measures residual token survival
+                                     ↓
+reports/<date>/visual.invoice_v1.{md,jsonl}
++ before/after PNGs per seed (auditable visually)
+```
+
+The vLLM multimodal detector is **bypassed** in this runner so the eval depends only on Faker + PIL + Tesseract — it measures the redaction-and-re-OCR contract, not the detector's recall, and is the strictly weaker question (we'd expect production numbers to be slightly worse before any detector tuning).
+
+**Headline (10 seeds, 180 GT spans, 197 redaction boxes painted):**
+
+- **Span leak: 2/180 = 1.11%** — only 2 of 180 full PII strings survived re-OCR on the redacted image
+- **Token leak: 4/395 = 1.01%** — 98.99% of identifier tokens (digits ≥3, alpha ≥4; same rule as A1) were hidden
+
+| Label | Spans | Span leak | Tokens | Token leak |
+|---|---:|---:|---:|---:|
+| `amount` | 50 | **0.00%** | 50 | **0.00%** |
+| `customer_name` | 10 | **0.00%** | 20 | **0.00%** |
+| `date` | 20 | **0.00%** | 20 | **0.00%** |
+| `account_number` | 20 | **0.00%** | 60 | **0.00%** |
+| `billing_address` | 20 | **0.00%** | 123 | **0.00%** |
+| `phone` | 10 | **0.00%** | 30 | **0.00%** |
+| `transaction_id` | 10 | **0.00%** | 20 | **0.00%** |
+| `invoice_number` | 10 | **0.00%** | 10 | **0.00%** |
+| `email` | 20 | 5.00% | 43 | 4.65% |
+| `vendor_name` | 10 | 10.00% | 19 | 5.26% |
+
+### What the eval *taught* us about the visual pipeline
+
+The first end-to-end A2 run measured **3.89% span / 8.86% token leak** — and the residual PNGs were the receipt: customer addresses still readable on one seed, an IBAN-style account number on another, every other label showing inconsistent placeholder overlays. The eval-as-receipt loop closed three production bugs in one PR:
+
+| iteration | what we found | what we changed | result |
+|---|---|---|---|
+| v0 | Faker filled invoice line-item descriptions with un-tracked PII (`Travel — Nashfort`), giving the redactor PII it was never asked to hide and the eval no way to score it | Switched `render_invoice.py` line items to fixed non-PII strings (`"Travel expense"`); narrowed eval scope to labeled fields | 3.89% → 2.22% span / 8.86% → 6.33% token |
+| v1 | OCR confidence filter `conf < 30` in `_filter_ocr_words` dropped real words from the matcher's input; multi-token needles (long addresses, IBAN) failed to match because one filtered word broke the consecutive sequence | Removed the floor entirely — empty-text guard above already filters Tesseract's layout-marker rows | 2.22% → 1.67% span / 6.33% → 5.57% token |
+| v2 | Multi-token matcher required a **strict** consecutive match — one Tesseract misread inside a 9-word address ("Suite" → "Sulte") killed the entire bbox; placeholder overlay text was rendered on only one "primary" box per family, so adjacent boxes looked unannotated; fallback label was `[CUSTOMER_NAME]` not the canonical `<<CUSTOMER_NAME>>` | Added a gap-tolerant fallback (≥ 70% set intersection in an equal-length window) in `_matching_text_word_boxes`; render the placeholder on **every** box; switch the fallback format to `<<…>>` | 1.67% → 1.11% span / 5.57% → 1.01% token |
+
+The remaining residual leaks across 10 seeds are 3 events — `anthony08@crosby.com` and `ericguzman@example.net` (single-token email substrings Tesseract reads back with character-level OCR noise) and `Turner Ltd` (a 2-token org name where the gap-tolerant fallback's `needle_len ≥ 3` guard skips short needles). Fix path is in the writeup's "known issues" — all three are reachable with one more matcher tweak.
+
 ### What the eval *taught* us
 
 1. **Gemma 4 E2B was blind to single-word common diagnoses.** `hypertension`, `atrial fibrillation`, `asthma` were treated as generic clinical concepts, not as personally-bound PII. Five of five paraphrase variants leaked these consistently.
@@ -186,7 +238,7 @@ Net prompt length **decreased** by ~150 tokens vs. v0. MEDICAL recall went from 
 - **Push ORG further** (71.67% pair recall — still the weakest type). Future example additions need the eval to re-verify cross-domain so we don't repeat the v1 attention-budget regression that bled into CS ID.
 - **Weekday-based dates** (`Friday at 3:21 PM`) — add weekday-format examples to `EntitySpec(temporal)` and re-run CS to confirm DATE recall closes the gap.
 - **Multi-turn coverage**: HR and customer service templates have no naturally-recurring entities, so `alias_consistency` reports `n/a` for those domains. Either add a recurrence-forcing turn (caller restating the candidate's name when handed off) or accept that those domains exercise density rather than recurrence.
-- **A2 — visual eval**: programmatic invoice + chat-screenshot renderer with pixel-level bbox ground truth. Re-OCR the redacted image and look for residual identifying tokens. Same `tests/eval/runners` directory.
+- **A2 visual eval — push further**: A2 lite (this submission) covers 1 invoice template across 10 seeds. Next: chat-screenshot renderer, multi-document templates, and a 2-token-aware matcher fallback that closes the last 3 residual leaks (`Turner Ltd`-style short org names + character-level OCR noise on single-token emails).
 - **Ollama fallback**: already supported for users without GPU access — needs documentation and a quickstart.
 - **Browser extension**: clipboard-level guard so CloakBot's coverage isn't limited to its own chat UI.
 
@@ -198,6 +250,7 @@ Net prompt length **decreased** by ~150 tokens vs. v0. MEDICAL recall went from 
 - Eval directory: [`tests/eval/`](tests/eval/). One command per template reproduces every number above against a running vLLM endpoint in ≈ 3 minutes each:
 
   ```bash
+  # A1 — text leak eval (4 domains, ~3 min/template against vLLM)
   for t in medical_followup_v1 hr_candidate_intake_v1 \
            finance_invoice_dispute_v1 customer_service_account_lockout_v1; do
     uv run python -m tests.eval.runners.text_leak_eval \
@@ -206,6 +259,9 @@ Net prompt length **decreased** by ~150 tokens vs. v0. MEDICAL recall went from 
       --seeds 42 137 256 1024 --quiet
   done
   uv run python -m tests.eval.runners.rollup
+
+  # A2 — visual leak eval (no vLLM needed; Faker + PIL + Tesseract only)
+  uv run python -m tests.eval.runners.visual_leak_eval --seeds 0 1 2 3 4 5 6 7 8 9
   ```
 
 - Audit log: every GPT paraphrase call is logged to `tests/eval/reports/gpt_audit.jsonl` (model, prompt token count, completion, rejected variants).
@@ -215,7 +271,7 @@ Net prompt length **decreased** by ~150 tokens vs. v0. MEDICAL recall went from 
 
 ## Why this fits the Safety & Trust track
 
-The track brief calls out *"communities where privacy is critical"*. CloakBot's premise is exactly that: in environments where the user cannot trust the remote model — adversarial jurisdictions, regulated industries, vulnerable populations — Gemma 4 running locally **is** the trust kernel. Without it, there is no CloakBot. The hackathon evaluation we built turns "trust me, it works" into "here are 902 entity-turn pairs across 4 domains, 7.98% pair leak, 97.14% alias consistency, here's the data, here's the command to reproduce it".
+The track brief calls out *"communities where privacy is critical"*. CloakBot's premise is exactly that: in environments where the user cannot trust the remote model — adversarial jurisdictions, regulated industries, vulnerable populations — Gemma 4 running locally **is** the trust kernel. Without it, there is no CloakBot. The hackathon evaluation we built turns "trust me, it works" into **902 entity-turn pairs of text across 4 domains, 180 ground-truth PII spans across 10 synthetic invoices, 7.98% A1 pair leak, 1.11% A2 span leak, 97.14% alias consistency** — here's the data, here's the command to reproduce it.
 
 ---
 

@@ -658,12 +658,16 @@ def _filter_ocr_words(data: dict[str, Any]) -> list[_TextWord]:
         text = str(raw_text or "").strip()
         if not text:
             continue
-        try:
-            confidence = float(data["conf"][i])
-        except (TypeError, ValueError):
-            confidence = -1
-        if confidence < 30:
-            continue
+        # Tesseract reports ``conf=-1`` for both layout-marker rows
+        # (already filtered above by the empty-text guard) *and* for a
+        # subset of genuine word entries it could not confidence-rate.
+        # We accept every entry that survives the empty-text check —
+        # the matcher downstream only paints a bbox when the OCR
+        # token literally satisfies a needle key, so spurious
+        # low-confidence words cannot trigger over-redaction. The A2
+        # visual leak eval surfaced this as a recurring miss on
+        # customer-side emails (single-token fuzzy path could not see
+        # the OCR word because the filter had dropped it).
         left = int(data["left"][i])
         top = int(data["top"][i])
         width = int(data["width"][i])
@@ -710,9 +714,35 @@ def _matching_text_word_boxes(words: list[_TextWord], needle: str) -> list[list[
 
     boxes = []
     tokens = [word.token for word in words]
-    for start in range(0, len(tokens) - len(needle_tokens) + 1):
-        if tokens[start : start + len(needle_tokens)] == needle_tokens:
-            boxes.append(_union_boxes([word.bbox for word in words[start : start + len(needle_tokens)]]))
+    needle_len = len(needle_tokens)
+
+    # Pass 1 — strict consecutive match.
+    # When OCR is clean, every needle token has an exact OCR neighbour
+    # in the same order, so a strict window comparison gives a precise
+    # bbox without any over-redaction risk.
+    for start in range(0, len(tokens) - needle_len + 1):
+        if tokens[start : start + needle_len] == needle_tokens:
+            boxes.append(_union_boxes([word.bbox for word in words[start : start + needle_len]]))
+    if boxes:
+        return boxes
+
+    # Pass 2 — gap-tolerant fallback.
+    # Tesseract regularly misreads one or two internal tokens in long
+    # spans ("Suite" → "Sulte", "AZ" → "A2"), which kills the strict
+    # match for the whole window and leaves the *entire* address
+    # unredacted. We accept any equal-length window whose tokens
+    # intersect the needle set at ≥ 70%. Over-redaction is bounded
+    # because the window size is pinned to ``needle_len`` and the
+    # threshold rejects accidental clusters of common words. Surfaced
+    # as a recurring leak on customer addresses by the A2 visual eval.
+    needle_set = {token for token in needle_tokens if token}
+    if not needle_set or needle_len < 3:
+        return boxes
+    threshold = max(2, (needle_len * 7 + 9) // 10)  # ceil(needle_len * 0.7)
+    for start in range(0, len(tokens) - needle_len + 1):
+        window = tokens[start : start + needle_len]
+        if sum(1 for token in window if token in needle_set) >= threshold:
+            boxes.append(_union_boxes([word.bbox for word in words[start : start + needle_len]]))
     return boxes
 
 
@@ -951,7 +981,7 @@ def _format_region_map_text(regions: list[dict[str, Any]]) -> str | None:
     for region in regions:
         placeholder = region.get("placeholder")
         label = region.get("label") or "redacted"
-        token = placeholder if placeholder else f"[{label.upper()}]"
+        token = placeholder if placeholder else f"<<{label.upper()}>>"
         bbox = region.get("bbox") or []
         bucket = grouped.setdefault(
             token,
@@ -973,7 +1003,7 @@ def _format_region_map_text(regions: list[dict[str, Any]]) -> str | None:
     for region in regions:
         placeholder = region.get("placeholder")
         label = region.get("label") or "redacted"
-        token = placeholder if placeholder else f"[{label.upper()}]"
+        token = placeholder if placeholder else f"<<{label.upper()}>>"
         if token in seen:
             continue
         seen.add(token)
@@ -1008,48 +1038,26 @@ def _draw_redactions(
     *,
     padding: int = 8,
 ) -> Image.Image:
-    """Paint redaction boxes; overlay placeholder text where available.
+    """Paint redaction boxes and overlay every box with its placeholder token.
 
-    The placeholder rendering turns each opaque black bar into something
-    a multimodal model can address by name in its reply ("the customer
-    in <<PERSON_1>>…"). Boxes without a placeholder fall back to the
-    label name in brackets (e.g. ``[CUSTOMER_NAME]``) so the model can
-    still distinguish region types.
-
-    Placeholder de-duplication
-    --------------------------
-    The same vault placeholder often binds to multiple bboxes — a long
-    customer address that the OCR splits across two lines, or a
-    company name OCR'd as two words ("DMIT" + "Inc.") that both match
-    the same vault entity. Rendering ``<<ADDRESS_1>>`` inside two
-    adjacent boxes confuses the downstream LLM ("there must be two
-    addresses"), which then complies by repeating the value in its
-    reply. So: each placeholder string is rendered on at most one box
-    — the rest of the boxes for that token stay plain black. The
-    overlay text is the *primary* one (the first / largest box).
+    Every box renders its placeholder (vault-bound ``<<PERSON_1>>``-style
+    when available) or the canonical label fallback (``<<CUSTOMER_NAME>>``)
+    so a human auditor or downstream multimodal model can identify each
+    redacted region. The previous behaviour rendered the overlay on at
+    most one "primary" box per token family to avoid duplicate-label
+    confusion downstream, but it left adjacent boxes visually anonymous
+    and made every visual demo look like the redactor "missed" the
+    secondary boxes — the A2 leak eval surfaced this as a usability
+    complaint. The downstream-LLM concern is now addressed at the
+    prompt layer via the region-map text block (which collapses
+    repeated placeholders into one), so duplicate overlay text inside
+    the image is no longer a problem.
     """
     redacted = image.copy()
     draw = ImageDraw.Draw(redacted)
     width, height = redacted.size
 
-    # Pick the "primary" box per placeholder — the largest one, since
-    # bigger boxes are visually dominant and easiest for a multimodal
-    # model to read the overlay text out of.
-    primary_index_by_token: dict[str, int] = {}
-    for i, region in enumerate(regions):
-        token = region.placeholder or f"[{region.label.upper()}]"
-        x1, y1, x2, y2 = region.bbox
-        area = max(0, (x2 - x1)) * max(0, (y2 - y1))
-        current = primary_index_by_token.get(token)
-        if current is None:
-            primary_index_by_token[token] = i
-            continue
-        cx1, cy1, cx2, cy2 = regions[current].bbox
-        current_area = max(0, (cx2 - cx1)) * max(0, (cy2 - cy1))
-        if area > current_area:
-            primary_index_by_token[token] = i
-
-    for i, region in enumerate(regions):
+    for region in regions:
         x1, y1, x2, y2 = region.bbox
         x1 = max(0, min(width, x1 - padding))
         y1 = max(0, min(height, y1 - padding))
@@ -1058,10 +1066,8 @@ def _draw_redactions(
         if x2 <= x1 or y2 <= y1:
             continue
         draw.rectangle((x1, y1, x2, y2), fill="black")
-
-        token = region.placeholder or f"[{region.label.upper()}]"
-        if primary_index_by_token.get(token) == i:
-            _render_box_label(draw, token, (x1, y1, x2, y2))
+        token = region.placeholder or f"<<{region.label.upper()}>>"
+        _render_box_label(draw, token, (x1, y1, x2, y2))
 
     return redacted
 
