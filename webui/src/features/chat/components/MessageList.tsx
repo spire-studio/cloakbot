@@ -1,23 +1,47 @@
-import { Check, ChevronDown, ChevronRight, Copy, ShieldCheck } from 'lucide-react'
-import { useEffect, useRef, useState, type RefObject } from 'react'
+import { ArrowLeftRight, Check, ChevronDown, ChevronRight, Copy, ShieldCheck } from 'lucide-react'
+import { Fragment, useEffect, useRef, useState, type RefObject } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Chip } from '@/components/ui/chip'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { useRemoteView } from '@/features/chat/context/RemoteViewContext'
+import {
+  hasEntityMatches,
+  substituteEntities,
+  tokenizeRemoteText,
+} from '@/features/chat/lib/remote-view-substitute'
+import { RemoteViewDiffDialog } from '@/features/chat/components/RemoteViewDiffDialog'
+import { emptyPrivacySnapshot } from '@/features/chat/services/chat-socket'
 import type { ChatAssistantStatus, ChatMessage } from '@/features/chat/types'
-import type { PrivacyTimeline, PrivacyTimelineEvent, ToolApproval } from '@/features/privacy/types'
+import type {
+  PrivacySnapshot,
+  PrivacyTimeline,
+  PrivacyTimelineEvent,
+  ToolApproval,
+} from '@/features/privacy/types'
 import { AnnotatedMarkdown } from '@/features/privacy/lib/annotated-markdown'
 import { cn } from '@/lib/utils'
 
 type MessageListProps = {
   messages: ChatMessage[]
+  snapshot?: PrivacySnapshot
   scrollRef: RefObject<HTMLDivElement | null>
   onApproveToolCall: (approvalId: string) => void
 }
 
-export function MessageList({ messages, scrollRef, onApproveToolCall }: MessageListProps) {
+const REMOTE_PLACEHOLDER_CHIP =
+  'inline-flex items-center rounded-md border border-[var(--privacy-medium-border)] bg-[var(--privacy-medium-bg)] px-1.5 py-[0.05rem] font-mono text-[0.78em] leading-[1.4] text-[var(--privacy-medium-text)] align-baseline'
+
+export function MessageList({
+  messages,
+  snapshot = emptyPrivacySnapshot,
+  scrollRef,
+  onApproveToolCall,
+}: MessageListProps) {
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null)
   const copiedResetTimeoutRef = useRef<number | null>(null)
+  const [diffMessage, setDiffMessage] = useState<ChatMessage | null>(null)
+  const { isRemote } = useRemoteView()
 
   useEffect(() => {
     return () => {
@@ -79,14 +103,16 @@ export function MessageList({ messages, scrollRef, onApproveToolCall }: MessageL
                   message.role === 'assistant' && !message.content ? 'hidden' : '',
                 )}
               >
-                  {message.role === 'assistant' ? (
-                  <AnnotatedMarkdown
-                    content={message.content}
-                    annotations={message.privacyAnnotations ?? []}
-                  />
-                ) : (
-                  <div className="whitespace-pre-wrap break-words">{message.content}</div>
-                )}
+                  {isRemote && message.content ? (
+                    <RemoteMessageBody content={message.content} snapshot={snapshot} />
+                  ) : message.role === 'assistant' ? (
+                    <AnnotatedMarkdown
+                      content={message.content}
+                      annotations={message.privacyAnnotations ?? []}
+                    />
+                  ) : (
+                    <div className="whitespace-pre-wrap break-words">{message.content}</div>
+                  )}
               </div>
 
               {message.role === 'assistant' && message.toolApproval ? (
@@ -116,12 +142,54 @@ export function MessageList({ messages, scrollRef, onApproveToolCall }: MessageL
                   {copiedMessageId === message.id ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
                   <span>{copiedMessageId === message.id ? 'Copied' : 'Copy'}</span>
                 </Button>
+                {hasEntityMatches(message.content, snapshot) ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 rounded-md px-2 text-[11px] text-muted-foreground hover:text-foreground"
+                    onClick={() => setDiffMessage(message)}
+                    aria-label={`Compare local and remote view of this ${message.role} message`}
+                  >
+                    <ArrowLeftRight className="h-3.5 w-3.5" />
+                    <span>Diff</span>
+                  </Button>
+                ) : null}
               </div>
             </div>
           </div>
         ))}
       </div>
+      <RemoteViewDiffDialog
+        open={diffMessage !== null}
+        onOpenChange={(open) => {
+          if (!open) setDiffMessage(null)
+        }}
+        message={diffMessage}
+        snapshot={snapshot}
+      />
     </ScrollArea>
+  )
+}
+
+function RemoteMessageBody({ content, snapshot }: { content: string; snapshot: PrivacySnapshot }) {
+  const remoteText = substituteEntities(content, snapshot.entities)
+  const fragments = tokenizeRemoteText(remoteText)
+  if (fragments.length === 0) {
+    return <span className="whitespace-pre-wrap break-words font-mono text-[0.95em]">{remoteText}</span>
+  }
+  return (
+    <div className="whitespace-pre-wrap break-words font-mono text-[0.95em] leading-[1.6]">
+      {fragments.map((fragment, index) =>
+        fragment.type === 'placeholder' ? (
+          <span key={`p-${index}`} className={REMOTE_PLACEHOLDER_CHIP}>
+            {fragment.value}
+          </span>
+        ) : (
+          <Fragment key={`t-${index}`}>{fragment.value}</Fragment>
+        ),
+      )}
+    </div>
   )
 }
 

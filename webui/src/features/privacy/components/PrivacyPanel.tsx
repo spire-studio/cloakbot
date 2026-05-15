@@ -1,4 +1,4 @@
-import { ArrowLeftRight, ChevronLeft, ChevronRight, Send, Shield, Terminal } from 'lucide-react'
+import { ArrowLeftRight, ChevronLeft, ChevronRight, Download, Send, Shield, Terminal } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useState } from 'react'
 
@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ComputationLog } from '@/features/privacy/components/ComputationLog'
 import { EntitySummary } from '@/features/privacy/components/EntitySummary'
 import { PromptLog } from '@/features/privacy/components/PromptLog'
+import { buildAuditRecords, downloadAuditJsonl } from '@/features/privacy/lib/export-audit'
 import type { PrivacySnapshot, PrivacyTurn } from '@/features/privacy/types'
 import { cn } from '@/lib/utils'
 
@@ -16,6 +17,7 @@ type PrivacyPanelProps = {
   onToggle: () => void
   snapshot: PrivacySnapshot
   turns: PrivacyTurn[]
+  sessionId?: string
 }
 
 type PanelSectionProps = {
@@ -42,13 +44,24 @@ function PanelSection({ title, description, children }: PanelSectionProps) {
   )
 }
 
-export function PrivacyPanel({ open, onToggle, snapshot, turns }: PrivacyPanelProps) {
+export function PrivacyPanel({ open, onToggle, snapshot, turns, sessionId }: PrivacyPanelProps) {
   const [activeTab, setActiveTab] = useState<(typeof inspectorTabs)[number]['value']>('entities')
   const totalComputations = turns.reduce((sum, turn) => sum + turn.localComputations.length, 0)
   const totalToolResults = turns.reduce((sum, turn) => sum + (turn.toolResults?.length ?? 0), 0)
   const highSeverityCount = snapshot.entities.filter((entity) => entity.severity === 'high').length
   const mathTurnCount = turns.filter((turn) => turn.intent === 'math').length
   const activeTabIndex = Math.max(0, inspectorTabs.findIndex((tab) => tab.value === activeTab))
+
+  const canExport = snapshot.total_entities > 0 || turns.length > 0
+  const handleExportAudit = () => {
+    const records = buildAuditRecords({
+      sessionId: sessionId ?? 'unknown-session',
+      snapshot,
+      turns,
+    })
+    if (records.length === 0) return
+    downloadAuditJsonl(records, { sessionId: sessionId ?? 'session' })
+  }
 
   return (
     <aside
@@ -140,6 +153,26 @@ export function PrivacyPanel({ open, onToggle, snapshot, turns }: PrivacyPanelPr
                   <div className="mt-0.5 text-sm font-semibold text-foreground">{totalToolResults}</div>
                 </div>
               </div>
+            </div>
+            <div className="mt-2 flex items-center justify-between gap-2 rounded-md border border-border/70 bg-card/70 px-2 py-1.5">
+              <div className="min-w-0">
+                <div className="text-[11px] text-muted-foreground">Audit trail</div>
+                <div className="mt-0.5 text-[11.5px] text-muted-foreground">
+                  Types + placeholders only — no raw values.
+                </div>
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-7 shrink-0 gap-1.5 rounded-md px-2 text-[11px]"
+                onClick={handleExportAudit}
+                disabled={!canExport}
+                aria-label="Export audit log as JSONL"
+              >
+                <Download className="h-3 w-3" />
+                <span>Export JSONL</span>
+              </Button>
             </div>
           </div>
 

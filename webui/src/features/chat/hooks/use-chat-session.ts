@@ -290,8 +290,8 @@ export function useChatSession(options: UseChatSessionOptions = {}) {
     }
   }, [])
 
-  const sendMessage = () => {
-    const trimmed = input.trim()
+  const sendMessage = (textOverride?: string) => {
+    const trimmed = (textOverride ?? input).trim()
     if (!trimmed) {
       return
     }

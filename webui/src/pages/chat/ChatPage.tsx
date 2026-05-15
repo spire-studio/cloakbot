@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { ChatView } from '@/features/chat/components/ChatView'
 import { useChatSession } from '@/features/chat/hooks/use-chat-session'
 import { scrollMessageListToBottom } from '@/features/chat/lib/scroll-message-list'
+import { usePrivacyState } from '@/features/privacy/context/PrivacyStateContext'
 
 type NavigationSession = {
   id: string
@@ -35,12 +36,22 @@ export function ChatPage({ onSessionNavigationChange }: ChatPageProps) {
     approveToolCall,
     isAwaitingAssistant,
   } = useChatSession()
+  const { setStats } = usePrivacyState()
   const [privacyPanelOpen, setPrivacyPanelOpen] = useState(
     () => (typeof window !== 'undefined' ? window.innerWidth >= 1024 : true),
   )
   const scrollRef = useRef<HTMLDivElement>(null)
   const startNewSessionRef = useRef(startNewSession)
   const selectSessionRef = useRef(selectSession)
+
+  useEffect(() => {
+    const highSeverityCount = privacySnapshot.entities.filter((entity) => entity.severity === 'high').length
+    setStats({
+      totalEntities: privacySnapshot.total_entities,
+      highSeverityCount,
+      blockedTurns: privacyTurns.length,
+    })
+  }, [privacySnapshot, privacyTurns, setStats])
 
   useEffect(() => {
     startNewSessionRef.current = startNewSession
@@ -84,6 +95,7 @@ export function ChatPage({ onSessionNavigationChange }: ChatPageProps) {
   return (
     <ChatView
       activeSessionId={activeSessionId}
+      sessionId={activeSessionId}
       messages={messages}
       privacySnapshot={privacySnapshot}
       privacyTurns={privacyTurns}
