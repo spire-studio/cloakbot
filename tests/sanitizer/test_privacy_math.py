@@ -23,7 +23,8 @@ def test_build_instruction_contains_numeric_tokens() -> None:
     assert "PRIVACY MODE ENABLED" in text
     assert "FINANCE_1" in text
     assert "PERCENTAGE_1" in text
-    assert "PERCENTAGE_* are percent/share values" in text
+    assert "PERCENTAGE_*" in text
+    assert "percent/share" in text
     assert "PERSON_1" not in text
 
 

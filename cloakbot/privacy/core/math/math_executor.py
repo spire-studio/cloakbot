@@ -51,33 +51,99 @@ def build_math_execution_instruction(sanitized_text: str, session_key: str | Non
 
     lines = [
         "### PRIVACY MODE ENABLED ###",
-        "You are working in a privacy-preserving environment. Follow these rules:",
-        "1. RESTORATION: Tokens like <<FINANCE_1>> will be restored to their original values automatically. Treat them as opaque labels.",
-        "2. COMPUTATION: If you need to show a calculated numeric result, emit a Python snippet block in this exact pattern:",
-        "   '<python_snippet_N>result = FINANCE_1 * 0.1</python_snippet_N>'",
-        "   Replace N with a positive integer such as 1, 2, 3, ...",
-        "3. MULTIPLE CALCULATIONS: If your answer contains multiple independent calculations, emit multiple snippet blocks with increasing indices:",
-        "   '<python_snippet_1>result = ...</python_snippet_1>'",
-        "   '<python_snippet_2>result = ...</python_snippet_2>'",
-        "4. OUTPUT BEHAVIOR: Each snippet block will be executed locally and replaced by its numeric result in the final output.",
-        "5. For any numeric result derived from token values, do not compute or state the number directly in normal prose; emit a python_snippet block instead.",
-        "6. If no calculation is needed, do not emit any python_snippet block.",
-        "7. Token families have different semantics: FINANCE_* are money values, PERCENTAGE_* are percent/share values, AMOUNT_* are counts or non-percentage ratios.",
+        "### PRIVACY MATH CONTRACT — STRICT — READ EVERY RULE ###",
         "",
-        "Rules for python snippets:",
-        "- Use only numeric token variables listed below.",
-        "- ONLY remove angle brackets before using a token as a variable in python snippet: <<FINANCE_1>> -> FINANCE_1.",
-        "- Each snippet must assign the final value to a variable named result.",
-        "- Keep snippets minimal and arithmetic-only.",
-        "- Do not include explanations, markdown, or extra text inside a snippet.",
-        "- Do not nest snippets.",
-        "- If you want to reuse the result of an already generated python snippet, use its CALC_* variable.",
-        "- Do not repeat prior executed snippets unless the user asks to recompute them.",
+        "Tokens like <<FINANCE_1>>, <<PERCENTAGE_1>>, <<VALUE_1>> are placeholders. They will be",
+        "restored to real values locally — treat them as opaque variable names.",
+        "",
+        "If — and ONLY if — you need to produce a numeric result derived from those tokens, you",
+        "MUST emit one or more Python snippet blocks following the contract below. Anything that",
+        "looks like code but is NOT wrapped in the exact tag form will be shown to the user as raw",
+        "text. That is the single most common failure mode of this contract — do not let it happen.",
+        "",
+        "─── 1. MANDATORY WRAPPER ─────────────────────────────────────────────",
+        "Every computation MUST be wrapped in this EXACT form (N is a positive integer):",
+        "    <python_snippet_N>result = <expression></python_snippet_N>",
+        "Plain Python written outside this wrapper is NOT executed and WILL leak to the user as",
+        "raw code.",
+        "",
+        "─── 2. ONE STATEMENT PER BLOCK ───────────────────────────────────────",
+        "Each snippet block MUST contain EXACTLY ONE assignment: `result = <expression>`.",
+        "Do NOT define intermediate variables inside a block (no `x = ...; result = x + 1`).",
+        "Do NOT put multiple lines of code inside one block.",
+        "",
+        "─── 3. MULTI-STEP FORMULAS — DECOMPOSE AND CHAIN ─────────────────────",
+        "If a formula needs multiple steps, emit MULTIPLE snippet blocks with INCREASING indices.",
+        "To reuse a previous block's result, reference it as `CALC_N`, where N is the prior",
+        "block's snippet index. Do NOT invent your own Python variable names like",
+        "`contribution`, `rate`, `total`, `n`, `r` — those are unknown to the executor and the",
+        "whole chain will fail.",
+        "",
+        "─── 4. ALLOWED IDENTIFIERS INSIDE AN EXPRESSION ──────────────────────",
+        "  • Token names from the list at the bottom of this contract (strip the angle brackets:",
+        "    use FINANCE_1, NOT <<FINANCE_1>>).",
+        "  • CALC_N references to results of earlier snippet blocks in this same response.",
+        "  • Plain numeric literals (12, 100, 0.5) — only for known constants like '12 months'.",
+        "  • Whitelisted functions: abs, round, min, max, pow.",
+        "  • Arithmetic operators: + - * / // % **.",
+        "Anything else — names, imports, attribute access, function calls — will be rejected.",
+        "",
+        "─── 5. EXAMPLES ──────────────────────────────────────────────────────",
+        "",
+        "GOOD — single step:",
+        "    <python_snippet_1>result = FINANCE_1 * PERCENTAGE_1</python_snippet_1>",
+        "",
+        "GOOD — multi-step annuity future value (FV of monthly contributions, compounded monthly):",
+        "    <python_snippet_1>result = FINANCE_1 * PERCENTAGE_2</python_snippet_1>",
+        "    <python_snippet_2>result = PERCENTAGE_1 / 12</python_snippet_2>",
+        "    <python_snippet_3>result = (VALUE_2 - VALUE_1) * 12</python_snippet_3>",
+        "    <python_snippet_4>result = CALC_1 * ((1 + CALC_2) ** CALC_3 - 1) / CALC_2</python_snippet_4>",
+        "",
+        "─── 6. ANTI-PATTERNS — NEVER EMIT ANY OF THESE ───────────────────────",
+        "",
+        "WRONG — no wrapper tag (this is shown verbatim to the user; this exact failure has",
+        "happened in production):",
+        "    contribution = FINANCE_1 * PERCENTAGE_2",
+        "    r = PERCENTAGE_1 / 12",
+        "    result = contribution * r",
+        "",
+        "WRONG — multiple statements inside one block (executor rejects the whole block):",
+        "    <python_snippet_1>",
+        "    contribution = FINANCE_1 * PERCENTAGE_2",
+        "    result = contribution * 12",
+        "    </python_snippet_1>",
+        "",
+        "WRONG — your own variable name referenced across blocks (executor cannot resolve",
+        "`contribution`; you must use CALC_1 instead):",
+        "    <python_snippet_1>result = FINANCE_1 * PERCENTAGE_2</python_snippet_1>",
+        "    <python_snippet_2>result = contribution * 12</python_snippet_2>",
+        "",
+        "─── 7. PROSE BEHAVIOR ────────────────────────────────────────────────",
+        "Do NOT state computed numeric values in normal prose; emit a snippet block instead — its",
+        "numeric result will be substituted into the final user-visible output automatically.",
+        "If the user's question requires NO calculation, do not emit any snippet block.",
+        "Do not repeat prior executed snippets unless the user explicitly asks to recompute.",
+        "",
+        "─── 8. TOKEN SEMANTICS ───────────────────────────────────────────────",
+        "  FINANCE_*    — monetary amount.",
+        "  PERCENTAGE_* — percent/share, ALREADY normalized locally as a decimal fraction",
+        "                 (so a 30% input becomes 0.30 inside the executor). Use directly as",
+        "                 a multiplier; do NOT divide by 100.",
+        "  AMOUNT_*     — count or non-percentage ratio.",
+        "  VALUE_*      — generic numeric value (ages, counts, measurements when no more",
+        "                 specific family applies).",
+        "  METRIC_*     — measurement (length, weight, etc.).",
+        "  DATE_*       — date/time. Do NOT use directly in arithmetic.",
+        "  CALC_*       — result of a prior snippet in this response; reference it by name.",
     ]
 
     if token_names:
-        lines.append("\nAvailable numeric token variables:")
+        lines.append("")
+        lines.append("─── 9. AVAILABLE TOKEN VARIABLES FOR THIS TURN ───────────────────────")
         lines.extend(_describe_numeric_token(name) for name in token_names)
+
+    lines.append("")
+    lines.append("### END PRIVACY MATH CONTRACT ###")
 
     return "\n".join(lines)
 
@@ -136,6 +202,17 @@ async def apply_privacy_math_for_turn(
             modified_vault = modified_vault or is_new
             display_parts.append(computation.formatted_value)
             history_parts.append(computation.placeholder)
+            # Propagate the new CALC binding to the local `values` dict so a
+            # later snippet in the SAME response can reference it (e.g. a
+            # snippet that does `result = ... CALC_1 ...` immediately after
+            # the snippet that produced CALC_1). Without this, the AST
+            # validator below would reject CALC_1 as an unknown variable
+            # because the smap update is not visible to the validator's
+            # `allowed_names = set(values.keys())` snapshot taken per snippet.
+            if computation.placeholder:
+                placeholder_match = _PLACEHOLDER_RE.fullmatch(computation.placeholder)
+                if placeholder_match is not None:
+                    values[placeholder_match.group(1)] = float(computation.value)
         except Exception as exc:
             logger.warning("math-executer: snippet {} failed: {}", snippet_index, exc)
             display_parts.append(snippet_content)
