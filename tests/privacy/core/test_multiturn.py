@@ -5,9 +5,10 @@ from unittest.mock import AsyncMock
 import pytest
 
 from cloakbot.privacy.core.detection.detector import PiiDetector
-from cloakbot.privacy.core.detection.general_detector import PartialCandidate
+from cloakbot.privacy.core.detection.general_detector import DedupeTarget, PartialCandidate
 from cloakbot.privacy.core.sanitization.alias_resolver import resolve_existing_placeholder
 from cloakbot.privacy.core.sanitization.sanitize import (
+    _alias_prone_dedupe_targets,
     _alias_prone_vault_entries,
     sanitize_input_with_detection,
 )
@@ -51,6 +52,9 @@ async def test_sanitize_input_pre_swaps_known_originals(monkeypatch) -> None:
     detect.assert_awaited_once_with(
         "Hello <<PERSON_1>>",
         partial_candidates=[],
+        dedupe_targets=[
+            DedupeTarget(placeholder="<<PERSON_1>>", canonical="Alice Chen", entity_type="person"),
+        ],
     )
     assert sanitized == "Hello <<PERSON_1>>"
     assert modified is True
@@ -83,6 +87,38 @@ def test_alias_prone_vault_entries_filter_to_person_and_org_canonical_values() -
     ]
 
 
+def test_alias_prone_dedupe_targets_emit_placeholder_for_person_and_org_only() -> None:
+    """Plan C: the detector receives DedupeTarget(placeholder, canonical, type)
+    triples for every PERSON / ORG already in the Vault, so it can decide
+    per-entity whether a new mention is the SAME entity or a NEW one.
+    Non-alias-prone families (email, phone, …) are deliberately excluded:
+    they match on exact strings and don't have the surname/short-name
+    ambiguity that motivated Plan C."""
+    smap = _SessionMap()
+    person_placeholder, _ = smap.get_or_create_placeholder(
+        "Robert Liu", "PERSON", turn_id="turn-1"
+    )
+    org_placeholder, _ = smap.get_or_create_placeholder(
+        "Acme Corporation", "ORG", turn_id="turn-1"
+    )
+    smap.get_or_create_placeholder("robert@example.com", "EMAIL", turn_id="turn-1")
+
+    targets = _alias_prone_dedupe_targets(smap)
+
+    assert targets == [
+        DedupeTarget(
+            placeholder=person_placeholder,
+            canonical="Robert Liu",
+            entity_type="person",
+        ),
+        DedupeTarget(
+            placeholder=org_placeholder,
+            canonical="Acme Corporation",
+            entity_type="org",
+        ),
+    ]
+
+
 @pytest.mark.asyncio
 async def test_sanitize_input_passes_partial_candidates_from_vault(monkeypatch) -> None:
     smap = _SessionMap()
@@ -109,5 +145,8 @@ async def test_sanitize_input_passes_partial_candidates_from_vault(monkeypatch) 
         "Robert 的邮箱是 robertliu@corp.com",
         partial_candidates=[
             PartialCandidate(surface="Robert", canonical="Robert Liu", entity_type="person"),
+        ],
+        dedupe_targets=[
+            DedupeTarget(placeholder="<<PERSON_1>>", canonical="Robert Liu", entity_type="person"),
         ],
     )

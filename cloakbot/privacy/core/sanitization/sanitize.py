@@ -6,7 +6,10 @@ from loguru import logger
 
 from cloakbot.privacy.core.detection.chunking import ContentType
 from cloakbot.privacy.core.detection.detector import PiiDetector
-from cloakbot.privacy.core.detection.general_detector import scan_partial_candidates
+from cloakbot.privacy.core.detection.general_detector import (
+    DedupeTarget,
+    scan_partial_candidates,
+)
 from cloakbot.privacy.core.detection.tool_detector import (
     ToolDetectionContext,
     ToolPrivacyDetector,
@@ -41,6 +44,24 @@ def _alias_prone_vault_entries(smap: _SessionMap) -> list[dict[str, str]]:
     ]
 
 
+def _alias_prone_dedupe_targets(smap: _SessionMap) -> list[DedupeTarget]:
+    """Surface every existing PERSON/ORG placeholder + canonical to the
+    detector so it can emit a cross-turn `dedupe_hint` per new entity
+    (Plan C). Only the same alias-prone types that drive `partial_candidates`
+    are included — other entity families (email, phone, id, …) match on
+    exact strings and don't have the surname-vs-fullname ambiguity that
+    motivated Plan C."""
+    return [
+        DedupeTarget(
+            placeholder=entity.placeholder,
+            canonical=entity.canonical,
+            entity_type=entity.entity_type,
+        )
+        for entity in smap.placeholder_to_entity.values()
+        if entity.entity_type in _ALIAS_PRONE_ENTITY_TYPES and entity.canonical
+    ]
+
+
 async def _sanitize_with_detection(
     text: str,
     session_key: str,
@@ -58,6 +79,7 @@ async def _sanitize_with_detection(
                 pre_swapped,
                 _alias_prone_vault_entries(smap),
             ),
+            dedupe_targets=_alias_prone_dedupe_targets(smap),
         )
     except Exception:
         if fail_open:

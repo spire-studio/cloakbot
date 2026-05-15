@@ -192,6 +192,7 @@ class TestPiiDetectorFacade:
         detector._general.detect.assert_awaited_once_with(
             "Alice has $100,000",
             partial_candidates=None,
+            dedupe_targets=None,
         )
         detector._digit.detect.assert_awaited_once_with("Alice has $100,000")
         assert isinstance(result, DetectionResult)
@@ -223,6 +224,7 @@ class TestPiiDetectorFacade:
         detector._general.detect.assert_awaited_once_with(
             "Robert followed up",
             partial_candidates=candidates,
+            dedupe_targets=None,
         )
         detector._digit.detect.assert_awaited_once_with("Robert followed up")
 
