@@ -19,6 +19,32 @@ function upsertPrivacyTurn(state: ChatSessionState, privacyTurn: PrivacyTurn) {
   return [...state.privacyTurns, privacyTurn]
 }
 
+/** Walk back to the most recent user message and stamp it with the
+ * per-attachment redaction results carried on this turn. We attach to the
+ * user message instead of the assistant message so the "what the remote saw"
+ * toggle can swap thumbnails directly in the bubble that owns the upload. */
+function attachUserAttachmentResultsToLastUserMessage(
+  messages: ChatMessage[],
+  privacyTurn: PrivacyTurn | undefined,
+): ChatMessage[] {
+  if (!privacyTurn?.userAttachments || privacyTurn.userAttachments.length === 0) {
+    return messages
+  }
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index]
+    if (message.role !== 'user') {
+      continue
+    }
+    if (message.attachmentResults) {
+      return messages
+    }
+    const nextMessages = [...messages]
+    nextMessages[index] = { ...message, attachmentResults: privacyTurn.userAttachments }
+    return nextMessages
+  }
+  return messages
+}
+
 function startAssistantStatus(startedAt: number): ChatAssistantStatus {
   return {
     state: 'thinking',
@@ -91,8 +117,13 @@ export function reduceChatSocketEvent(
       nextMessages.push(nextMessage)
     }
 
+    const messagesWithAttachmentResults = attachUserAttachmentResultsToLastUserMessage(
+      nextMessages,
+      event.privacyTurn,
+    )
+
     return {
-      messages: nextMessages,
+      messages: messagesWithAttachmentResults,
       privacySnapshot: event.privacy ?? state.privacySnapshot,
       privacyTurns: event.privacyTurn ? upsertPrivacyTurn(state, event.privacyTurn) : state.privacyTurns,
     }
@@ -135,8 +166,13 @@ export function reduceChatSocketEvent(
       }
     }
 
+    const messagesWithAttachmentResults = attachUserAttachmentResultsToLastUserMessage(
+      nextMessages,
+      event.privacyTurn,
+    )
+
     return {
-      messages: nextMessages,
+      messages: messagesWithAttachmentResults,
       privacySnapshot: event.privacy ?? state.privacySnapshot,
       privacyTurns: event.privacyTurn ? upsertPrivacyTurn(state, event.privacyTurn) : state.privacyTurns,
     }

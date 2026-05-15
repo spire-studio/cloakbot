@@ -45,7 +45,9 @@ describe('useChatSession', () => {
         startedAt: 1000,
       },
     })
-    expect(send).toHaveBeenCalledWith(JSON.stringify({ content: 'hello world' }))
+    expect(send).toHaveBeenCalledWith(
+      JSON.stringify({ content: 'hello world', attachments: [] }),
+    )
     expect(result.current.input).toBe('')
     expect(result.current.isAwaitingAssistant).toBe(true)
   })
@@ -71,7 +73,9 @@ describe('useChatSession', () => {
       result.current.sendMessage()
     })
 
-    expect(send).toHaveBeenCalledWith(JSON.stringify({ content: 'hello again' }))
+    expect(send).toHaveBeenCalledWith(
+      JSON.stringify({ content: 'hello again', attachments: [] }),
+    )
     expect(result.current.messages.findLast((message) => message.role === 'user')).toMatchObject({
       role: 'user',
       content: 'hello again',

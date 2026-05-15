@@ -20,9 +20,25 @@ class WebUIModel(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
 
+class WebUIAttachment(WebUIModel):
+    """One image attachment sent inline with a user message.
+
+    ``data_url`` is the full ``data:<mime>;base64,<payload>`` form so the
+    visual privacy pipeline can decode it without filesystem access.
+    Frontend keeps the original copy locally — the same data URL is not
+    echoed back from the server, which prevents an accidental round-trip
+    that would defeat the redaction.
+    """
+
+    mime_type: str = Field(alias="mimeType")
+    data_url: str = Field(alias="dataUrl")
+    name: str | None = None
+
+
 class WebUIUserMessage(WebUIModel):
     type: Literal["message", "tool_approval"] = "message"
     content: str = ""
+    attachments: list[WebUIAttachment] = Field(default_factory=list)
     approval_id: str | None = Field(default=None, alias="approvalId")
     approved: bool = True
 
@@ -56,6 +72,29 @@ class WebUIToolApproval(WebUIModel):
     status: ToolApprovalStatus
 
 
+class WebUIUserAttachment(WebUIModel):
+    """Per-attachment record returned to the frontend after redaction.
+
+    Both the original and the redacted artifact are echoed back as
+    base64-encoded data URLs. The originals normally live only in the
+    uploading browser tab's memory, but a page reload would otherwise
+    lose the local-vs-remote diff entirely — the vault stores both so
+    the diff stays reconstructible across reloads while honoring
+    CloakBot's "data never leaves localhost" boundary (the vault is
+    local-only).
+
+    ``original_data_url`` and ``redacted_data_url`` are both ``None``
+    when the visual pipeline omitted the image (fail-closed); callers
+    render a placeholder in that case.
+    """
+
+    status: Literal["redacted", "omitted"]
+    original_data_url: str | None = Field(default=None, alias="originalDataUrl")
+    redacted_data_url: str | None = Field(default=None, alias="redactedDataUrl")
+    redaction: VisualPrivacyRedaction | None = None
+    reason: str | None = None
+
+
 class WebUIPrivacyTurn(WebUIModel):
     turn_id: str = Field(alias="turnId")
     intent: Literal["chat", "math"]
@@ -63,6 +102,7 @@ class WebUIPrivacyTurn(WebUIModel):
     local_computations: list[LocalComputationRecord] = Field(alias="localComputations")
     tool_results: list[WebUIToolResult] = Field(default_factory=list, alias="toolResults")
     tool_approvals: list[WebUIToolApproval] = Field(default_factory=list, alias="toolApprovals")
+    user_attachments: list[WebUIUserAttachment] = Field(default_factory=list, alias="userAttachments")
 
 
 class WebUIPrivacyTimelineEvent(WebUIModel):

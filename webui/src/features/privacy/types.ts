@@ -13,6 +13,7 @@ export type PrivacyTurn = {
   localComputations: LocalComputation[]
   toolResults?: ToolPrivacyResult[]
   toolApprovals?: ToolApproval[]
+  userAttachments?: UserAttachmentResult[]
 }
 
 export type ToolPrivacyResult = {
@@ -30,6 +31,14 @@ export type VisualPrivacyRedaction = {
   detectedItems: number
   redactionBoxes: number
   labels: string[]
+  reason?: string | null
+}
+
+export type UserAttachmentResult = {
+  status: 'redacted' | 'omitted'
+  originalDataUrl?: string | null
+  redactedDataUrl?: string | null
+  redaction?: VisualPrivacyRedaction | null
   reason?: string | null
 }
 

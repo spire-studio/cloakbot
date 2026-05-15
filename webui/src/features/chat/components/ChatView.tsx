@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
-import type { ChatMessage } from '@/features/chat/types'
+import type { ChatAttachment, ChatMessage } from '@/features/chat/types'
 import type { DemoScenario } from '@/features/chat/lib/demo-scenarios'
 import { PrivacyPanel } from '@/features/privacy/components/PrivacyPanel'
 import type { PrivacySnapshot, PrivacyTurn } from '@/features/privacy/types'
@@ -19,7 +19,7 @@ type ChatViewProps = {
   privacyTurns: PrivacyTurn[]
   input: string
   setInput: (value: string) => void
-  onSend: (textOverride?: string) => void
+  onSend: (textOverride?: string, attachments?: ChatAttachment[]) => void
   onApproveToolCall: (approvalId: string) => void
   isAwaitingAssistant: boolean
   privacyPanelOpen: boolean
@@ -127,7 +127,7 @@ export function ChatView({
                   <Composer
                     input={input}
                     onInputChange={setInput}
-                    onSend={() => onSend()}
+                    onSend={(attachments) => onSend(undefined, attachments)}
                     isAwaitingAssistant={isAwaitingAssistant}
                     layout="landing"
                     className="w-full"

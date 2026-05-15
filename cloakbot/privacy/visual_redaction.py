@@ -872,6 +872,29 @@ async def process_visual_blocks(
 
     vault_entries: list[VisualVaultEntry] = []
     if persist_image:
+        # Persist the *original* image alongside the redacted version so the
+        # WebUI can rebuild the local-vs-remote diff after a page reload —
+        # the frontend only holds the original in-memory and loses it on
+        # refresh. Both artifacts live under the per-session vault on the
+        # user's own machine, so this does not widen the network boundary
+        # (the contract is "nothing leaves localhost", not "nothing touches
+        # disk"). Order matters: the original is appended first so the
+        # builder can pair it positionally with the redaction record.
+        original_image = extract_visual_image(blocks)
+        if original_image is not None:
+            raw, mime = original_image
+            suffix = _mime_suffix(mime)
+            original_path = save_artifact_bytes(
+                session_key,
+                turn_id,
+                vault_call_id,
+                f"original_image.{suffix}",
+                raw,
+            )
+            vault_entries.append(
+                VisualVaultEntry(kind="original_image", path=str(original_path), media_type=mime)
+            )
+
         visual_image = extract_visual_image(redacted_blocks)
         if visual_image is not None:
             raw, mime = visual_image

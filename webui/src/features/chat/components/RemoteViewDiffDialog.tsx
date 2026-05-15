@@ -67,22 +67,51 @@ export function RemoteViewDiffDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-          <DiffColumn
-            label="You typed"
-            tone="local"
-            footer={`${message.content.length} chars · ${matchedEntities.length} entities matched`}
-          >
-            <HighlightedOriginal content={message.content} matched={matchedEntities} />
-          </DiffColumn>
-          <DiffColumn
-            label="Remote saw"
-            tone="remote"
-            footer={`${remoteText.length} chars · ${matchedEntities.length} placeholders`}
-          >
-            <PlaceholderText text={remoteText} />
-          </DiffColumn>
-        </div>
+        {message.attachments && message.attachments.length > 0 ? (
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <DiffColumn
+              label="You uploaded"
+              tone="local"
+              footer={`${message.attachments.length} image${message.attachments.length === 1 ? '' : 's'}`}
+            >
+              <AttachmentColumn
+                attachments={message.attachments}
+                kind="original"
+                results={message.attachmentResults}
+              />
+            </DiffColumn>
+            <DiffColumn
+              label="Remote saw"
+              tone="remote"
+              footer={`${(message.attachmentResults ?? []).filter((r) => r.status === 'redacted').length} redacted · ${(message.attachmentResults ?? []).filter((r) => r.status === 'omitted').length} omitted`}
+            >
+              <AttachmentColumn
+                attachments={message.attachments}
+                kind="redacted"
+                results={message.attachmentResults}
+              />
+            </DiffColumn>
+          </div>
+        ) : null}
+
+        {message.content ? (
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <DiffColumn
+              label="You typed"
+              tone="local"
+              footer={`${message.content.length} chars · ${matchedEntities.length} entities matched`}
+            >
+              <HighlightedOriginal content={message.content} matched={matchedEntities} />
+            </DiffColumn>
+            <DiffColumn
+              label="Remote saw"
+              tone="remote"
+              footer={`${remoteText.length} chars · ${matchedEntities.length} placeholders`}
+            >
+              <PlaceholderText text={remoteText} />
+            </DiffColumn>
+          </div>
+        ) : null}
 
         {matchedEntities.length > 0 ? (
           <div className="rounded-xl border border-border bg-[var(--surface-subtle)] px-3 py-2.5">
@@ -218,6 +247,61 @@ function HighlightedOriginal({
     nodes.push(<Fragment key="text-tail">{content.slice(cursor)}</Fragment>)
   }
   return <>{nodes}</>
+}
+
+function AttachmentColumn({
+  attachments,
+  kind,
+  results,
+}: {
+  attachments: NonNullable<ChatMessage['attachments']>
+  kind: 'original' | 'redacted'
+  results: ChatMessage['attachmentResults']
+}) {
+  return (
+    <div className="flex flex-col gap-3 px-3 py-3">
+      {attachments.map((attachment, index) => {
+        const result = results?.[index]
+        if (kind === 'redacted' && (!result || !result.redactedDataUrl)) {
+          return (
+            <div
+              key={`redacted-omitted-${index}`}
+              className="rounded-lg border border-dashed border-border bg-[var(--surface-subtle)] px-3 py-4 text-center text-[11px] leading-[1.5] text-muted-foreground"
+            >
+              {result?.status === 'omitted'
+                ? `Omitted from remote payload — ${result.reason ?? 'fail-closed redaction'}.`
+                : 'Awaiting redaction…'}
+            </div>
+          )
+        }
+        const src = kind === 'original' ? attachment.dataUrl : result!.redactedDataUrl!
+        const labels = result?.redaction?.labels ?? []
+        const boxes = result?.redaction?.redactionBoxes ?? 0
+        return (
+          <figure
+            key={`${kind}-${index}`}
+            className="overflow-hidden rounded-lg border border-border bg-card"
+          >
+            <img
+              src={src}
+              alt={
+                kind === 'original'
+                  ? attachment.name ?? `original ${index + 1}`
+                  : `redacted ${index + 1}`
+              }
+              className="w-full"
+            />
+            {kind === 'redacted' && (labels.length > 0 || boxes > 0) ? (
+              <figcaption className="border-t border-border/70 px-3 py-2 text-[11px] text-muted-foreground">
+                {boxes} redaction box{boxes === 1 ? '' : 'es'}
+                {labels.length > 0 ? ` · ${labels.join(', ')}` : ''}
+              </figcaption>
+            ) : null}
+          </figure>
+        )
+      })}
+    </div>
+  )
 }
 
 function PlaceholderText({ text }: { text: string }) {

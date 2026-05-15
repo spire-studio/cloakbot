@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import base64
+import binascii
 import mimetypes
+import re
 import uuid
 from pathlib import Path
 from typing import Any
@@ -24,6 +26,46 @@ from cloakbot.privacy.visual_redaction import process_visual_blocks
 from cloakbot.utils.helpers import detect_image_mime
 
 _PROMPT_VAULT_PREFIX = "user_input"
+
+_DATA_URL_PATTERN = re.compile(
+    r"data:(?P<mime>image/[-+.\w]+);base64,(?P<payload>.+)",
+    flags=re.DOTALL,
+)
+
+
+def _decode_data_url(reference: str) -> tuple[bytes, str | None] | None:
+    """Parse a ``data:image/...;base64,...`` URL into ``(raw_bytes, mime)``.
+
+    Returns ``None`` on any malformed prefix or invalid base64 — callers
+    log a sanitized fingerprint rather than the raw URL so the failure
+    path never echoes user content into the log stream.
+    """
+    match = _DATA_URL_PATTERN.fullmatch(reference)
+    if not match:
+        return None
+    try:
+        raw = base64.b64decode(match.group("payload"), validate=True)
+    except (binascii.Error, ValueError):
+        return None
+    if not raw:
+        return None
+    return raw, match.group("mime")
+
+
+def _media_fingerprint(reference: str) -> str:
+    """Short, log-safe summary of a media reference.
+
+    For inline data URLs we keep only the mime-prefix tag; for filesystem
+    paths we keep the final path segment. The intent is "enough to debug
+    a mis-routed upload, never enough to leak the underlying bytes."
+    """
+    if reference.startswith("data:"):
+        head, _, _ = reference.partition(";")
+        return f"<{head}…>"
+    tail = reference.rsplit("/", 1)[-1]
+    if len(tail) > 24:
+        return f"<…{tail[-24:]}>"
+    return f"<{tail}>"
 
 
 class PrivacyRuntime:
@@ -243,23 +285,66 @@ class PrivacyRuntime:
 
     @staticmethod
     def _build_image_blocks_from_media(media: list[str]) -> list[dict[str, Any]]:
-        """Read media paths into ``image_url`` blocks for visual processing.
+        """Read media references into ``image_url`` blocks for visual processing.
 
-        Mirrors ``agent.context.ContextBuilder._build_user_content`` but
-        keeps the path on ``_meta`` so visual redaction records can cite
-        the source for transparency without leaking it to the LLM.
+        Accepts two reference shapes:
+
+        - ``data:image/<mime>;base64,<payload>`` — inline data URLs sent by
+          the WebUI/clipboard path. Parsed in-memory; the source ``path``
+          metadata is suppressed because the original filename/contents
+          have no on-disk anchor.
+        - Filesystem paths (legacy channel uploads via Feishu/Slack/QQ).
+          Read with the same constraints as
+          ``agent.context.ContextBuilder._build_user_content``.
+
+        Warning logs **never** print the raw reference: data URLs carry
+        the user's raw image bytes in base64, and even fs paths can
+        include sensitive folder names. We log a short fingerprint
+        (kind + first 24 chars) so debugging stays useful without
+        defeating the privacy boundary on its own log line.
         """
         blocks: list[dict[str, Any]] = []
-        for path in media:
+        for reference in media:
+            if not isinstance(reference, str) or not reference:
+                continue
+
+            if reference.startswith("data:"):
+                raw_mime: tuple[bytes, str | None] | None = _decode_data_url(reference)
+                if raw_mime is None:
+                    logger.warning(
+                        "cannot decode user-attached media: {} ({} chars)",
+                        _media_fingerprint(reference),
+                        len(reference),
+                    )
+                    continue
+                raw, declared_mime = raw_mime
+                mime = detect_image_mime(raw) or declared_mime
+                if not mime or not mime.startswith("image/"):
+                    continue
+                b64 = base64.b64encode(raw).decode("ascii")
+                blocks.append(
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:{mime};base64,{b64}"},
+                        # No on-disk path — WebUI uploads are session-scoped only.
+                        "_meta": {"path": None},
+                    }
+                )
+                continue
+
             try:
-                p = Path(path)
+                p = Path(reference)
                 if not p.is_file():
                     continue
                 raw = p.read_bytes()
             except OSError as exc:
-                logger.warning("cannot read user-attached media {}: {}", path, exc)
+                logger.warning(
+                    "cannot read user-attached media {}: {}",
+                    _media_fingerprint(reference),
+                    exc,
+                )
                 continue
-            mime = detect_image_mime(raw) or mimetypes.guess_type(path)[0]
+            mime = detect_image_mime(raw) or mimetypes.guess_type(reference)[0]
             if not mime or not mime.startswith("image/"):
                 continue
             b64 = base64.b64encode(raw).decode("ascii")

@@ -103,16 +103,26 @@ export function MessageList({
                   message.role === 'assistant' && !message.content ? 'hidden' : '',
                 )}
               >
-                  {isRemote && message.content ? (
-                    <RemoteMessageBody content={message.content} snapshot={snapshot} />
-                  ) : message.role === 'assistant' ? (
-                    <AnnotatedMarkdown
-                      content={message.content}
-                      annotations={message.privacyAnnotations ?? []}
+                  {message.role === 'user' && message.attachments && message.attachments.length > 0 ? (
+                    <MessageAttachmentGrid
+                      attachments={message.attachments}
+                      results={message.attachmentResults}
+                      isRemote={isRemote}
+                      onClick={() => setDiffMessage(message)}
                     />
-                  ) : (
-                    <div className="whitespace-pre-wrap break-words">{message.content}</div>
-                  )}
+                  ) : null}
+                  {message.content ? (
+                    isRemote ? (
+                      <RemoteMessageBody content={message.content} snapshot={snapshot} />
+                    ) : message.role === 'assistant' ? (
+                      <AnnotatedMarkdown
+                        content={message.content}
+                        annotations={message.privacyAnnotations ?? []}
+                      />
+                    ) : (
+                      <div className="whitespace-pre-wrap break-words">{message.content}</div>
+                    )
+                  ) : null}
               </div>
 
               {message.role === 'assistant' && message.toolApproval ? (
@@ -142,7 +152,8 @@ export function MessageList({
                   {copiedMessageId === message.id ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
                   <span>{copiedMessageId === message.id ? 'Copied' : 'Copy'}</span>
                 </Button>
-                {hasEntityMatches(message.content, snapshot) ? (
+                {hasEntityMatches(message.content, snapshot) ||
+                (message.role === 'user' && (message.attachments?.length ?? 0) > 0) ? (
                   <Button
                     type="button"
                     variant="ghost"
@@ -169,6 +180,65 @@ export function MessageList({
         snapshot={snapshot}
       />
     </ScrollArea>
+  )
+}
+
+function MessageAttachmentGrid({
+  attachments,
+  results,
+  isRemote,
+  onClick,
+}: {
+  attachments: NonNullable<ChatMessage['attachments']>
+  results: ChatMessage['attachmentResults']
+  isRemote: boolean
+  onClick?: () => void
+}) {
+  if (attachments.length === 0) {
+    return null
+  }
+  return (
+    <div className="mb-2 flex flex-wrap gap-2">
+      {attachments.map((attachment, index) => {
+        const result = results?.[index]
+        const showRedacted = isRemote && result?.redactedDataUrl
+        const displayUrl = showRedacted ? result.redactedDataUrl! : attachment.dataUrl
+        const isOmitted = isRemote && result?.status === 'omitted'
+        const isPending = isRemote && !result
+        return (
+          <button
+            key={`${attachment.name ?? 'image'}-${index}`}
+            type="button"
+            onClick={onClick}
+            className="group relative block max-h-[18rem] max-w-[14rem] overflow-hidden rounded-xl border border-border bg-[var(--surface-subtle)] transition-colors hover:border-[var(--surface-outline-strong)]"
+            aria-label={`Open privacy diff for ${attachment.name ?? 'attached image'}`}
+          >
+            <img
+              src={displayUrl}
+              alt={attachment.name ?? `attachment ${index + 1}`}
+              className="max-h-[18rem] w-auto max-w-full object-contain"
+              loading="lazy"
+            />
+            {isOmitted ? (
+              <div className="absolute inset-0 grid place-items-center bg-background/95 px-3 text-center text-[11px] leading-[1.45] text-muted-foreground">
+                Image omitted from remote payload.{' '}
+                {result?.reason ?? 'Fail-closed redaction.'}
+              </div>
+            ) : null}
+            {isPending ? (
+              <div className="absolute inset-0 grid place-items-center bg-background/80 text-[11px] text-muted-foreground">
+                Awaiting redaction…
+              </div>
+            ) : null}
+            {isRemote && result?.redactedDataUrl ? (
+              <div className="pointer-events-none absolute bottom-1 left-1 rounded-md bg-card/90 px-1.5 py-[0.05rem] text-[10px] font-medium text-muted-foreground shadow-[0_0_0_1px_var(--surface-outline)]">
+                remote view
+              </div>
+            ) : null}
+          </button>
+        )
+      })}
+    </div>
   )
 }
 

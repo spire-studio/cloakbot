@@ -4,7 +4,14 @@ import type {
   PrivacyTimeline,
   PrivacyTurn,
   ToolApproval,
+  UserAttachmentResult,
 } from '@/features/privacy/types'
+
+export type ChatAttachment = {
+  mimeType: string
+  dataUrl: string
+  name?: string
+}
 
 export type ChatMessage = {
   id: string
@@ -14,6 +21,10 @@ export type ChatMessage = {
   privacyAnnotations?: PrivacyAnnotation[]
   assistantStatus?: ChatAssistantStatus
   toolApproval?: ToolApproval
+  /** Attachments uploaded with this user message (originals, local-only). */
+  attachments?: ChatAttachment[]
+  /** Per-attachment redaction results from the privacy pipeline (server-side). */
+  attachmentResults?: UserAttachmentResult[]
 }
 
 export type ChatAssistantStatus =

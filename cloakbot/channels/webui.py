@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import contextlib
+import re
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 from uuid import uuid4
 
 import uvicorn
@@ -41,6 +43,27 @@ from cloakbot.privacy.webui import (
 )
 from cloakbot.privacy.webui.history import load_webui_privacy_payloads
 from cloakbot.session.manager import Session, SessionManager
+
+
+_MATH_CONTRACT_PATTERN = re.compile(
+    r"###\s*PRIVACY MODE ENABLED\s*###.*?###\s*END PRIVACY MATH CONTRACT\s*###",
+    flags=re.DOTALL,
+)
+
+
+def _mime_from_data_url(value: object) -> str:
+    """Extract the MIME type from a ``data:<mime>;base64,...`` URL.
+
+    Returns ``image/png`` as a safe default for malformed inputs — the
+    frontend ``<img>`` tag tolerates a mismatch between declared and
+    actual MIME, and the redacted PNG path is the production-common
+    case so this is the right fallback.
+    """
+    if not isinstance(value, str) or not value.startswith("data:"):
+        return "image/png"
+    head, _, _ = value.partition(";")
+    mime = head.removeprefix("data:")
+    return mime or "image/png"
 
 
 class SPAStaticFiles(StaticFiles):
@@ -203,12 +226,18 @@ class WebUIChannel(BaseChannel):
                         continue
 
                     content = payload.content.strip()
-                    if not content:
+                    media = [
+                        attachment.data_url
+                        for attachment in payload.attachments
+                        if attachment.data_url
+                    ]
+                    if not content and not media:
                         continue
                     await self._handle_message(
                         sender_id=session_id,
                         chat_id=session_id,
                         content=content,
+                        media=media or None,
                     )
             except WebSocketDisconnect:
                 pass
@@ -236,10 +265,10 @@ class WebUIChannel(BaseChannel):
         for message in session.messages:
             if message.get("role") != "user":
                 continue
-            content = self._message_text(message.get("content"))
-            if not content:
+            user_text, _images = self._extract_message_parts(message.get("content"))
+            if not user_text:
                 continue
-            title = " ".join(restore_tokens(content, smap).strip().split())
+            title = " ".join(restore_tokens(user_text, smap).strip().split())
             if not title:
                 return "New chat"
             return title[:47] + "..." if len(title) > 48 else title
@@ -252,35 +281,77 @@ class WebUIChannel(BaseChannel):
     ) -> list[dict]:
         smap = get_map(session.key)
         messages = []
-        assistant_payload_index = 0
+        # A single peek/consume cursor: user messages peek the next turn
+        # payload (to pull userAttachments), assistant messages then
+        # consume it (to pull annotations + timeline). Tool-approval
+        # assistant messages do not consume — they share the payload
+        # with the *next* real assistant turn.
+        payload_cursor = 0
 
         for index, message in enumerate(session.messages[session.last_consolidated:]):
             role = message.get("role")
             if role not in {"user", "assistant"}:
                 continue
 
-            content = self._message_text(message.get("content"))
-            if role == "assistant" and not content:
+            user_text, image_blocks = self._extract_message_parts(message.get("content"))
+            if role == "assistant" and not user_text:
                 continue
 
             created_at = self._timestamp_ms(message.get("timestamp"))
-            restored, annotations = restore_tokens_with_annotations(content, smap)
-            entry = {
+            restored, annotations = restore_tokens_with_annotations(user_text, smap)
+            entry: dict[str, Any] = {
                 "id": f"{session.key}:{index}",
                 "role": role,
                 "content": restored,
                 "createdAt": created_at,
             }
 
+            if role == "user":
+                peek_payload = (
+                    payloads[payload_cursor] if payload_cursor < len(payloads) else None
+                )
+                # Two sources of truth for attachments on rehydration:
+                # 1. ``image_blocks`` from session.messages — present for
+                #    channels that keep image_url blocks in history.
+                # 2. ``peek_payload.privacy_turn.user_attachments`` from
+                #    the per-turn jsonl — present for the WebUI channel,
+                #    where ``agent.loop`` strips binary blocks at save
+                #    time. We prefer the payload because it carries the
+                #    full redaction record (boxes/labels/status) and the
+                #    redacted PNG was already base64-encoded server-side.
+                persisted_attachments = self._attachments_from_image_blocks(image_blocks)
+                attachment_results = self._attachment_results_from_payload(peek_payload)
+                if not persisted_attachments and attachment_results:
+                    # Prefer the original image (the user's actual upload)
+                    # for the local-view bubble; fall back to the redacted
+                    # version when the original wasn't persisted (older
+                    # turns from before this artifact kind existed).
+                    persisted_attachments = []
+                    for result in attachment_results:
+                        source = result.get("originalDataUrl") or result.get("redactedDataUrl")
+                        if not isinstance(source, str):
+                            continue
+                        persisted_attachments.append(
+                            {
+                                "mimeType": _mime_from_data_url(source),
+                                "dataUrl": source,
+                            }
+                        )
+                if persisted_attachments:
+                    entry["attachments"] = persisted_attachments
+                if attachment_results:
+                    entry["attachmentResults"] = attachment_results
+
             if role == "assistant":
                 tool_approval = self._tool_approval_from_message(message)
                 if tool_approval is not None:
                     entry["toolApproval"] = tool_approval.model_dump(mode="json", by_alias=True)
-                if tool_approval is None:
-                    payload = payloads[assistant_payload_index] if assistant_payload_index < len(payloads) else None
-                    assistant_payload_index += 1
-                else:
                     payload = None
+                else:
+                    payload = (
+                        payloads[payload_cursor] if payload_cursor < len(payloads) else None
+                    )
+                    payload_cursor += 1
                 if payload is not None:
                     annotations = payload.privacy_annotations
                     entry["assistantStatus"] = {
@@ -305,16 +376,111 @@ class WebUIChannel(BaseChannel):
         return messages
 
     @staticmethod
-    def _message_text(content: object) -> str:
+    def _extract_message_parts(content: object) -> tuple[str, list[dict[str, Any]]]:
+        """Split a stored message into user-visible text + image blocks.
+
+        Sanitization scaffolding the LLM consumed is **not** user
+        content and must not surface in the chat history view:
+
+        - Text blocks whose payload starts with one of the framing
+          tags (region-map, OCR transcript, fail-closed omit notice)
+          are dropped wholesale.
+        - The math-mode privacy contract that ``MathAgent.prepare_input``
+          appends to math turns is excised in-line from any text block
+          containing it, so the user-visible portion that came before
+          (or after) the contract is preserved.
+
+        Image blocks are returned as-is so the caller can lift them
+        into ``attachments`` for the frontend rehydration path.
+        """
         if isinstance(content, str):
-            return content
-        if isinstance(content, list):
-            parts = []
-            for block in content:
-                if isinstance(block, dict) and isinstance(block.get("text"), str):
-                    parts.append(block["text"])
-            return "\n".join(parts)
-        return ""
+            return WebUIChannel._strip_inline_scaffolding(content), []
+        if not isinstance(content, list):
+            return "", []
+
+        scaffold_prefixes = (
+            "[Image redaction map",
+            "[Local OCR transcript",
+            "[visual content omitted;",
+            # ``agent.loop._filter_for_history`` rewrites image_url blocks
+            # to ``[image]`` / ``[image: <path>]`` / ``[image omitted]``
+            # before persistence to keep session memory bounded. We never
+            # want those markers in the chat bubble — the actual redacted
+            # image is rehydrated from the turn payload instead.
+            "[image]",
+            "[image:",
+            "[image omitted]",
+        )
+
+        user_text_parts: list[str] = []
+        image_blocks: list[dict[str, Any]] = []
+        for block in content:
+            if not isinstance(block, dict):
+                continue
+            btype = block.get("type")
+            if btype == "image_url":
+                image_blocks.append(block)
+                continue
+            if btype == "text":
+                text = block.get("text", "")
+                if not isinstance(text, str) or not text:
+                    continue
+                if text.startswith(scaffold_prefixes):
+                    continue
+                cleaned = WebUIChannel._strip_inline_scaffolding(text)
+                if cleaned:
+                    user_text_parts.append(cleaned)
+        return "\n".join(user_text_parts), image_blocks
+
+    @staticmethod
+    def _strip_inline_scaffolding(text: str) -> str:
+        """Excise math-contract preludes from a stored text payload.
+
+        ``MathAgent.prepare_input`` glues the privacy math contract onto
+        each math-turn user message; on rehydration we strip it back out
+        so the bubble only renders the user's original prompt.
+        """
+        cleaned = _MATH_CONTRACT_PATTERN.sub("", text)
+        return cleaned.strip()
+
+    @staticmethod
+    def _attachments_from_image_blocks(image_blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Lift persisted image_url blocks into the frontend attachment shape.
+
+        The persisted data URL is the *post-redaction* image (originals
+        are never written to disk), so this is what the bubble will
+        display in both local- and remote-view on history rehydration —
+        consistent with the privacy contract ("the local original lives
+        only in the original tab's memory").
+        """
+        attachments: list[dict[str, Any]] = []
+        for block in image_blocks:
+            image_url = block.get("image_url")
+            url = None
+            if isinstance(image_url, dict):
+                url = image_url.get("url")
+            if not isinstance(url, str) or not url.startswith("data:"):
+                continue
+            mime_type = url.split(";", 1)[0].removeprefix("data:") or "image/png"
+            attachments.append({
+                "mimeType": mime_type,
+                "dataUrl": url,
+            })
+        return attachments
+
+    @staticmethod
+    def _attachment_results_from_payload(
+        payload: WebUIPrivacyPayload | None,
+    ) -> list[dict[str, Any]]:
+        if payload is None:
+            return []
+        user_attachments = payload.privacy_turn.user_attachments
+        if not user_attachments:
+            return []
+        return [
+            attachment.model_dump(mode="json", by_alias=True)
+            for attachment in user_attachments
+        ]
 
     @staticmethod
     def _timestamp_ms(value: object) -> int:

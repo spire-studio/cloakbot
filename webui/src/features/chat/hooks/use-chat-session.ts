@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { buildSessionTitle } from '@/features/chat/lib/session-title'
 
 import type {
+  ChatAttachment,
   ChatMessage,
   ChatSessionRecord,
   ChatSessionState,
@@ -290,9 +291,10 @@ export function useChatSession(options: UseChatSessionOptions = {}) {
     }
   }, [])
 
-  const sendMessage = (textOverride?: string) => {
+  const sendMessage = (textOverride?: string, attachmentsOverride?: ChatAttachment[]) => {
     const trimmed = (textOverride ?? input).trim()
-    if (!trimmed) {
+    const attachments = attachmentsOverride ?? []
+    if (!trimmed && attachments.length === 0) {
       return
     }
 
@@ -305,11 +307,12 @@ export function useChatSession(options: UseChatSessionOptions = {}) {
       return
     }
 
-    const nextMessage = {
+    const nextMessage: ChatMessage = {
       id: createMessageIdRef.current(),
-      role: 'user' as const,
+      role: 'user',
       content: trimmed,
       createdAt: Date.now(),
+      ...(attachments.length > 0 ? { attachments } : {}),
     }
 
     setSessions((previousSessions) =>
@@ -334,7 +337,16 @@ export function useChatSession(options: UseChatSessionOptions = {}) {
     if (isSocketWritable(socket)) {
       try {
         const startedAt = Date.now()
-        socket.send(JSON.stringify({ content: trimmed }))
+        socket.send(
+          JSON.stringify({
+            content: trimmed,
+            attachments: attachments.map(({ mimeType, dataUrl, name }) => ({
+              mimeType,
+              dataUrl,
+              ...(name ? { name } : {}),
+            })),
+          }),
+        )
         inFlightAssistantSessionIdRef.current = targetSessionId
         setSessions((previousSessions) =>
           previousSessions.map((session) => {
