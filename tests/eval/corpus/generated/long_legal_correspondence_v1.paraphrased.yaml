@@ -1,0 +1,597 @@
+template_id: long_legal_correspondence_v1
+variants:
+- id: long_legal_correspondence_v1_p00
+  turns:
+  - role: user
+    text: I need to prepare a settlement counter-offer letter addressed to {recipient_attorney}
+      of {recipient_firm} in connection with case {case_number}. Our client is {client_name}.
+      Please help me organize the letter in a proper format.
+  - role: assistant
+    text: Certainly. To draft it accurately, I’ll need the basic case posture, the
+      relevant timeline, the prior demand or proposal, your authorized counter number,
+      any deadline you want to set, and the contact information to include in the
+      signature block and service instructions.
+  - role: user
+    text: 'Here is the complete draft text. Please review it and tighten the phrasing
+      where appropriate, but do not alter the substance. SETTLEMENT COUNTER-OFFER
+      LETTER — VIA EMAIL AND FIRST-CLASS MAIL. TO: {recipient_attorney}, Esq., {recipient_firm},
+      {recipient_address}. RE: {client_name} v. {opposing_party}; Civil Action No.
+      {case_number}. PARTIES AND APPEARANCE: Our firm, {sender_firm}, represents {client_name}
+      in the above-captioned matter. The undersigned attorney of record is {sender_attorney}.
+      Your office, {recipient_firm}, represents {opposing_party}. This constitutes
+      the firm’s first formal written communication to your office since the parties’
+      initial Rule 26(f) conference and supersedes any informal authority that may
+      previously have been discussed between counsel. PROCEDURAL POSTURE: The above-captioned
+      matter was initiated by your client {opposing_party} in {incident_location}
+      on {filing_date} and arises out of the events of {incident_date}. The court
+      has placed the case on a standard scheduling track, dispositive motions are
+      already set on the calendar established by the court, and your office has served
+      a written demand for relief in the amount of {prior_demand_amount}, plus pre-judgment
+      interest, costs, and reasonable attorneys’ fees. We are now sufficiently far
+      into written discovery that the material contours of the dispute are clear,
+      and we write to respond to that demand and to propose a path toward resolution
+      without further motion practice. RESPONSE TO DAMAGES: {client_name} continues
+      to dispute, in full, both the characterizations of the events of {incident_date}
+      in {opposing_party}’s first amended complaint and the methodology used to derive
+      your client’s alleged damages. Our internal forensic accountants and two outside
+      consultants have independently reviewed the loss calculations advanced in your
+      letter and concluded that the {prior_demand_amount} figure depends on at least
+      three separate multipliers, each unsupported on the present record and at least
+      one of which duplicates losses already conceded to be unrecoverable under the
+      master services agreement at issue. Even under the most favorable reading of
+      that agreement for your client, our analysis indicates the recoverable measure
+      could not exceed roughly one-third of the {prior_demand_amount} amount your
+      office has asserted. If necessary, we are prepared to present our experts and
+      walk the trier of fact through each multiplier and the record evidence that
+      undermines it. We do not believe that exercise benefits either side at this
+      stage. COUNTER-OFFER: Nevertheless, and solely to avoid the time, expense, and
+      reputational exposure that continued proceedings would impose on both sides,
+      {client_name} has authorized this firm to extend a good-faith counter-offer
+      of {counter_offer_amount}, inclusive of all claims, fees, costs, and pre-judgment
+      interest, conditioned upon execution of a mutual release and a confidentiality
+      clause consistent with the form circulated by your office in our prior correspondence.
+      We believe that {counter_offer_amount} fairly reflects the litigation risk borne
+      by each side and is materially closer to the recoverable measure than the {prior_demand_amount}
+      figure presented by your client. MEDIATION ALTERNATIVE: We strongly encourage
+      {opposing_party} to accept the counter-offer rather than proceed with the mediation
+      currently scheduled before {mediator_name}, whose chambers may be reached at
+      {mediator_phone}. If your client elects to proceed to mediation regardless,
+      this firm is prepared to attend, but we anticipate that the overall costs to
+      both sides will exceed any incremental value the parties may obtain from the
+      process, and we reserve the right to argue at the conclusion of mediation that
+      {opposing_party} declined a reasonable settlement offered in good faith. DEADLINE
+      FOR RESPONSE: We respectfully request a written response to this counter-offer
+      by {response_deadline}. If your office has not responded by that date, the {counter_offer_amount}
+      offer will be deemed withdrawn and we will proceed with the pending dispositive
+      motions on the schedule already established by the court. Any response received
+      after {response_deadline} will be treated as a new demand and will not entitle
+      your client to the terms stated above. DOCUMENT PRESERVATION: Pursuant to the
+      standing litigation hold already in effect in connection with Civil Action No.
+      {case_number}, {opposing_party} and any agent acting on {opposing_party}’s behalf
+      is reminded of the continuing duty to preserve all documents and communications
+      potentially relevant to the events of {incident_date}, including but not limited
+      to the categories listed in our prior preservation letter circulated through
+      your office. We will assume, absent specific written assurance from {recipient_attorney},
+      that {opposing_party}’s preservation obligations are being observed across the
+      standard internal repositories, devices, and collaborative tools. If that assumption
+      proves incorrect, we reserve the right to seek any and all relief, including
+      sanctions, available under the law and the rules of professional conduct. PRIVILEGE
+      AND CONFIDENTIALITY: This correspondence is sent on behalf of {client_name}
+      and is intended solely for the addressee, {recipient_attorney} at {recipient_firm}.
+      The contents reflect privileged settlement communications protected by the applicable
+      evidentiary rules and the mediation privilege of {incident_location}. The counter-offer
+      of {counter_offer_amount} described in the COUNTER-OFFER section above is an
+      offer of compromise extended solely for settlement purposes and is inadmissible
+      as evidence of liability or damages should the matter proceed to trial. Any
+      disclosure of this letter or the {counter_offer_amount} figure to a third party
+      not bound by appropriate confidentiality obligations will, in our view, constitute
+      a breach of the parties’ shared settlement protocol. HISTORICAL CORRESPONDENCE:
+      For ease of reference, this letter follows and supersedes (i) the demand letter
+      your office served on this firm seeking {prior_demand_amount}; (ii) the parties’
+      Rule 26(f) status report jointly filed in {incident_location} following the
+      filing date of {filing_date}; (iii) the deposition designations exchanged in
+      connection with the deposition of {client_name}’s corporate representative;
+      and (iv) the meet-and-confer call between {sender_attorney} of {sender_firm}
+      and {recipient_attorney} of {recipient_firm} during which the contours of a
+      possible settlement were first discussed. The operative numbers in that call
+      were preliminary and are expressly superseded by the {counter_offer_amount}
+      figure authorized here. SERVICE OF RESPONSE: For service of any response or
+      later correspondence, please use the firm address at {sender_address}. Service
+      by email to {sender_email} with a courtesy copy to {sender_phone} via SMS short-confirmation
+      is acceptable as a backup channel during the deadline window ending {response_deadline}.
+      SIGNATURE BLOCK AND CONTACTS: The undersigned may be reached directly at {sender_phone}
+      or by email at {sender_email}. The mediator currently calendared in this matter,
+      {mediator_name}, may be reached at {mediator_phone} for any scheduling coordination
+      issues that {recipient_attorney} wishes to raise before the {response_deadline}
+      deadline. We look forward to your prompt reply. Respectfully, {sender_attorney},
+      {sender_firm}, on behalf of {client_name}.'
+  - role: assistant
+    text: 'Read through. The eight-section structure is intact and the operative numbers
+      connect cleanly across the COUNTER-OFFER and DEADLINE FOR RESPONSE sections.
+      Two items I’d flag before finalizing: should the MEDIATION ALTERNATIVE section
+      retain the reservation-of-rights sentence, and do you want the SERVICE OF RESPONSE
+      block to include an alternate email in case the primary mailbox bounces?'
+  - role: user
+    text: 'Keep the reservation-of-rights sentence in MEDIATION — that language is
+      on the record by design. On SERVICE OF RESPONSE, leave it at {sender_address}
+      only. Final pass: confirm {counter_offer_amount} appears in both the COUNTER-OFFER
+      and DEADLINE FOR RESPONSE paragraphs, and confirm {opposing_party} is spelled
+      consistently throughout. Send to {recipient_firm} at {recipient_address} and
+      copy {sender_email} on the outgoing.'
+- id: long_legal_correspondence_v1_p01
+  turns:
+  - role: user
+    text: I need to prepare a settlement counterproposal letter to {recipient_attorney}
+      at {recipient_firm} for matter {case_number}. Our client is {client_name}. Please
+      help me shape it into a formal letter.
+  - role: assistant
+    text: Absolutely. To get it right, I’ll need the case posture, the key dates,
+      what the other side last demanded, the authorized counter figure, any response
+      deadline, and the contact details that belong in the closing and service instructions.
+  - role: user
+    text: 'Below is the full draft. Please tighten the language where it reads awkwardly,
+      but do not change the substance. SETTLEMENT COUNTER-OFFER LETTER — VIA EMAIL
+      AND FIRST-CLASS MAIL. TO: {recipient_attorney}, Esq., {recipient_firm}, {recipient_address}.
+      RE: {client_name} v. {opposing_party}; Civil Action No. {case_number}. PARTIES
+      AND APPEARANCE: Our firm, {sender_firm}, represents {client_name} in the above-captioned
+      matter. The undersigned attorney of record is {sender_attorney}. Your office,
+      {recipient_firm}, represents {opposing_party}. This is the firm’s first written
+      communication to your office since the parties’ initial Rule 26(f) conference,
+      and it supersedes any informal authority that may have been exchanged between
+      counsel previously. PROCEDURAL POSTURE: The matter was filed by your client
+      {opposing_party} in {incident_location} on {filing_date} and arises from the
+      events of {incident_date}. The court has placed the case on a routine scheduling
+      track, dispositive motions remain calendared as already established by the court,
+      and your office has served a written demand for relief in the amount of {prior_demand_amount},
+      together with pre-judgment interest, costs, and reasonable attorneys’ fees.
+      We are now far enough into written discovery that the dispute is clear in outline,
+      and we write to answer that demand and to propose a route to resolution without
+      additional motion practice. RESPONSE TO DAMAGES: {client_name} continues to
+      dispute, entirely, both the narrative of the events of {incident_date} set out
+      in {opposing_party}’s first amended complaint and the method used to calculate
+      your client’s claimed damages. Our internal forensic accountants and two outside
+      consultants have independently reviewed the loss computations advanced in your
+      letter and have concluded that the {prior_demand_amount} amount rests on at
+      least three distinct multipliers, each unsupported on the present record and
+      at least one of which appears to duplicate losses already conceded to be unrecoverable
+      under the master services agreement at issue. Even under the most plaintiff-friendly
+      reading of that agreement, our analysis indicates the recoverable measure could
+      not exceed roughly one-third of the {prior_demand_amount} amount your office
+      has asserted. We are prepared, if necessary, to present our experts and walk
+      the trier of fact through each multiplier and the record evidence that undercuts
+      it. We do not believe that serves either side well at this stage. COUNTER-OFFER:
+      Notwithstanding the foregoing, and solely in the interest of avoiding the time,
+      expense, and reputational exposure that continued proceedings would create for
+      both sides, {client_name} has authorized this firm to extend a good-faith counter-offer
+      of {counter_offer_amount}, inclusive of all claims, fees, costs, and pre-judgment
+      interest, conditioned on execution of a mutual release and a confidentiality
+      clause consistent with the form circulated by your office in prior correspondence.
+      We believe that {counter_offer_amount} fairly accounts for the litigation risk
+      on both sides and is materially closer to the recoverable measure than the {prior_demand_amount}
+      figure your client has advanced. MEDIATION ALTERNATIVE: We strongly encourage
+      {opposing_party} to accept the counter-offer rather than proceed to the mediation
+      currently scheduled before {mediator_name}, whose chambers may be reached at
+      {mediator_phone}. If your client elects to proceed to mediation anyway, this
+      firm is prepared to attend, but we anticipate that the aggregate costs to both
+      sides will exceed any incremental value the parties may derive from the process,
+      and we reserve the right to argue at the conclusion of mediation that {opposing_party}
+      declined a reasonable settlement offered in good faith. DEADLINE FOR RESPONSE:
+      We respectfully request a written response to this counter-offer by {response_deadline}.
+      If your office has not responded by that date, the {counter_offer_amount} offer
+      will be deemed withdrawn and we will proceed with the pending dispositive motions
+      on the schedule already set by the court. Any response received after {response_deadline}
+      will be treated as a fresh demand and will not entitle your client to the terms
+      set forth above. DOCUMENT PRESERVATION: Pursuant to the standing litigation
+      hold already in place in connection with Civil Action No. {case_number}, {opposing_party}
+      and any agent acting on {opposing_party}’s behalf is reminded of the continuing
+      duty to preserve all documents and communications potentially relevant to the
+      events of {incident_date}, including but not limited to the categories identified
+      in our prior preservation letter circulated through your office. We will assume,
+      absent specific written assurance from {recipient_attorney}, that {opposing_party}’s
+      preservation obligations are being honored across the standard internal repositories,
+      devices, and collaborative tools. If that assumption proves incorrect, we reserve
+      the right to seek any and all relief, including sanctions, available under the
+      law and the rules of professional conduct. PRIVILEGE AND CONFIDENTIALITY: This
+      correspondence is sent on behalf of {client_name} and is intended solely for
+      the addressee, {recipient_attorney} at {recipient_firm}. The contents reflect
+      privileged settlement communications protected by the applicable evidentiary
+      rules and the mediation privilege of {incident_location}. The counter-offer
+      of {counter_offer_amount} described in the COUNTER-OFFER section above is an
+      offer of compromise extended solely for settlement purposes and is inadmissible
+      as evidence of liability or damages if the matter proceeds to trial. Any disclosure
+      of this letter or the {counter_offer_amount} figure to a third party not bound
+      by appropriate confidentiality obligations will, in our view, constitute a breach
+      of the parties’ shared settlement protocol. HISTORICAL CORRESPONDENCE: For ease
+      of reference, this letter follows and supersedes (i) the demand letter your
+      office served on this firm seeking {prior_demand_amount}; (ii) the parties’
+      Rule 26(f) status report jointly filed in {incident_location} following the
+      filing date of {filing_date}; (iii) the deposition designations exchanged in
+      connection with the deposition of {client_name}’s corporate representative;
+      and (iv) the meet-and-confer call between {sender_attorney} of {sender_firm}
+      and {recipient_attorney} of {recipient_firm} during which the contours of a
+      possible settlement were first discussed. The operative numbers in that call
+      were preliminary and are expressly superseded by the {counter_offer_amount}
+      figure authorized here. SERVICE OF RESPONSE: For service of any response or
+      subsequent correspondence, please use the firm address at {sender_address}.
+      Service by email to {sender_email} with a courtesy copy to {sender_phone} via
+      SMS short-confirmation is acceptable as a backup channel during the deadline
+      window ending {response_deadline}. SIGNATURE BLOCK AND CONTACTS: The undersigned
+      may be reached directly at {sender_phone} or by email at {sender_email}. The
+      mediator currently calendared in this matter, {mediator_name}, may be reached
+      at {mediator_phone} for any scheduling coordination issues that {recipient_attorney}
+      wishes to raise before the {response_deadline} deadline. We look forward to
+      your prompt reply. Respectfully, {sender_attorney}, {sender_firm}, on behalf
+      of {client_name}.'
+  - role: assistant
+    text: 'Read through. The eight-section organization is intact, and the operative
+      numbers connect cleanly between the COUNTER-OFFER and DEADLINE FOR RESPONSE
+      sections. Two points before finalizing: should the MEDIATION ALTERNATIVE section
+      keep the reservation-of-rights sentence, and do you want the SERVICE OF RESPONSE
+      block to list an alternate email if the primary mailbox is unavailable?'
+  - role: user
+    text: 'Keep the reservation-of-rights sentence in MEDIATION — that language is
+      on the record by design. On SERVICE OF RESPONSE, leave it at {sender_address}
+      only. Final pass: confirm {counter_offer_amount} appears in both the COUNTER-OFFER
+      and DEADLINE FOR RESPONSE paragraphs, and confirm {opposing_party} is spelled
+      consistently throughout. Send to {recipient_firm} at {recipient_address} and
+      copy {sender_email} on the outgoing.'
+- id: long_legal_correspondence_v1_p02
+  turns:
+  - role: user
+    text: I need a settlement counter-offer drafted for {recipient_attorney} at {recipient_firm}
+      in the matter identified as {case_number}. Our client is {client_name}. Can
+      you help me format it as a proper letter?
+  - role: assistant
+    text: Of course. To make it usable, I’ll need the case background, the relevant
+      dates, the prior demand, the authorized counter amount, any response cutoff,
+      and the contact information that should appear in the signature block and service
+      instructions.
+  - role: user
+    text: 'Please review the full text below and tighten the wording only where needed,
+      without changing the substance. SETTLEMENT COUNTER-OFFER LETTER — VIA EMAIL
+      AND FIRST-CLASS MAIL. TO: {recipient_attorney}, Esq., {recipient_firm}, {recipient_address}.
+      RE: {client_name} v. {opposing_party}; Civil Action No. {case_number}. PARTIES
+      AND APPEARANCE: This firm, {sender_firm}, represents {client_name} in the above-captioned
+      matter. The undersigned attorney of record is {sender_attorney}. Your office,
+      {recipient_firm}, represents {opposing_party}. This is the firm’s first written
+      communication to your office since the parties’ initial Rule 26(f) conference
+      and supersedes any informal indications of authority that may previously have
+      been conveyed between counsel. PROCEDURAL POSTURE: The above-captioned matter
+      was filed by your client {opposing_party} in {incident_location} on {filing_date}
+      and arises from the events of {incident_date}. The court has set the case on
+      a standard scheduling track, dispositive motions remain pending on the calendar
+      already adopted by the court, and your office has served a written demand for
+      relief totaling {prior_demand_amount}, plus pre-judgment interest, costs, and
+      reasonable attorneys’ fees. We are now sufficiently far into written discovery
+      that the contours of the dispute are clear, and we write to respond to that
+      demand and to propose a path toward resolution short of further motion practice.
+      RESPONSE TO DAMAGES: {client_name} continues to dispute, in their entirety,
+      both the characterization of the underlying events of {incident_date} that appears
+      in {opposing_party}’s first amended complaint and the methodology used to compute
+      your client’s asserted damages. Our internal forensic accountants and two outside
+      consultants have independently reviewed the loss calculations advanced in your
+      letter and have concluded that the {prior_demand_amount} figure relies on at
+      least three independent multipliers, each of which is unsupportable on the present
+      record and at least one of which double-counts losses already conceded not to
+      be recoverable under the master services agreement at issue. Even on a maximally
+      pro-plaintiff reading of that agreement, our analysis indicates the recoverable
+      measure could not exceed approximately one-third of the {prior_demand_amount}
+      figure your office has set forth. We are prepared, if necessary, to put our
+      experts on the stand and to walk the trier of fact through each of the multipliers
+      and the record evidence that undermines them. We do not believe that exercise
+      serves either side well at this stage. COUNTER-OFFER: Notwithstanding the foregoing,
+      and solely in the interests of avoiding the time, expense, and reputational
+      exposure that further proceedings would impose on both sides, {client_name}
+      has authorized this firm to extend a good-faith counter-offer of {counter_offer_amount},
+      inclusive of all claims, fees, costs, and pre-judgment interest, conditioned
+      on execution of a mutual release and a confidentiality clause consistent with
+      the form circulated by your office in our prior correspondence. We believe that
+      {counter_offer_amount} fairly accounts for the litigation risk borne by each
+      side and is materially closer to the recoverable measure than the {prior_demand_amount}
+      figure your client has put on the table. MEDIATION ALTERNATIVE: We strongly
+      encourage {opposing_party} to accept the counter-offer rather than proceed to
+      the mediation currently scheduled before {mediator_name}, whose chambers may
+      be reached at {mediator_phone}. Should your client elect to proceed to mediation
+      in any event, this firm is prepared to do so, but we anticipate that the aggregate
+      costs to both sides will exceed any incremental value the parties may extract
+      from the process, and we reserve the right to argue at the conclusion of mediation
+      that {opposing_party} declined a reasonable resolution offered in good faith.
+      DEADLINE FOR RESPONSE: We respectfully request a written response to this counter-offer
+      by {response_deadline}. If your office has not responded by that date, the {counter_offer_amount}
+      offer will be deemed withdrawn and we will proceed with the pending dispositive
+      motions on the schedule already set by the court. Any response received after
+      {response_deadline} will be treated as a fresh demand and will not entitle your
+      client to the terms set forth above. DOCUMENT PRESERVATION: Pursuant to the
+      standing litigation hold already in place in connection with Civil Action No.
+      {case_number}, {opposing_party} and any agent acting on {opposing_party}’s behalf
+      is reminded of the continuing duty to preserve all documents and communications
+      potentially relevant to the events of {incident_date}, including but not limited
+      to the categories enumerated in our prior preservation letter circulated through
+      your office. We will assume, absent specific written assurance from {recipient_attorney},
+      that {opposing_party}’s preservation obligations are being honored across the
+      standard internal repositories, devices, and collaborative tools. Should that
+      assumption prove incorrect, we reserve the right to seek any and all relief,
+      including sanctions, that the law and the rules of professional conduct afford.
+      PRIVILEGE AND CONFIDENTIALITY: This correspondence is sent on behalf of {client_name}
+      and is intended solely for the addressee, {recipient_attorney} at {recipient_firm}.
+      The contents reflect privileged settlement communications subject to the protections
+      of the applicable evidentiary rules and the mediation privilege of {incident_location}.
+      The counter-offer of {counter_offer_amount} described in the COUNTER-OFFER section
+      above is an offer of compromise extended for settlement purposes only and is
+      inadmissible as evidence of liability or damages should the matter proceed to
+      trial. Any disclosure of this letter or the {counter_offer_amount} figure to
+      a third party not bound by appropriate confidentiality obligations will, in
+      our view, constitute a breach of the parties’ shared settlement protocol. HISTORICAL
+      CORRESPONDENCE: For ease of reference, this letter follows and supersedes (i)
+      the demand letter your office served on this firm seeking {prior_demand_amount};
+      (ii) the parties’ Rule 26(f) status report jointly filed in {incident_location}
+      following the filing date of {filing_date}; (iii) the deposition designations
+      exchanged in connection with the deposition of {client_name}’s corporate representative;
+      and (iv) the meet-and-confer call between {sender_attorney} of {sender_firm}
+      and {recipient_attorney} of {recipient_firm} during which the contours of a
+      potential settlement were first discussed. The operative numbers in that call
+      were preliminary and are expressly superseded by the {counter_offer_amount}
+      figure authorized here. SERVICE OF RESPONSE: For service of any response or
+      subsequent correspondence, please use the firm address at {sender_address}.
+      Service by email to {sender_email} with a courtesy copy to {sender_phone} via
+      SMS short-confirmation is acceptable as a backup channel during the deadline
+      window ending {response_deadline}. SIGNATURE BLOCK AND CONTACTS: The undersigned
+      may be reached directly at {sender_phone} or by email at {sender_email}. The
+      mediator currently calendared in this matter, {mediator_name}, may be reached
+      at {mediator_phone} for any scheduling-coordination issues that {recipient_attorney}
+      wishes to raise before the {response_deadline} deadline. We look forward to
+      your prompt reply. Respectfully, {sender_attorney}, {sender_firm}, on behalf
+      of {client_name}.'
+  - role: assistant
+    text: Read through. The eight-section structure is intact and the operative numbers
+      tie together cleanly across the COUNTER-OFFER and DEADLINE FOR RESPONSE sections.
+      Two specific items I want to flag before finalizing — should the MEDIATION ALTERNATIVE
+      section keep the reservation-of-rights sentence, and do you want the SERVICE
+      OF RESPONSE block to also list an alternate service email in case the primary
+      mailbox bounces?
+  - role: user
+    text: 'Keep the reservation-of-rights sentence in MEDIATION — that language is
+      on the record by design. On SERVICE OF RESPONSE, leave it at {sender_address}
+      only. Final pass: confirm {counter_offer_amount} appears in both the COUNTER-OFFER
+      and DEADLINE FOR RESPONSE paragraphs, and confirm {opposing_party} is spelled
+      consistently throughout. Send to {recipient_firm} at {recipient_address} and
+      copy {sender_email} on the outgoing.'
+- id: long_legal_correspondence_v1_p03
+  turns:
+  - role: user
+    text: I need a settlement counter-offer letter for {recipient_attorney} of {recipient_firm}
+      in case {case_number}. Our client is {client_name}. Please help me set it up
+      as a formal correspondence.
+  - role: assistant
+    text: Yes. I can do that, but I’ll need the case posture, the event chronology,
+      the prior demand, the amount you’re authorized to offer, the response deadline,
+      and the contact details for the signature block and service section.
+  - role: user
+    text: 'Below is the draft in full. Please streamline where necessary, but keep
+      the substance unchanged. SETTLEMENT COUNTER-OFFER LETTER — VIA EMAIL AND FIRST-CLASS
+      MAIL. TO: {recipient_attorney}, Esq., {recipient_firm}, {recipient_address}.
+      RE: {client_name} v. {opposing_party}; Civil Action No. {case_number}. PARTIES
+      AND APPEARANCE: This firm, {sender_firm}, represents {client_name} in the above-captioned
+      matter. The undersigned attorney of record is {sender_attorney}. Your office,
+      {recipient_firm}, represents {opposing_party}. This letter is the firm’s first
+      written communication to your office since the parties’ initial Rule 26(f) conference
+      and supersedes any informal indications of authority previously conveyed between
+      counsel. PROCEDURAL POSTURE: The above-captioned matter was filed by your client
+      {opposing_party} in {incident_location} on {filing_date} and arises from the
+      events of {incident_date}. The court has placed the case on a standard scheduling
+      track, dispositive motions remain on the calendar already adopted by the court,
+      and your office has served a written demand for relief totaling {prior_demand_amount},
+      together with pre-judgment interest, costs, and reasonable attorneys’ fees.
+      We are now sufficiently far into written discovery that the dispute is clear,
+      and we write to answer that demand and to propose a path toward resolution short
+      of additional motion practice. RESPONSE TO DAMAGES: {client_name} continues
+      to dispute, in full, both the description of the underlying events of {incident_date}
+      appearing in {opposing_party}’s first amended complaint and the methodology
+      used to compute your client’s asserted damages. Our internal forensic accountants
+      and two outside consultants have independently reviewed the loss calculations
+      advanced in your letter and concluded that the {prior_demand_amount} figure
+      depends on at least three independent multipliers, each unsupported on the present
+      record and at least one of which double-counts losses already conceded not to
+      be recoverable under the master services agreement at issue. Even under a maximally
+      pro-plaintiff reading of that agreement, our analysis indicates the recoverable
+      measure could not exceed approximately one-third of the {prior_demand_amount}
+      figure your office has set forth. If necessary, we are prepared to put our experts
+      on the stand and walk the trier of fact through each multiplier and the record
+      evidence that undermines it. We do not believe that exercise benefits either
+      side at this stage. COUNTER-OFFER: Notwithstanding the foregoing, and solely
+      in the interests of avoiding the time, expense, and reputational exposure that
+      further proceedings would impose on both sides, {client_name} has authorized
+      this firm to extend a good-faith counter-offer of {counter_offer_amount}, inclusive
+      of all claims, fees, costs, and pre-judgment interest, conditioned on execution
+      of a mutual release and a confidentiality clause consistent with the form circulated
+      by your office in our prior correspondence. We believe that {counter_offer_amount}
+      fairly accounts for the litigation risk borne by each side and is materially
+      closer to the recoverable measure than the {prior_demand_amount} figure your
+      client has placed on the table. MEDIATION ALTERNATIVE: We strongly encourage
+      {opposing_party} to accept the counter-offer rather than proceed to the mediation
+      currently scheduled before {mediator_name}, whose chambers may be reached at
+      {mediator_phone}. Should your client proceed to mediation anyway, this firm
+      is prepared to do so, but we anticipate that the aggregate costs to both sides
+      will exceed any incremental value the parties may obtain from the process, and
+      we reserve the right to argue at the conclusion of mediation that {opposing_party}
+      declined a reasonable resolution offered in good faith. DEADLINE FOR RESPONSE:
+      We respectfully request a written response to this counter-offer by {response_deadline}.
+      If your office has not responded by that date, the {counter_offer_amount} offer
+      will be deemed withdrawn and we will proceed with the pending dispositive motions
+      on the schedule already set by the court. Any response received after {response_deadline}
+      will be treated as a fresh demand and will not entitle your client to the terms
+      set forth above. DOCUMENT PRESERVATION: Pursuant to the standing litigation
+      hold already in place in connection with Civil Action No. {case_number}, {opposing_party}
+      and any agent acting on {opposing_party}’s behalf is reminded of the continuing
+      duty to preserve all documents and communications potentially relevant to the
+      events of {incident_date}, including but not limited to the categories enumerated
+      in our prior preservation letter circulated through your office. We will assume,
+      absent specific written assurance from {recipient_attorney}, that {opposing_party}’s
+      preservation obligations are being honored across the standard internal repositories,
+      devices, and collaborative tools. Should that assumption prove incorrect, we
+      reserve the right to seek any and all relief, including sanctions, that the
+      law and the rules of professional conduct afford. PRIVILEGE AND CONFIDENTIALITY:
+      This correspondence is sent on behalf of {client_name} and is intended solely
+      for the addressee, {recipient_attorney} at {recipient_firm}. The contents reflect
+      privileged settlement communications subject to the protections of the applicable
+      evidentiary rules and the mediation privilege of {incident_location}. The counter-offer
+      of {counter_offer_amount} described in the COUNTER-OFFER section above is an
+      offer of compromise extended for settlement purposes only and is inadmissible
+      as evidence of liability or damages should the matter proceed to trial. Any
+      disclosure of this letter or the {counter_offer_amount} figure to a third party
+      not bound by appropriate confidentiality obligations will, in our view, constitute
+      a breach of the parties’ shared settlement protocol. HISTORICAL CORRESPONDENCE:
+      For ease of reference, this letter follows and supersedes (i) the demand letter
+      your office served on this firm seeking {prior_demand_amount}; (ii) the parties’
+      Rule 26(f) status report jointly filed in {incident_location} following the
+      filing date of {filing_date}; (iii) the deposition designations exchanged in
+      connection with the deposition of {client_name}’s corporate representative;
+      and (iv) the meet-and-confer call between {sender_attorney} of {sender_firm}
+      and {recipient_attorney} of {recipient_firm} during which the contours of a
+      possible settlement were first discussed. The operative numbers in that call
+      were preliminary and are expressly superseded by the {counter_offer_amount}
+      figure authorized here. SERVICE OF RESPONSE: For service of any response or
+      subsequent correspondence, please use the firm address at {sender_address}.
+      Service by email to {sender_email} with a courtesy copy to {sender_phone} via
+      SMS short-confirmation is acceptable as a backup channel during the deadline
+      window ending {response_deadline}. SIGNATURE BLOCK AND CONTACTS: The undersigned
+      may be reached directly at {sender_phone} or by email at {sender_email}. The
+      mediator currently calendared in this matter, {mediator_name}, may be reached
+      at {mediator_phone} for any scheduling-coordination issues that {recipient_attorney}
+      wishes to raise before the {response_deadline} deadline. We look forward to
+      your prompt reply. Respectfully, {sender_attorney}, {sender_firm}, on behalf
+      of {client_name}.'
+  - role: assistant
+    text: Read through. The eight-section structure is intact and the operative numbers
+      tie together cleanly across the COUNTER-OFFER and DEADLINE FOR RESPONSE sections.
+      Two specific items I want to flag before finalizing — should the MEDIATION ALTERNATIVE
+      section keep the reservation-of-rights sentence, and do you want the SERVICE
+      OF RESPONSE block to also list an alternate service email in case the primary
+      mailbox bounces?
+  - role: user
+    text: 'Keep the reservation-of-rights sentence in MEDIATION — that language is
+      on the record by design. On SERVICE OF RESPONSE, leave it at {sender_address}
+      only. Final pass: confirm {counter_offer_amount} appears in both the COUNTER-OFFER
+      and DEADLINE FOR RESPONSE paragraphs, and confirm {opposing_party} is spelled
+      consistently throughout. Send to {recipient_firm} at {recipient_address} and
+      copy {sender_email} on the outgoing.'
+- id: long_legal_correspondence_v1_p04
+  turns:
+  - role: user
+    text: I need to draft a settlement counter-offer to {recipient_attorney} at {recipient_firm}
+      for case {case_number}. Our client is {client_name}. Can you help me structure
+      the letter professionally?
+  - role: assistant
+    text: Certainly. I’ll need the procedural posture, the incident timeline, the
+      prior demand, your approved counter amount, the response deadline, and the contact
+      details to place in the signature block and service instructions.
+  - role: user
+    text: 'Please review the complete draft below and refine the wording as needed,
+      but do not change the substance. SETTLEMENT COUNTER-OFFER LETTER — VIA EMAIL
+      AND FIRST-CLASS MAIL. TO: {recipient_attorney}, Esq., {recipient_firm}, {recipient_address}.
+      RE: {client_name} v. {opposing_party}; Civil Action No. {case_number}. PARTIES
+      AND APPEARANCE: This firm, {sender_firm}, represents {client_name} in the above-captioned
+      matter. The undersigned attorney of record is {sender_attorney}. Your office,
+      {recipient_firm}, represents {opposing_party}. This is the firm’s first written
+      communication to your office since the parties’ initial Rule 26(f) conference
+      and supersedes any informal indications of authority that may previously have
+      been conveyed between counsel. PROCEDURAL POSTURE: The above-captioned matter
+      was filed by your client {opposing_party} in {incident_location} on {filing_date}
+      and arises from the events of {incident_date}. The court has placed the case
+      on a standard scheduling track, dispositive motions remain pending on the court’s
+      established calendar, and your office has served a written demand for relief
+      totaling {prior_demand_amount}, together with pre-judgment interest, costs,
+      and reasonable attorneys’ fees. We are now sufficiently far into written discovery
+      that the contours of the dispute are clear, and we write to respond to that
+      demand and to propose a path toward resolution short of further motion practice.
+      RESPONSE TO DAMAGES: {client_name} continues to dispute, in their entirety,
+      both the characterization of the underlying events of {incident_date} as set
+      out in {opposing_party}’s first amended complaint and the methodology used to
+      calculate your client’s asserted damages. Our internal forensic accountants
+      and two outside consultants have independently reviewed the loss calculations
+      advanced in your letter and concluded that the {prior_demand_amount} figure
+      rests on at least three independent multipliers, each unsupportable on the present
+      record and at least one of which double-counts losses already conceded not to
+      be recoverable under the master services agreement at issue. Even on a maximally
+      pro-plaintiff reading of that agreement, our analysis indicates the recoverable
+      measure could not exceed approximately one-third of the {prior_demand_amount}
+      figure your office has set forth. We are prepared, if necessary, to put our
+      experts on the stand and walk the trier of fact through each of the multipliers
+      and the record evidence that undermines them. We do not believe that exercise
+      serves either side well at this stage. COUNTER-OFFER: Notwithstanding the foregoing,
+      and solely in the interests of avoiding the time, expense, and reputational
+      exposure that further proceedings would impose on both sides, {client_name}
+      has authorized this firm to extend a good-faith counter-offer of {counter_offer_amount},
+      inclusive of all claims, fees, costs, and pre-judgment interest, conditioned
+      on execution of a mutual release and a confidentiality clause consistent with
+      the form circulated by your office in our prior correspondence. We believe that
+      {counter_offer_amount} fairly accounts for the litigation risk borne by each
+      side and is materially closer to the recoverable measure than the {prior_demand_amount}
+      figure your client has placed on the table. MEDIATION ALTERNATIVE: We strongly
+      encourage {opposing_party} to accept the counter-offer rather than proceed to
+      the mediation currently scheduled before {mediator_name}, whose chambers may
+      be reached at {mediator_phone}. Should your client elect to proceed to mediation
+      in any event, this firm is prepared to do so, but we anticipate that the aggregate
+      costs to both sides will exceed any incremental value the parties may extract
+      from the process, and we reserve the right to argue at the conclusion of mediation
+      that {opposing_party} declined a reasonable resolution offered in good faith.
+      DEADLINE FOR RESPONSE: We respectfully request a written response to this counter-offer
+      by {response_deadline}. If your office has not responded by that date, the {counter_offer_amount}
+      offer will be deemed withdrawn and we will proceed with the pending dispositive
+      motions on the schedule already set by the court. Any response received after
+      {response_deadline} will be treated as a fresh demand and will not entitle your
+      client to the terms set forth above. DOCUMENT PRESERVATION: Pursuant to the
+      standing litigation hold already in place in connection with Civil Action No.
+      {case_number}, {opposing_party} and any agent acting on {opposing_party}’s behalf
+      is reminded of the continuing duty to preserve all documents and communications
+      potentially relevant to the events of {incident_date}, including but not limited
+      to the categories enumerated in our prior preservation letter circulated through
+      your office. We will assume, absent specific written assurance from {recipient_attorney},
+      that {opposing_party}’s preservation obligations are being honored across the
+      standard internal repositories, devices, and collaborative tools. Should that
+      assumption prove incorrect, we reserve the right to seek any and all relief,
+      including sanctions, that the law and the rules of professional conduct afford.
+      PRIVILEGE AND CONFIDENTIALITY: This correspondence is sent on behalf of {client_name}
+      and is intended solely for the addressee, {recipient_attorney} at {recipient_firm}.
+      The contents reflect privileged settlement communications subject to the protections
+      of the applicable evidentiary rules and the mediation privilege of {incident_location}.
+      The counter-offer of {counter_offer_amount} described in the COUNTER-OFFER section
+      above is an offer of compromise extended for settlement purposes only and is
+      inadmissible as evidence of liability or damages should the matter proceed to
+      trial. Any disclosure of this letter or the {counter_offer_amount} figure to
+      a third party not bound by appropriate confidentiality obligations will, in
+      our view, constitute a breach of the parties’ shared settlement protocol. HISTORICAL
+      CORRESPONDENCE: For ease of reference, this letter follows and supersedes (i)
+      the demand letter your office served on this firm seeking {prior_demand_amount};
+      (ii) the parties’ Rule 26(f) status report jointly filed in {incident_location}
+      following the filing date of {filing_date}; (iii) the deposition designations
+      exchanged in connection with the deposition of {client_name}’s corporate representative;
+      and (iv) the meet-and-confer call between {sender_attorney} of {sender_firm}
+      and {recipient_attorney} of {recipient_firm} during which the contours of a
+      possible settlement were first discussed. The operative numbers in that call
+      were preliminary and are expressly superseded by the {counter_offer_amount}
+      figure authorized here. SERVICE OF RESPONSE: For service of any response or
+      subsequent correspondence, please use the firm address at {sender_address}.
+      Service by email to {sender_email} with a courtesy copy to {sender_phone} via
+      SMS short-confirmation is acceptable as a backup channel during the deadline
+      window ending {response_deadline}. SIGNATURE BLOCK AND CONTACTS: The undersigned
+      may be reached directly at {sender_phone} or by email at {sender_email}. The
+      mediator currently calendared in this matter, {mediator_name}, may be reached
+      at {mediator_phone} for any scheduling-coordination issues that {recipient_attorney}
+      wishes to raise before the {response_deadline} deadline. We look forward to
+      your prompt reply. Respectfully, {sender_attorney}, {sender_firm}, on behalf
+      of {client_name}.'
+  - role: assistant
+    text: Read through. The eight-section structure is intact and the operative numbers
+      tie together cleanly across the COUNTER-OFFER and DEADLINE FOR RESPONSE sections.
+      Two specific items I want to flag before finalizing — should the MEDIATION ALTERNATIVE
+      section keep the reservation-of-rights sentence, and do you want the SERVICE
+      OF RESPONSE block to also list an alternate service email in case the primary
+      mailbox bounces?
+  - role: user
+    text: 'Keep the reservation-of-rights sentence in MEDIATION — that language is
+      on the record by design. On SERVICE OF RESPONSE, leave it at {sender_address}
+      only. Final pass: confirm {counter_offer_amount} appears in both the COUNTER-OFFER
+      and DEADLINE FOR RESPONSE paragraphs, and confirm {opposing_party} is spelled
+      consistently throughout. Send to {recipient_firm} at {recipient_address} and
+      copy {sender_email} on the outgoing.'
