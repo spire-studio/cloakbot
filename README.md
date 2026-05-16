@@ -384,7 +384,11 @@ Set up the remote LLM (Claude, GPT, Gemini, etc.) in `~/.cloakbot/config.json` a
 uv run python -m cloakbot onboard
 ```
 
-### 3. Start the vLLM server (Ubuntu / GPU machine)
+### 3. Start the local Gemma 4 backend — pick ONE
+
+CloakBot uses one OpenAI-compatible client for both backends, so the `VLLM_*` variable names in `.env` work for either profile (they're historical).
+
+#### Option A: vLLM (Ubuntu / GPU machine) — fast, reproducible
 
 ```bash
 # First time: install vllm and authenticate with HuggingFace
@@ -395,13 +399,44 @@ uv run huggingface-cli login          # accept Gemma license at hf.co/google/gem
 bash scripts/start_vllm.sh
 ```
 
-> The vLLM server exposes an OpenAI-compatible API. CloakBot's sanitizer uses it exclusively for PII detection — the remote LLM call is completely separate.
+This is the path we use to produce the A1 / A2 / A3 eval reports.
 
-### 4. Start a webui
+#### Option B: Ollama (macOS / Linux / WSL) — no GPU required
+
+```bash
+# First time:
+#   curl -fsSL https://ollama.com/install.sh | sh
+
+bash scripts/start_ollama.sh
+```
+
+The script pulls `gemma4:e2b` (~5 GB), starts the daemon, and warms the model. Ollama exposes an OpenAI-compatible endpoint at `http://127.0.0.1:11434/v1`. Then set in `.env`:
+
+```bash
+VLLM_BASE_URL=http://127.0.0.1:11434/v1
+VLLM_API_KEY=ollama        # Ollama doesn't enforce auth; any value works
+VLLM_MODEL=gemma4:e2b
+```
+
+This is the path we recommend for real-world adoption — CloakBot's privacy kernel runs on a 2019 MacBook Air.
+
+> Either backend exposes the same OpenAI-compatible surface. CloakBot's sanitizer uses it exclusively for PII detection — the remote LLM call (Claude / GPT / Gemini) is completely separate.
+
+### 4. Start the WebUI
 
 ```bash
 uv run python -m cloakbot webui
+# Gateway   : http://127.0.0.1:8000
+# Frontend  : http://127.0.0.1:5173
 ```
+
+### Or, one-command demo
+
+```bash
+bash scripts/quickstart_demo.sh
+```
+
+Starts Ollama + bootstraps `.env` + launches the WebUI + opens your browser. Drag `docs/demo/demo_onboarding_memo.md` into the Composer to see the full Local↔Remote pipeline in action.
 
 ---
 
@@ -425,8 +460,8 @@ uv run python -m cloakbot webui
 
 ## Hackathon Tracks
 
-- **Main Track** — Gemma 4 Good: using Gemma 4 locally for privacy-preserving AI
-- **Ollama Special Track** — local model inference (vLLM, compatible with Ollama API)
+- **Main Track — Gemma 4 Good (Safety & Trust direction)**: Gemma 4 E2B as a local privacy kernel that enforces a pre-wire boundary before any byte reaches the remote LLM. Backed by 2,872 entity-test instances of receipts across A1 (text), A2 (visual), and A3 (long-document) leak evals — see [`docs/HACKATHON_WRITEUP_DRAFT.md`](docs/HACKATHON_WRITEUP_DRAFT.md).
+- **Ollama Special Technology**: `bash scripts/start_ollama.sh` ships the model + the OpenAI-compatible endpoint in one tool — no GGUF wrangling, no per-OS Metal/CUDA forks. **Gemma 4 is the trust layer; Ollama is the deployment layer.** Try it: `bash scripts/quickstart_demo.sh`.
 
 ---
 
