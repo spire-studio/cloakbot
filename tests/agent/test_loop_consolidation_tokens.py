@@ -2,8 +2,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from cloakbot.agent.loop import AgentLoop
 import cloakbot.agent.memory as memory_module
+from cloakbot.agent.loop import AgentLoop
 from cloakbot.bus.queue import MessageBus
 from cloakbot.providers.base import LLMResponse
 

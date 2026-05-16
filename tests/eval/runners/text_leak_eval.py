@@ -53,7 +53,6 @@ from tests.eval.generators.faker_filler import (  # noqa: E402
     realize_paraphrased_session,
 )
 
-
 # ---------------------------------------------------------------------------
 # Per-session evaluation
 # ---------------------------------------------------------------------------

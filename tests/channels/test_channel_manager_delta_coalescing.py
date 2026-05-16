@@ -1,6 +1,6 @@
 """Tests for ChannelManager delta coalescing to reduce streaming latency."""
 import asyncio
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
 

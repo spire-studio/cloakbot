@@ -105,7 +105,7 @@ def main() -> None:
     lines = [
         f"# Cross-domain text leak summary — {args.date}",
         "",
-        f"Pipeline: ``PrivacyRuntime.prepare_turn`` on Gemma 4 E2B via vLLM.",
+        "Pipeline: ``PrivacyRuntime.prepare_turn`` on Gemma 4 E2B via vLLM.",
         f"Aggregating {len(domain_aggregates)} domain template(s).",
         "",
         "## Cross-domain headline",

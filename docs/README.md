@@ -7,15 +7,13 @@ answers the task, then inspect the code paths it names.
 ## Map
 
 - `ARCHITECTURE.md` - system layout, runtime surfaces, and dependency boundaries.
+- `HACKATHON_WRITEUP_DRAFT.md` - the Gemma 4 Good Hackathon submission (May 2026).
 - `domains/privacy.md` - the privacy domain contract and current implementation.
 - `design-docs/` - durable design principles and decisions.
 - `product-specs/` - user-facing product behavior by area.
 - `exec-plans/` - active/completed plans and the debt tracker.
-- `generated/` - generated references only. Do not hand-edit generated outputs
-  unless the file says it is manually maintained.
 - `references/` - external or long-form references summarized for local use.
-- `QUALITY_SCORE.md` - quality gates, coverage expectations, and current gaps.
-- `RELIABILITY.md` - local validation, CI shape, and operational feedback loops.
+- `demo/` - demo fixtures (e.g. `demo_onboarding_memo.md`) used by `scripts/quickstart_demo.sh`.
 - `SECURITY.md` - security and privacy invariants.
 
 ## Update Rules

@@ -1,8 +1,7 @@
 """Tests for the restructured MemoryStore — pure file I/O layer."""
 
-from datetime import datetime
 import json
-from pathlib import Path
+from datetime import datetime
 
 import pytest
 

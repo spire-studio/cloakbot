@@ -39,7 +39,6 @@ import json
 import os
 import sys
 import time
-from collections import defaultdict
 from pathlib import Path
 from statistics import median
 from typing import Any
@@ -53,7 +52,10 @@ load_dotenv(REPO_ROOT / ".env")
 # Late imports so .env is in place before CloakBot config reads it.
 from loguru import logger  # noqa: E402
 
-from cloakbot.privacy.core.detection.chunking import DEFAULT_MAX_CHARS, DEFAULT_OVERLAP_CHARS  # noqa: E402
+from cloakbot.privacy.core.detection.chunking import (  # noqa: E402
+    DEFAULT_MAX_CHARS,
+    DEFAULT_OVERLAP_CHARS,
+)
 from cloakbot.privacy.core.detection.chunking.text import PlainTextChunker  # noqa: E402
 from cloakbot.privacy.core.sanitization.sanitize import sanitize_tool_output_chunked  # noqa: E402
 from cloakbot.privacy.core.state.vault import clear_cache, get_map  # noqa: E402
@@ -68,11 +70,9 @@ from tests.eval.runners.text_leak_eval import (  # noqa: E402
     _cleanup_eval_vaults,
     _fmt_optms,
     _fmt_optpct,
-    _ident_tokens,
     _protecting_placeholder,
     _score_session,
 )
-
 
 # ---------------------------------------------------------------------------
 # Turn classification

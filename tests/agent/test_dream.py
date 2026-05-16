@@ -1,8 +1,8 @@
 """Tests for the Dream class — two-phase memory consolidation via AgentRunner."""
 
-import pytest
-
 from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 from cloakbot.agent.memory import Dream, MemoryStore
 from cloakbot.agent.runner import AgentRunResult

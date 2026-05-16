@@ -24,9 +24,9 @@ Start here:
 - `docs/ARCHITECTURE.md` - runnable surfaces, module boundaries, dependency map.
 - `docs/domains/privacy.md` - privacy pipeline, trust boundary, current feature
   boundaries. Read this before changing anything under `cloakbot/privacy/`.
-- `docs/QUALITY_SCORE.md` - current quality gates and test expectations.
-- `docs/RELIABILITY.md` - local validation, CI shape, observability notes.
 - `docs/SECURITY.md` - security invariants and privacy-sensitive handling.
+- `docs/HACKATHON_WRITEUP_DRAFT.md` - hackathon submission narrative and the
+  evidence stack (A1/A2/A3 leak evals); useful context for the privacy layer.
 - `docs/exec-plans/README.md` - when to create an execution plan.
 - `docs/exec-plans/tech-debt-tracker.md` - known gaps; update when you create or
   retire debt.

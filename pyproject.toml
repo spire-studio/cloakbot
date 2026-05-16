@@ -1,20 +1,31 @@
 [project]
 name = "cloakbot-ai"
-version = "0.1.5"
-description = "A lightweight personal AI assistant framework"
+version = "0.2.0"
+description = "Local privacy kernel for frontier LLMs — Gemma 4 E2B detects, redacts, and restores PII before any byte crosses the wire."
 readme = { file = "README.md", content-type = "text/markdown" }
 requires-python = ">=3.11"
 license = {text = "MIT"}
 authors = [
-    {name = "cloakbot contributors"}
+    {name = "Laurie Luo", email = "me@laurie.pro"},
+    {name = "CloakBot contributors"},
 ]
-keywords = ["ai", "agent", "chatbot"]
+keywords = [
+    "privacy", "pii", "redaction", "sanitization",
+    "gemma", "gemma-4", "llm", "vllm", "ollama",
+    "safety", "trust", "local-first", "agent",
+]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
+    "Intended Audience :: Information Technology",
     "License :: OSI Approved :: MIT License",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Security",
 ]
 
 dependencies = [
@@ -141,6 +152,14 @@ target-version = "py311"
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W"]
 ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+# Test files follow different conventions than library code:
+#  - N806/N802 — fixture data and helper names sometimes use uppercase to match domain terminology
+#  - E402     — pytest.importorskip / sys.path shims push imports below module top
+#  - E741     — single-letter mock variables ('l', 'I') in arrange blocks
+#  - F841     — intentional unused locals in setup-side-effect assertions
+"tests/**" = ["N806", "N802", "E402", "E741", "F841"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

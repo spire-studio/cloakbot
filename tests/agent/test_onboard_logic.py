@@ -4,12 +4,10 @@ These tests focus on the business logic behind the onboard wizard,
 without testing the interactive UI components.
 """
 
-import json
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
 
-import pytest
 from pydantic import BaseModel, Field
 
 from cloakbot.cli import onboard as onboard_wizard
