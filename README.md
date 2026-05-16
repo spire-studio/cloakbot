@@ -34,6 +34,7 @@ Frontier LLM use is now load-bearing — but the data that crosses the wire is n
 
 ```bash
 # One-time:  curl -fsSL https://ollama.com/install.sh | sh
+# One-time:  Node ≥24 for the WebUI frontend  (nvm install 24  or  brew install node@24)
 # One-time:  uv sync && cd webui && npm install && cd ..
 
 bash scripts/quickstart_demo.sh
@@ -184,6 +185,8 @@ Full per-template breakdown, methodology, and self-caught eval bugs in [`docs/HA
 ```bash
 git clone https://github.com/spire-studio/cloakbot.git && cd cloakbot
 uv sync
+# WebUI frontend requires Node ≥24 — `nvm install 24` or `brew install node@24`
+cd webui && npm install && cd ..
 ```
 
 ### 2. Configure
@@ -203,14 +206,14 @@ uv run python -m cloakbot onboard
 
 ### 3. Start the local Gemma 4 backend — pick ONE
 
-CloakBot uses one OpenAI-compatible client for both backends, so the `VLLM_*` variable names in `.env` work for either profile (they're historical).
+CloakBot uses one OpenAI-compatible client for both backends, so the same three `GEMMA_*` variables in `.env` (`GEMMA_BASE_URL` / `GEMMA_API_KEY` / `GEMMA_MODEL`) work for either profile.
 
 #### Option A: vLLM (Ubuntu / GPU machine) — fast, reproducible
 
 ```bash
 uv sync --extra vllm
 uv run huggingface-cli login          # accept Gemma license at hf.co/google/gemma-4-E2B-it
-bash scripts/start_vllm.sh             # reads VLLM_API_KEY / VLLM_MODEL from .env
+bash scripts/start_vllm.sh             # reads GEMMA_API_KEY / GEMMA_MODEL from .env
 ```
 
 This is the path we use to produce the A1 / A2 / A3 eval reports.
@@ -225,9 +228,9 @@ bash scripts/start_ollama.sh
 Pulls `gemma4:e2b` (~5 GB), starts the daemon, warms the model. Then in `.env`:
 
 ```
-VLLM_BASE_URL=http://127.0.0.1:11434/v1
-VLLM_API_KEY=ollama        # Ollama doesn't enforce auth; any value works
-VLLM_MODEL=gemma4:e2b
+GEMMA_BASE_URL=http://127.0.0.1:11434/v1
+GEMMA_API_KEY=ollama        # Ollama doesn't enforce auth; any value works
+GEMMA_MODEL=gemma4:e2b
 ```
 
 This is the path we recommend for real-world adoption — the privacy kernel runs on a 2019 MacBook Air.

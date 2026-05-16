@@ -288,7 +288,7 @@ Environment variables that change runtime policy:
 |---|---|---|
 | `CLOAKBOT_VISUAL_FAIL_MODE` | `omit` | `omit` substitutes a text placeholder when visual detection fails closed; `pass` reinstates legacy permissive behaviour (debug only). |
 | `CLOAKBOT_APPROVAL_HIGH_SEVERITY_LOCAL` | `false` | When truthy, LOCAL tool calls whose restored arguments contain a `Severity.HIGH` entity raise `ToolApprovalRequiredError`. |
-| `VLLM_BASE_URL` / `VLLM_API_KEY` / `VLLM_MODEL` | required | The local visual + text detector endpoint. **Must point at a host you control** — the visual inspector forwards original image bytes. |
+| `GEMMA_BASE_URL` / `GEMMA_API_KEY` / `GEMMA_MODEL` | required | The local Gemma 4 visual + text detector endpoint (vLLM or Ollama; same three variables either way). **Must point at a host you control** — the visual inspector forwards original image bytes. |
 
 ## Telemetry Hygiene
 

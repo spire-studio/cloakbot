@@ -1,19 +1,23 @@
 """
-vLLM provider — OpenAI-compatible client for the remote vLLM server.
+Local Gemma 4 detector client — OpenAI-compatible.
 
-Used exclusively by the sanitizer module for local PII detection.
-Not wired into cloakbot's main provider registry.
+Works against any OpenAI-compatible local backend (vLLM on a GPU box,
+Ollama on a laptop, llama.cpp's HTTP server, etc.). Used exclusively by
+the sanitizer for local PII detection; not wired into cloakbot's main
+provider registry.
 
 Configuration is loaded from (in priority order):
   1. Environment variables
   2. .env file in the project root
 
 Required variables:
-  VLLM_BASE_URL   e.g. http://192.168.1.100:8000/v1
-  VLLM_API_KEY    Bearer token (must match --api-key on the vLLM server)
+  GEMMA_BASE_URL   e.g. http://127.0.0.1:11434/v1   (Ollama)
+                   or  http://192.168.1.100:8000/v1 (vLLM)
+  GEMMA_API_KEY    Bearer token. For vLLM it must match --api-key on the
+                   server. For Ollama any non-empty value works (no auth).
 
 Optional:
-  VLLM_MODEL      Model name / LoRA alias (default: google/gemma-4-E2B-it)
+  GEMMA_MODEL      Model tag / LoRA alias (default: google/gemma-4-E2B-it)
 """
 
 from __future__ import annotations
@@ -33,9 +37,9 @@ class VllmSettings(BaseSettings):
         extra="ignore",
     )
 
-    base_url: str = Field(alias="VLLM_BASE_URL")
-    api_key: str = Field(alias="VLLM_API_KEY")
-    model: str = Field(default="google/gemma-4-E2B-it", alias="VLLM_MODEL")
+    base_url: str = Field(alias="GEMMA_BASE_URL")
+    api_key: str = Field(alias="GEMMA_API_KEY")
+    model: str = Field(default="google/gemma-4-E2B-it", alias="GEMMA_MODEL")
 
 
 @lru_cache

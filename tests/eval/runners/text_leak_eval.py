@@ -548,12 +548,12 @@ def main() -> None:
         logger.remove()
         logger.add(sys.stderr, level="WARNING")
 
-    base = os.environ.get("VLLM_BASE_URL", "unset")
-    model = os.environ.get("VLLM_MODEL", "google/gemma-4-E2B-it")
-    print(f"vLLM target: {base} ({model})", file=sys.stderr)
+    base = os.environ.get("GEMMA_BASE_URL", "unset")
+    model = os.environ.get("GEMMA_MODEL", "google/gemma-4-E2B-it")
+    print(f"Gemma detector target: {base} ({model})", file=sys.stderr)
     if base == "unset":
         print(
-            "⚠ VLLM_BASE_URL not set; detector will run in fail-open mode and "
+            "⚠ GEMMA_BASE_URL not set; detector will run in fail-open mode and "
             "all sessions will report 100% leaks.",
             file=sys.stderr,
         )

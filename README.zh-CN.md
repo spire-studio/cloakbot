@@ -357,9 +357,9 @@ uv sync
 ```bash
 cp .env.example .env
 # 编辑 .env:
-#   VLLM_BASE_URL=http://<your-vllm-server>:8000/v1
-#   VLLM_API_KEY=your-secret-token
-#   VLLM_MODEL=google/gemma-4-E2B-it
+#   GEMMA_BASE_URL=http://<your-vllm-server>:8000/v1
+#   GEMMA_API_KEY=your-secret-token
+#   GEMMA_MODEL=google/gemma-4-E2B-it
 ```
 
 按 CloakBot 常规方式（或使用 `onboard`）在 `~/.cloakbot/config.json` 中配置远端 LLM（Claude、GPT、Gemini 等）：
@@ -375,7 +375,7 @@ uv run python -m cloakbot onboard
 uv sync --extra vllm
 uv run huggingface-cli login          # 在 hf.co/google/gemma-4-E2B-it 接受 Gemma 协议
 
-# 启动服务（会自动读取 .env 里的 VLLM_API_KEY 与 VLLM_MODEL）
+# 启动服务（会自动读取 .env 里的 GEMMA_API_KEY 与 GEMMA_MODEL）
 bash scripts/start_vllm.sh
 ```
 

@@ -19,9 +19,9 @@
 #   - Ollama listens on http://127.0.0.1:11434
 #   - OpenAI-compatible endpoint at http://127.0.0.1:11434/v1
 #   - Point CloakBot at it via .env:
-#       VLLM_BASE_URL=http://127.0.0.1:11434/v1
-#       VLLM_API_KEY=ollama        # Ollama doesn't enforce auth; any value works
-#       VLLM_MODEL=gemma4:e2b
+#       GEMMA_BASE_URL=http://127.0.0.1:11434/v1
+#       GEMMA_API_KEY=ollama        # Ollama doesn't enforce auth; any value works
+#       GEMMA_MODEL=gemma4:e2b
 #
 # Env overrides:
 #   OLLAMA_MODEL  Model tag (default: gemma4:e2b)
@@ -62,7 +62,7 @@ fi
 if OLLAMA_HOST="$HOST" ollama list | awk 'NR>1{print $1}' | grep -qx "$MODEL"; then
     echo "==> Model ${MODEL} already pulled"
 else
-    echo "==> Pulling ${MODEL} (~5 GB on first run)"
+    echo "==> Pulling ${MODEL} (~5 GB; typically 3-5 min on broadband — feel free to keep working in another terminal)"
     OLLAMA_HOST="$HOST" ollama pull "$MODEL"
 fi
 
@@ -79,10 +79,10 @@ cat <<EOF
 
 Add to .env (or uncomment the Ollama profile in .env.example):
 
-   VLLM_BASE_URL=http://${HOST}/v1
-   VLLM_API_KEY=ollama
-   VLLM_MODEL=${MODEL}
+   GEMMA_BASE_URL=http://${HOST}/v1
+   GEMMA_API_KEY=ollama
+   GEMMA_MODEL=${MODEL}
 
-CloakBot uses one OpenAI-compatible client for both vLLM and Ollama, so
-no code change is needed — the env vars are historical.
+CloakBot uses one OpenAI-compatible client for both vLLM and Ollama —
+same three GEMMA_* variables work for either backend.
 EOF
