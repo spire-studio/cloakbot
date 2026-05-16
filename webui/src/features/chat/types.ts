@@ -5,12 +5,21 @@ import type {
   PrivacyTurn,
   ToolApproval,
   UserAttachmentResult,
+  UserDocumentResult,
 } from '@/features/privacy/types'
 
+/**
+ * One file the user attached to a message. `kind` discriminates between
+ * the image privacy pipeline (OCR + bbox redaction on the visual side)
+ * and the document privacy pipeline (chunked text redaction). Older
+ * payloads without an explicit `kind` are treated as images for
+ * backward compatibility with the first round of upload support.
+ */
 export type ChatAttachment = {
   mimeType: string
   dataUrl: string
   name?: string
+  kind?: 'image' | 'document'
 }
 
 export type ChatMessage = {
@@ -23,8 +32,10 @@ export type ChatMessage = {
   toolApproval?: ToolApproval
   /** Attachments uploaded with this user message (originals, local-only). */
   attachments?: ChatAttachment[]
-  /** Per-attachment redaction results from the privacy pipeline (server-side). */
+  /** Per-image-attachment redaction results from the privacy pipeline (server-side). */
   attachmentResults?: UserAttachmentResult[]
+  /** Per-document-upload redaction results from the chunked privacy pipeline. */
+  documentResults?: UserDocumentResult[]
 }
 
 export type ChatAssistantStatus =

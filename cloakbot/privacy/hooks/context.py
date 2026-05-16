@@ -7,6 +7,7 @@ from typing import Any
 from cloakbot.privacy.core.math.math_executor import LocalComputationRecord
 from cloakbot.privacy.core.sanitization.restorer import RestoredTokenAnnotation
 from cloakbot.privacy.core.types import DetectedEntity
+from cloakbot.privacy.document_redaction import UserDocumentResult
 from cloakbot.privacy.tool_models import ToolApprovalRequest, ToolPrivacyRecord, ToolVaultArtifact
 from cloakbot.privacy.visual_redaction import VisualPrivacyRedaction
 
@@ -40,5 +41,11 @@ class TurnContext:
     user_input_visual_redactions: list[VisualPrivacyRedaction] = field(default_factory=list)
     user_input_vault_artifacts: list[ToolVaultArtifact] = field(default_factory=list)
     user_input_media_blocks: list[dict[str, Any]] = field(default_factory=list)
+    # User-uploaded text documents (.txt / .md) routed through the
+    # chunker-backed PII detector. Sibling field to the visual ones —
+    # the WebUI privacy payload emits both so the Local-vs-Remote
+    # toggle can flip text uploads the same way it flips image uploads.
+    user_input_documents: list[UserDocumentResult] = field(default_factory=list)
+    user_input_document_artifacts: list[ToolVaultArtifact] = field(default_factory=list)
     was_sanitized: bool = False
     tool_calls_made: int = 0

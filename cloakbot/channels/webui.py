@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import contextlib
 import re
 from datetime import datetime
@@ -43,7 +44,6 @@ from cloakbot.privacy.webui import (
 )
 from cloakbot.privacy.webui.history import load_webui_privacy_payloads
 from cloakbot.session.manager import Session, SessionManager
-
 
 _MATH_CONTRACT_PATTERN = re.compile(
     r"###\s*PRIVACY MODE ENABLED\s*###.*?###\s*END PRIVACY MATH CONTRACT\s*###",
@@ -337,10 +337,20 @@ class WebUIChannel(BaseChannel):
                                 "dataUrl": source,
                             }
                         )
+                document_results = self._document_results_from_payload(peek_payload)
+                document_attachments = self._documents_from_payload(peek_payload)
+                if document_attachments:
+                    # Frontend MessageList filters one combined list by
+                    # ``attachment.kind`` to split the image grid from the
+                    # document card list, so merging here is safe and
+                    # keeps the persisted-message shape compact.
+                    persisted_attachments = persisted_attachments + document_attachments
                 if persisted_attachments:
                     entry["attachments"] = persisted_attachments
                 if attachment_results:
                     entry["attachmentResults"] = attachment_results
+                if document_results:
+                    entry["documentResults"] = document_results
 
             if role == "assistant":
                 tool_approval = self._tool_approval_from_message(message)
@@ -410,6 +420,14 @@ class WebUIChannel(BaseChannel):
             "[image]",
             "[image:",
             "[image omitted]",
+            # User-uploaded text documents are emitted by the pipeline as
+            # a separate text block with a `[Document uploaded by user:`
+            # header so the LLM sees them as supplemental context. On
+            # rehydration we drop that block from the user-text view and
+            # rebuild the actual document card from the turn payload's
+            # ``user_documents`` instead.
+            "[Document uploaded by user:",
+            "[document upload `",  # fail-closed omit notice
         )
 
         user_text_parts: list[str] = []
@@ -481,6 +499,66 @@ class WebUIChannel(BaseChannel):
             attachment.model_dump(mode="json", by_alias=True)
             for attachment in user_attachments
         ]
+
+    @staticmethod
+    def _document_results_from_payload(
+        payload: WebUIPrivacyPayload | None,
+    ) -> list[dict[str, Any]]:
+        """Lift ``user_documents`` off a turn payload into the chat shape.
+
+        Same pattern as :meth:`_attachment_results_from_payload` but for
+        the text-document privacy track. The frontend's
+        ``MessageDocumentList`` reads from this field to render Local
+        vs Remote text + chunk-count badges; without rehydration the
+        sanitized document body would have to re-derive from the
+        scaffolded text block, which is exactly what we're stripping.
+        """
+        if payload is None:
+            return []
+        user_documents = payload.privacy_turn.user_documents
+        if not user_documents:
+            return []
+        return [
+            document.model_dump(mode="json", by_alias=True)
+            for document in user_documents
+        ]
+
+    @staticmethod
+    def _documents_from_payload(
+        payload: WebUIPrivacyPayload | None,
+    ) -> list[dict[str, Any]]:
+        """Synthesize ``ChatAttachment`` entries (kind="document") for rehydration.
+
+        On the first send the frontend owns the original document bytes
+        and submits them as a ``data:text/...;base64,...`` URL. After a
+        page reload that local copy is gone, so we reconstruct a
+        synthetic attachment shape with ``kind="document"`` from the
+        per-turn payload's ``user_documents``. The text body comes from
+        the vault artifact echoed back as ``originalText`` (falling
+        back to the sanitized body when the vault read failed) so the
+        frontend can keep the document card filter
+        (``attachment.kind === "document"``) and the rendering branch
+        unchanged.
+        """
+        if payload is None:
+            return []
+        user_documents = payload.privacy_turn.user_documents
+        if not user_documents:
+            return []
+        out: list[dict[str, Any]] = []
+        for document in user_documents:
+            mime_type = document.mime_type or "text/plain"
+            body = document.original_text or document.sanitized_text or ""
+            encoded = base64.b64encode(body.encode("utf-8")).decode("ascii")
+            entry: dict[str, Any] = {
+                "mimeType": mime_type,
+                "dataUrl": f"data:{mime_type};base64,{encoded}",
+                "kind": "document",
+            }
+            if document.document_name:
+                entry["name"] = document.document_name
+            out.append(entry)
+        return out
 
     @staticmethod
     def _timestamp_ms(value: object) -> int:

@@ -1,4 +1,4 @@
-import { ArrowRight, Eye, EyeOff, Shield } from 'lucide-react'
+import { ArrowRight, Eye, EyeOff, FileText, Shield } from 'lucide-react'
 import { Fragment, type ReactNode } from 'react'
 
 import { Button } from '@/components/ui/button'
@@ -18,8 +18,8 @@ import {
   substituteEntities,
   tokenizeRemoteText,
 } from '@/features/chat/lib/remote-view-substitute'
-import type { ChatMessage } from '@/features/chat/types'
-import type { PrivacySnapshot } from '@/features/privacy/types'
+import type { ChatAttachment, ChatMessage } from '@/features/chat/types'
+import type { PrivacySnapshot, UserDocumentResult } from '@/features/privacy/types'
 
 type RemoteViewDiffDialogProps = {
   open: boolean
@@ -53,6 +53,20 @@ export function RemoteViewDiffDialog({
       entity.aliases.some((alias) => alias && matchesAtBoundary(message.content, alias)),
   )
 
+  // Split mixed attachments by pipeline. Images flow through the OCR/bbox
+  // redaction column; documents flow through the chunker-backed text column
+  // and pull their sanitized payload from `documentResults`, not
+  // `attachmentResults`. Older payloads without `kind` default to image.
+  const imageAttachments = (message.attachments ?? []).filter(
+    (attachment) => (attachment.kind ?? 'image') === 'image',
+  )
+  const documentAttachments = (message.attachments ?? []).filter(
+    (attachment) => attachment.kind === 'document',
+  )
+  const documentResults = message.documentResults ?? []
+  const documentSanitizedCount = documentResults.filter((r) => r.wasSanitized).length
+  const documentFailedCount = documentResults.filter((r) => r.chunksFailed).length
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
@@ -67,15 +81,15 @@ export function RemoteViewDiffDialog({
           </DialogDescription>
         </DialogHeader>
 
-        {message.attachments && message.attachments.length > 0 ? (
+        {imageAttachments.length > 0 ? (
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             <DiffColumn
               label="You uploaded"
               tone="local"
-              footer={`${message.attachments.length} image${message.attachments.length === 1 ? '' : 's'}`}
+              footer={`${imageAttachments.length} image${imageAttachments.length === 1 ? '' : 's'}`}
             >
               <AttachmentColumn
-                attachments={message.attachments}
+                attachments={imageAttachments}
                 kind="original"
                 results={message.attachmentResults}
               />
@@ -86,9 +100,42 @@ export function RemoteViewDiffDialog({
               footer={`${(message.attachmentResults ?? []).filter((r) => r.status === 'redacted').length} redacted · ${(message.attachmentResults ?? []).filter((r) => r.status === 'omitted').length} omitted`}
             >
               <AttachmentColumn
-                attachments={message.attachments}
+                attachments={imageAttachments}
                 kind="redacted"
                 results={message.attachmentResults}
+              />
+            </DiffColumn>
+          </div>
+        ) : null}
+
+        {documentAttachments.length > 0 ? (
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <DiffColumn
+              label="You uploaded"
+              tone="local"
+              footer={`${documentAttachments.length} document${documentAttachments.length === 1 ? '' : 's'}`}
+            >
+              <DocumentTextColumn
+                attachments={documentAttachments}
+                results={documentResults}
+                kind="original"
+                snapshot={snapshot}
+              />
+            </DiffColumn>
+            <DiffColumn
+              label="Remote saw"
+              tone="remote"
+              footer={
+                documentResults.length === 0
+                  ? 'Awaiting redaction…'
+                  : `${documentSanitizedCount} sanitized${documentFailedCount > 0 ? ` · ${documentFailedCount} fail-closed` : ''}`
+              }
+            >
+              <DocumentTextColumn
+                attachments={documentAttachments}
+                results={documentResults}
+                kind="sanitized"
+                snapshot={snapshot}
               />
             </DiffColumn>
           </div>
@@ -298,6 +345,138 @@ function AttachmentColumn({
               </figcaption>
             ) : null}
           </figure>
+        )
+      })}
+    </div>
+  )
+}
+
+/** Decodes the base64 data URL synthesized by the channel's history rebuilder
+ * (see `_documents_from_payload` in `cloakbot/channels/webui.py`). Returns the
+ * original text the user pasted, or `null` if the URL isn't a `data:` URL we
+ * recognize — in which case the caller falls back to the result payload. */
+function decodeDocumentDataUrl(dataUrl: string): string | null {
+  if (!dataUrl.startsWith('data:')) {
+    return null
+  }
+  const commaIndex = dataUrl.indexOf(',')
+  if (commaIndex < 0) {
+    return null
+  }
+  const meta = dataUrl.slice(5, commaIndex)
+  const payload = dataUrl.slice(commaIndex + 1)
+  try {
+    if (meta.includes(';base64')) {
+      // atob returns a binary string; decodeURIComponent + escape would mangle
+      // unicode. Round-trip through TextDecoder so multibyte chars survive.
+      const binary = atob(payload)
+      const bytes = new Uint8Array(binary.length)
+      for (let i = 0; i < binary.length; i += 1) {
+        bytes[i] = binary.charCodeAt(i)
+      }
+      return new TextDecoder('utf-8').decode(bytes)
+    }
+    return decodeURIComponent(payload)
+  } catch {
+    return null
+  }
+}
+
+function DocumentTextColumn({
+  attachments,
+  results,
+  kind,
+  snapshot,
+}: {
+  attachments: ChatAttachment[]
+  results: UserDocumentResult[]
+  kind: 'original' | 'sanitized'
+  snapshot: PrivacySnapshot
+}) {
+  return (
+    <div className="flex flex-col gap-3 px-3 py-3">
+      {attachments.map((attachment, index) => {
+        const result: UserDocumentResult | undefined = results[index]
+        const documentName =
+          attachment.name ?? result?.documentName ?? `document ${index + 1}`
+
+        let body: string
+        let pending = false
+        if (kind === 'sanitized') {
+          if (result) {
+            body = result.sanitizedText
+          } else {
+            body = 'Awaiting redaction…'
+            pending = true
+          }
+        } else {
+          body =
+            result?.originalText ??
+            decodeDocumentDataUrl(attachment.dataUrl) ??
+            '(original text not available — vault read failed)'
+        }
+
+        // Highlight just the canonicals that actually appear inside *this*
+        // document body, so a doc that mentions Donald Booth but not
+        // Frederick Lane doesn't get spurious frames around unrelated
+        // placeholder names from elsewhere in the session.
+        const matchedEntities =
+          kind === 'original' && !pending
+            ? snapshot.entities.filter(
+                (entity) =>
+                  (entity.canonical && matchesAtBoundary(body, entity.canonical)) ||
+                  entity.aliases.some((alias) => alias && matchesAtBoundary(body, alias)),
+              )
+            : []
+
+        const placeholderCount =
+          kind === 'sanitized' && !pending ? tokenizeRemoteText(body).filter((f) => f.type === 'placeholder').length : 0
+
+        return (
+          <div
+            key={`${kind}-${attachment.name ?? 'document'}-${index}`}
+            className="overflow-hidden rounded-lg border border-border bg-card"
+          >
+            <header className="flex items-center gap-2 border-b border-border/70 px-3 py-2">
+              <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+              <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-foreground">
+                {documentName}
+              </span>
+              {result?.chunksTotal && result.chunksTotal > 1 ? (
+                <Chip className="border-[var(--privacy-medium-border)] bg-[var(--privacy-medium-bg)] text-[var(--privacy-medium-text)]">
+                  {result.chunksTotal} chunks
+                </Chip>
+              ) : null}
+              {kind === 'sanitized' && result?.chunksFailed ? (
+                <Chip className="border-[var(--privacy-high-border)] bg-[var(--privacy-high-bg)] text-[var(--privacy-high-text)]">
+                  fail-closed
+                </Chip>
+              ) : null}
+            </header>
+            <pre
+              className={
+                pending
+                  ? 'whitespace-pre-wrap break-words px-3 py-3 font-sans text-[12px] italic leading-[1.6] text-muted-foreground'
+                  : 'whitespace-pre-wrap break-words px-3 py-3 font-sans text-[12px] leading-[1.6] text-foreground'
+              }
+            >
+              {pending ? (
+                body
+              ) : kind === 'original' ? (
+                <HighlightedOriginal content={body} matched={matchedEntities} />
+              ) : (
+                <PlaceholderText text={body} />
+              )}
+            </pre>
+            {!pending ? (
+              <footer className="border-t border-border/70 px-3 py-1.5 text-[11px] text-muted-foreground">
+                {body.length.toLocaleString()} chars
+                {kind === 'original'
+                  ? ` · ${matchedEntities.length} entities matched`
+                  : ` · ${placeholderCount} placeholder${placeholderCount === 1 ? '' : 's'}`}
+              </footer>
+            ) : null}
+          </div>
         )
       })}
     </div>

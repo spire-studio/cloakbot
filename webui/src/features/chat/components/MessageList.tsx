@@ -1,4 +1,12 @@
-import { ArrowLeftRight, Check, ChevronDown, ChevronRight, Copy, ShieldCheck } from 'lucide-react'
+import {
+  ArrowLeftRight,
+  Check,
+  ChevronDown,
+  ChevronRight,
+  Copy,
+  FileText,
+  ShieldCheck,
+} from 'lucide-react'
 import { Fragment, useEffect, useRef, useState, type RefObject } from 'react'
 
 import { Button } from '@/components/ui/button'
@@ -105,8 +113,20 @@ export function MessageList({
               >
                   {message.role === 'user' && message.attachments && message.attachments.length > 0 ? (
                     <MessageAttachmentGrid
-                      attachments={message.attachments}
+                      attachments={message.attachments.filter(
+                        (attachment) => (attachment.kind ?? 'image') === 'image',
+                      )}
                       results={message.attachmentResults}
+                      isRemote={isRemote}
+                      onClick={() => setDiffMessage(message)}
+                    />
+                  ) : null}
+                  {message.role === 'user' && message.attachments && message.attachments.length > 0 ? (
+                    <MessageDocumentList
+                      attachments={message.attachments.filter(
+                        (attachment) => attachment.kind === 'document',
+                      )}
+                      results={message.documentResults}
                       isRemote={isRemote}
                       onClick={() => setDiffMessage(message)}
                     />
@@ -153,7 +173,9 @@ export function MessageList({
                   <span>{copiedMessageId === message.id ? 'Copied' : 'Copy'}</span>
                 </Button>
                 {hasEntityMatches(message.content, snapshot) ||
-                (message.role === 'user' && (message.attachments?.length ?? 0) > 0) ? (
+                (message.role === 'user' &&
+                  ((message.attachments?.length ?? 0) > 0 ||
+                    (message.documentResults?.length ?? 0) > 0)) ? (
                   <Button
                     type="button"
                     variant="ghost"
@@ -240,6 +262,100 @@ function MessageAttachmentGrid({
       })}
     </div>
   )
+}
+
+function MessageDocumentList({
+  attachments,
+  results,
+  isRemote,
+  onClick,
+}: {
+  attachments: NonNullable<ChatMessage['attachments']>
+  results: ChatMessage['documentResults']
+  isRemote: boolean
+  onClick?: () => void
+}) {
+  if (attachments.length === 0) {
+    return null
+  }
+  return (
+    <div className="mb-2 flex flex-col gap-2">
+      {attachments.map((attachment, index) => {
+        const result = results?.[index]
+        const isPending = !result
+        const isFailClosed = result?.chunksFailed ?? false
+        const body =
+          isRemote && result
+            ? result.sanitizedText
+            : isRemote && !result
+              ? '(awaiting redaction — the chunker is still running)'
+              : (result?.originalText ?? '(original text not available — vault read failed)')
+        const charCount = result?.charCount ?? attachment.dataUrl.length
+        const chunksTotal = result?.chunksTotal
+        const documentName = attachment.name ?? result?.documentName ?? 'document'
+        return (
+          <button
+            key={`${attachment.name ?? 'document'}-${index}`}
+            type="button"
+            onClick={onClick}
+            className={cn(
+              'group relative flex w-full max-w-[34rem] flex-col items-stretch gap-1.5 rounded-xl border border-border bg-[var(--surface-subtle)] px-3 py-2.5 text-left transition-colors hover:border-[var(--surface-outline-strong)]',
+              isFailClosed && 'border-[var(--privacy-high-border)]',
+            )}
+            aria-label={`Open privacy diff for document ${documentName}`}
+          >
+            <div className="flex items-center gap-2">
+              <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+              <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-foreground">
+                {documentName}
+              </span>
+              <span className="shrink-0 text-[11px] text-muted-foreground">
+                {formatCharCount(charCount)}
+              </span>
+              {chunksTotal && chunksTotal > 1 ? (
+                <Chip className="border-[var(--privacy-medium-border)] bg-[var(--privacy-medium-bg)] text-[var(--privacy-medium-text)]">
+                  {chunksTotal} chunks
+                </Chip>
+              ) : null}
+              {isRemote && result?.wasSanitized ? (
+                <Chip className="border-[var(--privacy-low-border)] bg-[var(--privacy-low-bg)] text-[var(--privacy-low-text)]">
+                  sanitized
+                </Chip>
+              ) : null}
+              {isFailClosed ? (
+                <Chip className="border-[var(--privacy-high-border)] bg-[var(--privacy-high-bg)] text-[var(--privacy-high-text)]">
+                  fail-closed
+                </Chip>
+              ) : null}
+            </div>
+            <pre
+              className={cn(
+                'max-h-32 overflow-hidden whitespace-pre-wrap break-words font-mono text-[11.5px] leading-[1.55] text-muted-foreground',
+                isRemote && 'text-foreground',
+              )}
+            >
+              {clampPreviewText(body, 360)}
+            </pre>
+            {isPending ? (
+              <span className="text-[11px] italic text-muted-foreground">
+                Awaiting redaction…
+              </span>
+            ) : null}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+function formatCharCount(chars: number) {
+  if (chars < 1_000) return `${chars} chars`
+  return `${(chars / 1_000).toFixed(1)}k chars`
+}
+
+function clampPreviewText(value: string, max: number): string {
+  if (value.length <= max) return value
+  return `${value.slice(0, max)}…`
 }
 
 function RemoteMessageBody({ content, snapshot }: { content: string; snapshot: PrivacySnapshot }) {

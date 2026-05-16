@@ -14,6 +14,7 @@ export type PrivacyTurn = {
   toolResults?: ToolPrivacyResult[]
   toolApprovals?: ToolApproval[]
   userAttachments?: UserAttachmentResult[]
+  userDocuments?: UserDocumentResult[]
 }
 
 export type ToolPrivacyResult = {
@@ -40,6 +41,26 @@ export type UserAttachmentResult = {
   redactedDataUrl?: string | null
   redaction?: VisualPrivacyRedaction | null
   reason?: string | null
+}
+
+/**
+ * One text-document upload after chunked PII redaction. Sibling of
+ * UserAttachmentResult (which is image-side). `originalText` is what
+ * the user uploaded; `sanitizedText` is what the LLM saw — the
+ * Local/Remote toggle in the chat UI swaps between them.
+ */
+export type UserDocumentResult = {
+  documentName?: string | null
+  mimeType: string
+  originalSha256: string
+  charCount: number
+  originalText?: string | null
+  sanitizedText: string
+  sanitizedPreview: string
+  chunksTotal: number
+  chunksFailed: boolean
+  wasSanitized: boolean
+  entityTypes: string[]
 }
 
 export type ToolApproval = {

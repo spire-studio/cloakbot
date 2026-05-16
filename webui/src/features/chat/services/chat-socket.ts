@@ -45,6 +45,32 @@ function attachUserAttachmentResultsToLastUserMessage(
   return messages
 }
 
+/** Same shape as the attachment-result stamper but for document uploads:
+ * walks back to the most recent user message and attaches the per-document
+ * redaction results emitted by the chunker-backed privacy path so the
+ * bubble's Local/Remote toggle can swap text just like image thumbnails. */
+function attachUserDocumentResultsToLastUserMessage(
+  messages: ChatMessage[],
+  privacyTurn: PrivacyTurn | undefined,
+): ChatMessage[] {
+  if (!privacyTurn?.userDocuments || privacyTurn.userDocuments.length === 0) {
+    return messages
+  }
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index]
+    if (message.role !== 'user') {
+      continue
+    }
+    if (message.documentResults) {
+      return messages
+    }
+    const nextMessages = [...messages]
+    nextMessages[index] = { ...message, documentResults: privacyTurn.userDocuments }
+    return nextMessages
+  }
+  return messages
+}
+
 function startAssistantStatus(startedAt: number): ChatAssistantStatus {
   return {
     state: 'thinking',
@@ -121,9 +147,13 @@ export function reduceChatSocketEvent(
       nextMessages,
       event.privacyTurn,
     )
+    const messagesWithDocumentResults = attachUserDocumentResultsToLastUserMessage(
+      messagesWithAttachmentResults,
+      event.privacyTurn,
+    )
 
     return {
-      messages: messagesWithAttachmentResults,
+      messages: messagesWithDocumentResults,
       privacySnapshot: event.privacy ?? state.privacySnapshot,
       privacyTurns: event.privacyTurn ? upsertPrivacyTurn(state, event.privacyTurn) : state.privacyTurns,
     }
@@ -170,9 +200,13 @@ export function reduceChatSocketEvent(
       nextMessages,
       event.privacyTurn,
     )
+    const messagesWithDocumentResults = attachUserDocumentResultsToLastUserMessage(
+      messagesWithAttachmentResults,
+      event.privacyTurn,
+    )
 
     return {
-      messages: messagesWithAttachmentResults,
+      messages: messagesWithDocumentResults,
       privacySnapshot: event.privacy ?? state.privacySnapshot,
       privacyTurns: event.privacyTurn ? upsertPrivacyTurn(state, event.privacyTurn) : state.privacyTurns,
     }

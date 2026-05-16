@@ -16,6 +16,7 @@ from cloakbot.privacy.webui.contracts import (
     WebUIToolApproval,
     WebUIToolResult,
     WebUIUserAttachment,
+    WebUIUserDocument,
 )
 
 
@@ -69,6 +70,69 @@ def _build_user_attachments(ctx: TurnContext) -> list[WebUIUserAttachment]:
     return attachments
 
 
+def _build_user_documents(ctx: TurnContext) -> list[WebUIUserDocument]:
+    """Pair each redacted document result with the original text vault artifact.
+
+    Pipeline writes the original document text to the per-session
+    vault BEFORE running the chunker so we can echo the user's true
+    upload back into the Local view. We pair the lists positionally —
+    the pipeline appends to both in the same order — and fall back to
+    ``original_text=None`` whenever the vault read fails, so the
+    frontend can render the sanitized version even if the original
+    artifact has been pruned.
+    """
+    results = ctx.user_input_documents
+    if not results:
+        return []
+
+    original_paths = [
+        artifact.path
+        for artifact in ctx.user_input_document_artifacts
+        if artifact.kind == "original_document"
+    ]
+
+    documents: list[WebUIUserDocument] = []
+    for index, result in enumerate(results):
+        original_text: str | None = None
+        if index < len(original_paths):
+            original_text = _file_to_text(original_paths[index])
+        documents.append(
+            WebUIUserDocument(
+                documentName=result.document_name,
+                mimeType=result.mime_type,
+                originalSha256=result.original_sha256,
+                charCount=result.char_count,
+                originalText=original_text,
+                sanitizedText=result.sanitized_text,
+                sanitizedPreview=result.sanitized_preview,
+                chunksTotal=result.chunks_total,
+                chunksFailed=result.chunks_failed,
+                wasSanitized=result.was_sanitized,
+                entityTypes=list(result.entity_types),
+            )
+        )
+    return documents
+
+
+def _file_to_text(path: str) -> str | None:
+    """Read a vault text artifact off disk.
+
+    Mirrors :func:`_file_to_data_url` but for plain-text uploads,
+    where we want the raw string (not a data URL) so the WebUI can
+    render the document inline in a chat bubble. Returns ``None`` on
+    IO failure so the caller falls back to "original unavailable".
+    """
+    try:
+        return Path(path).read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        logger.warning(
+            "failed to read vault document artifact for webui payload: {} ({})",
+            path,
+            exc,
+        )
+        return None
+
+
 def _file_to_data_url(path: str) -> str | None:
     """Read a vault artifact off disk and inline it as a base64 data URL.
 
@@ -99,6 +163,7 @@ def build_webui_privacy_turn(ctx: TurnContext) -> WebUIPrivacyTurn:
         remote_prompt=ctx.sanitized_input,
         local_computations=ctx.local_computations,
         userAttachments=_build_user_attachments(ctx),
+        userDocuments=_build_user_documents(ctx),
         tool_results=[
             WebUIToolResult(
                 tool_call_id=result.tool_call_id,

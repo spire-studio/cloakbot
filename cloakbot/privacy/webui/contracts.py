@@ -95,6 +95,31 @@ class WebUIUserAttachment(WebUIModel):
     reason: str | None = None
 
 
+class WebUIUserDocument(WebUIModel):
+    """One user-uploaded text document, after chunked PII redaction.
+
+    Text-side sibling of :class:`WebUIUserAttachment`. The original
+    text is echoed back so the WebUI's Local view can show the user
+    exactly what they uploaded, and ``sanitized_text`` is what the
+    LLM actually received. ``chunks_total`` is informational — the
+    WebUI badges the document with the count so a viewer can tell at
+    a glance whether a long upload actually activated the chunker
+    (vs. landed on the single-shot path because it was short).
+    """
+
+    document_name: str | None = Field(default=None, alias="documentName")
+    mime_type: str = Field(alias="mimeType")
+    original_sha256: str = Field(alias="originalSha256")
+    char_count: int = Field(alias="charCount")
+    original_text: str | None = Field(default=None, alias="originalText")
+    sanitized_text: str = Field(alias="sanitizedText")
+    sanitized_preview: str = Field(alias="sanitizedPreview")
+    chunks_total: int = Field(alias="chunksTotal")
+    chunks_failed: bool = Field(alias="chunksFailed")
+    was_sanitized: bool = Field(alias="wasSanitized")
+    entity_types: list[str] = Field(default_factory=list, alias="entityTypes")
+
+
 class WebUIPrivacyTurn(WebUIModel):
     turn_id: str = Field(alias="turnId")
     intent: Literal["chat", "math"]
@@ -103,6 +128,7 @@ class WebUIPrivacyTurn(WebUIModel):
     tool_results: list[WebUIToolResult] = Field(default_factory=list, alias="toolResults")
     tool_approvals: list[WebUIToolApproval] = Field(default_factory=list, alias="toolApprovals")
     user_attachments: list[WebUIUserAttachment] = Field(default_factory=list, alias="userAttachments")
+    user_documents: list[WebUIUserDocument] = Field(default_factory=list, alias="userDocuments")
 
 
 class WebUIPrivacyTimelineEvent(WebUIModel):

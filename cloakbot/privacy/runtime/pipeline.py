@@ -16,6 +16,8 @@ from cloakbot.privacy.core.sanitization.sanitize import (
     remap_response_with_annotations,
     sanitize_input_with_detection,
 )
+from cloakbot.privacy.core.state.vault import save_artifact_text
+from cloakbot.privacy.document_redaction import process_user_document
 from cloakbot.privacy.hooks.context import TurnContext
 from cloakbot.privacy.protocol.contracts import EventType, PrivacyStage, ProtocolStatus
 from cloakbot.privacy.protocol.observability import emit_event
@@ -26,11 +28,27 @@ from cloakbot.privacy.visual_redaction import process_visual_blocks
 from cloakbot.utils.helpers import detect_image_mime
 
 _PROMPT_VAULT_PREFIX = "user_input"
+_DOCUMENT_VAULT_PREFIX = "user_document"
 
 _DATA_URL_PATTERN = re.compile(
     r"data:(?P<mime>image/[-+.\w]+);base64,(?P<payload>.+)",
     flags=re.DOTALL,
 )
+
+# Document data URLs use a broader MIME pattern (``text/plain``,
+# ``text/markdown`` today; reserved for future expansion to other
+# text-shaped formats). The match-anything-text shape lets a single
+# regex serve both the upload filter and the decoder.
+_DOCUMENT_DATA_URL_PATTERN = re.compile(
+    r"data:(?P<mime>text/[-+.\w]+);base64,(?P<payload>.+)",
+    flags=re.DOTALL,
+)
+_SUPPORTED_DOCUMENT_MIMES = frozenset({"text/plain", "text/markdown"})
+# Hard cap on uploaded document size at the privacy layer. Above this
+# the document is dropped with a fail-closed notice — chunking
+# 100k-char payloads would dominate latency and put us out of vLLM's
+# practical recall envelope long before we get a useful signal.
+_MAX_DOCUMENT_CHARS = 64_000
 
 
 def _decode_data_url(reference: str) -> tuple[bytes, str | None] | None:
@@ -50,6 +68,17 @@ def _decode_data_url(reference: str) -> tuple[bytes, str | None] | None:
     if not raw:
         return None
     return raw, match.group("mime")
+
+
+def _document_suffix(mime: str) -> str:
+    """File extension to use when persisting an uploaded document.
+
+    Kept conservative — only the MIMEs that pass
+    :data:`_SUPPORTED_DOCUMENT_MIMES` should reach here, and we want a
+    short stable suffix per family so a glob over the vault can find
+    "all user-uploaded contracts" without parsing every file.
+    """
+    return {"text/plain": "txt", "text/markdown": "md"}.get(mime, "txt")
 
 
 def _media_fingerprint(reference: str) -> str:
@@ -202,12 +231,19 @@ class PrivacyRuntime:
         ctx.remote_prompt = prepared
 
         if media:
-            media_blocks = await self._prepare_media(media, ctx)
-            if media_blocks:
-                prepared_content: list[dict[str, Any]] = [
-                    *media_blocks,
-                    {"type": "text", "text": prepared},
-                ]
+            image_blocks = await self._prepare_media(media, ctx)
+            document_blocks = await self._prepare_user_documents(media, ctx)
+            if image_blocks or document_blocks:
+                # LLM-facing layout: images first (multimodal convention),
+                # then the user's typed prompt, then any sanitized
+                # document context. Documents go LAST so the LLM reads
+                # the prompt before the supplemental long text.
+                prepared_content: list[dict[str, Any]] = []
+                if image_blocks:
+                    prepared_content.extend(image_blocks)
+                prepared_content.append({"type": "text", "text": prepared})
+                if document_blocks:
+                    prepared_content.extend(document_blocks)
                 return prepared_content, ctx
 
         return prepared, ctx
@@ -309,6 +345,14 @@ class PrivacyRuntime:
                 continue
 
             if reference.startswith("data:"):
+                # Text documents (``data:text/markdown;…``, ``data:text/plain;…``)
+                # are handled by ``_prepare_user_documents`` via the chunker
+                # pipeline. Silently skip them here so the image branch
+                # doesn't warn on a non-image MIME it was never meant to
+                # decode. The warning below is reserved for genuinely
+                # malformed image data URLs.
+                if _DOCUMENT_DATA_URL_PATTERN.fullmatch(reference):
+                    continue
                 raw_mime: tuple[bytes, str | None] | None = _decode_data_url(reference)
                 if raw_mime is None:
                     logger.warning(
@@ -356,6 +400,166 @@ class PrivacyRuntime:
                 }
             )
         return blocks
+
+    async def _prepare_user_documents(
+        self,
+        media: list[str],
+        ctx: TurnContext,
+    ) -> list[dict[str, Any]]:
+        """Run chunker-backed PII detection on uploaded text documents.
+
+        Sibling of :meth:`_prepare_media` (which handles image uploads).
+        For every ``data:text/...;base64,...`` entry in ``media``, the
+        document is decoded, persisted as a vault artifact (original
+        bytes), and routed through ``process_user_document`` which in
+        turn delegates to ``sanitize_tool_output_chunked`` — the same
+        chunker code path A3 measures end-to-end. Sanitized text is
+        emitted as a ``text`` content block tagged with the document
+        name so the LLM sees it as supplemental context rather than
+        primary input.
+
+        Failures fail closed: a document whose decoding or sanitisation
+        raises is replaced with an omit notice block, and no original
+        text reaches the LLM-bound payload.
+        """
+        documents = self._extract_documents_from_media(media)
+        if not documents:
+            return []
+
+        prepared: list[dict[str, Any]] = []
+        for index, (text, mime, name) in enumerate(documents):
+            label = name or f"document_{index + 1}"
+            vault_call_id = f"{_DOCUMENT_VAULT_PREFIX}_{ctx.turn_id[:8]}_{index}"
+
+            # Persist the original text to the per-session vault BEFORE
+            # sanitisation so a reload (and the WebUI Local-view) can
+            # recover the user's true upload without re-reading from
+            # the browser. The redacted text is reconstructible from
+            # the session vault on demand, so we don't double-write it.
+            try:
+                original_path = save_artifact_text(
+                    ctx.session_key,
+                    ctx.turn_id,
+                    vault_call_id,
+                    f"original_document.{_document_suffix(mime)}",
+                    text,
+                )
+                ctx.user_input_document_artifacts.append(
+                    ToolVaultArtifact(
+                        kind="original_document",
+                        path=str(original_path),
+                        mediaType=mime,
+                    )
+                )
+            except OSError as exc:
+                logger.warning(
+                    "cannot persist user-uploaded document to vault ({}): {}",
+                    label,
+                    exc,
+                )
+
+            try:
+                result = await process_user_document(
+                    text,
+                    session_key=ctx.session_key,
+                    turn_id=ctx.turn_id,
+                    document_name=name,
+                    mime_type=mime,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "document privacy pipeline failed for upload {}: {}",
+                    label,
+                    exc,
+                )
+                prepared.append(
+                    {
+                        "type": "text",
+                        "text": (
+                            f"[document upload `{label}` omitted; "
+                            f"privacy pipeline unavailable: "
+                            f"{type(exc).__name__}]"
+                        ),
+                    }
+                )
+                continue
+
+            ctx.user_input_documents.append(result)
+            if result.was_sanitized:
+                ctx.was_sanitized = True
+
+            header = (
+                f"[Document uploaded by user: `{label}` — privacy-sanitized; "
+                f"treat as supplemental context. "
+                f"Chunks: {result.chunks_total}"
+                + (", with at least one chunk-local detection failure" if result.chunks_failed else "")
+                + "]"
+            )
+            prepared.append(
+                {
+                    "type": "text",
+                    "text": header + "\n" + result.sanitized_text,
+                }
+            )
+
+        return prepared
+
+    @staticmethod
+    def _extract_documents_from_media(
+        media: list[str],
+    ) -> list[tuple[str, str, str | None]]:
+        """Decode ``data:text/...`` entries to ``(text, mime, name)`` tuples.
+
+        Image data URLs and on-disk paths are skipped — the visual
+        pipeline picks those up separately in
+        :meth:`_build_image_blocks_from_media`. Anything that decodes
+        but exceeds ``_MAX_DOCUMENT_CHARS`` is dropped with a sanitized
+        log line; we don't want a 1MB paste to dominate latency.
+
+        Document names are not part of the data URL spec — channels
+        that want to surface a filename should encode it into the
+        attachment metadata (``WebUIAttachment.name``) which is
+        threaded separately. This helper returns ``None`` for the
+        name slot and lets the caller fill it in if available.
+        """
+        out: list[tuple[str, str, str | None]] = []
+        for reference in media:
+            if not isinstance(reference, str) or not reference.startswith("data:"):
+                continue
+            match = _DOCUMENT_DATA_URL_PATTERN.fullmatch(reference)
+            if not match:
+                continue
+            mime = match.group("mime")
+            if mime not in _SUPPORTED_DOCUMENT_MIMES:
+                continue
+            try:
+                raw = base64.b64decode(match.group("payload"), validate=True)
+            except (binascii.Error, ValueError):
+                logger.warning(
+                    "cannot decode user-uploaded document: {} ({} chars)",
+                    _media_fingerprint(reference),
+                    len(reference),
+                )
+                continue
+            try:
+                text = raw.decode("utf-8")
+            except UnicodeDecodeError:
+                logger.warning(
+                    "user-uploaded document is not valid UTF-8: {}",
+                    _media_fingerprint(reference),
+                )
+                continue
+            if len(text) > _MAX_DOCUMENT_CHARS:
+                logger.warning(
+                    "user-uploaded document exceeds the {} char privacy cap; "
+                    "dropping ({} chars, mime={})",
+                    _MAX_DOCUMENT_CHARS,
+                    len(text),
+                    mime,
+                )
+                continue
+            out.append((text, mime, None))
+        return out
 
     async def finalize_turn(self, response: str, ctx: TurnContext, *, include_report: bool = True) -> str:
         trace_id = self._trace_id(ctx)
