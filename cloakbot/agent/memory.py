@@ -241,15 +241,35 @@ class MemoryStore:
                 return int(self._cursor_file.read_text(encoding="utf-8").strip()) + 1
             except (ValueError, OSError):
                 pass
-        # Fallback: read last line's cursor from the JSONL file.
-        last = self._read_last_entry()
-        if last:
-            return last["cursor"] + 1
-        return 1
+        # Fallback: pick the largest valid int cursor in the JSONL file.
+        max_cursor = 0
+        for entry in self._read_entries():
+            cursor = self._entry_cursor(entry)
+            if cursor is not None and cursor > max_cursor:
+                max_cursor = cursor
+        return max_cursor + 1
 
     def read_unprocessed_history(self, since_cursor: int) -> list[dict[str, Any]]:
-        """Return history entries with cursor > *since_cursor*."""
-        return [e for e in self._read_entries() if e["cursor"] > since_cursor]
+        """Return history entries with cursor > *since_cursor*.
+
+        Entries with a missing or non-int cursor are skipped (with a warning)
+        so a stray legacy/seed row cannot crash the Dream loop.
+        """
+        result: list[dict[str, Any]] = []
+        skipped = 0
+        for entry in self._read_entries():
+            cursor = self._entry_cursor(entry)
+            if cursor is None:
+                skipped += 1
+                continue
+            if cursor > since_cursor:
+                result.append(entry)
+        if skipped:
+            logger.warning(
+                "history.jsonl: skipped {} entr{} with non-int cursor",
+                skipped, "y" if skipped == 1 else "ies",
+            )
+        return result
 
     def compact_history(self) -> None:
         """Drop oldest entries if the file exceeds *max_history_entries*."""
@@ -262,6 +282,17 @@ class MemoryStore:
         self._write_entries(kept)
 
     # -- JSONL helpers -------------------------------------------------------
+
+    @staticmethod
+    def _entry_cursor(entry: dict[str, Any]) -> int | None:
+        """Return the entry's cursor as int, or None if missing/malformed."""
+        cursor = entry.get("cursor")
+        # ``bool`` is a subclass of ``int`` — exclude it explicitly.
+        if isinstance(cursor, bool):
+            return None
+        if isinstance(cursor, int):
+            return cursor
+        return None
 
     def _read_entries(self) -> list[dict[str, Any]]:
         """Read all entries from history.jsonl."""
@@ -278,24 +309,6 @@ class MemoryStore:
         except FileNotFoundError:
             pass
         return entries
-
-    def _read_last_entry(self) -> dict[str, Any] | None:
-        """Read the last entry from the JSONL file efficiently."""
-        try:
-            with open(self.history_file, "rb") as f:
-                f.seek(0, 2)
-                size = f.tell()
-                if size == 0:
-                    return None
-                read_size = min(size, 4096)
-                f.seek(size - read_size)
-                data = f.read().decode("utf-8")
-                lines = [line for line in data.split("\n") if line.strip()]
-                if not lines:
-                    return None
-                return json.loads(lines[-1])
-        except (FileNotFoundError, json.JSONDecodeError):
-            return None
 
     def _write_entries(self, entries: list[dict[str, Any]]) -> None:
         """Overwrite history.jsonl with the given entries."""
