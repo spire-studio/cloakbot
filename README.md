@@ -50,6 +50,7 @@ For a fuller setup (vLLM on a GPU machine, model download, custom config), see [
 
 - [How it works](#how-it-works)
 - [What gets detected](#what-gets-detected)
+- [Why a small LLM, not regex or BERT-NER?](#why-a-small-llm-not-regex-or-bert-ner)
 - [Multi-agent architecture](#multi-agent-architecture)
 - [Evals — trust by measurement](#evals--trust-by-measurement)
 - [Setup](#setup)
@@ -109,6 +110,44 @@ The detector is split into `GeneralPrivacyDetector` (non-computable text spans) 
 | `$142,500` | `<<FINANCE_1>>` |
 | `December 15, 2026` | `<<DATE_1>>` |
 | `Metformin 500mg` | `<<MEDICAL_1>>` |
+
+---
+
+## Why a small LLM, not regex or BERT-NER?
+
+**TL;DR — regex catches the easy 20%; the other 80% needs context.** CloakBot uses both: regex on the fast path (emails, invoice numbers, transaction IDs, file paths — hand-rolled in [`privacy/core/detection/`](cloakbot/privacy/core/detection/) and [`visual_redaction.py`](cloakbot/privacy/visual_redaction.py)), and Gemma 4 E2B for everything regex and BERT-NER cannot do.
+
+### What regex and BERT-NER cannot do
+
+| Failure mode | Regex | BERT-NER (Presidio, spaCy) | **Gemma 4 E2B** |
+|---|:---:|:---:|:---:|
+| Known formats — email, SSN, credit card | ✓ | ✓ | ✓ |
+| Disambiguate `"John"` as a placeholder vs a real customer | ✗ | ✗ | ✓ |
+| Combination identifiers — *"67-year-old male diabetic in ZIP 90210"* | ✗ | ✗ | ✓ |
+| User-defined entities — *"also redact our project codename Falcon"* | edit regex | retrain | edit prompt |
+| Domain shift — chat logs vs the news corpora NER was trained on | n/a | recall drops 20–40% | resilient |
+| Multilingual (CN / JP / KR / EN) on one model | one regex set per locale | 600 MB+ per language | one 2B model |
+| Indirect identifiers — *"the patient I mentioned earlier"* | ✗ | ✗ | ✓ |
+
+### Why the failure modes matter
+
+A Presidio-style stack ships a *PII proxy that catches the easy stuff* — and that is **strictly worse than no proxy**, because users trust it. The bar for moving enforcement *before* the wire isn't pattern-matching; it's reasoning about whether a token should be redacted **in this specific conversation**. That's a generative-LLM-shaped problem.
+
+### Why Gemma 4 E2B specifically
+
+Gemma 4 E2B is the only commercially-redistributable model that simultaneously:
+
+1. **Fits on consumer hardware** — 2B parameters, ~5 GB quantised, runs on a MacBook through Ollama.
+2. **Returns parseable JSON at T=0** — span-level entity extraction without a fine-tune.
+3. **Multimodal in one weight set** — same model handles OCR-extracted text and direct image reasoning.
+4. **Speaks the languages CloakBot's users do** — Gemma 4 is multilingual out of the box; no per-locale model swap.
+5. **Has a commercial license** — clinics, banks, and law firms can deploy it without a per-seat fee.
+
+> **This is also a Gemma 4 hackathon.** A Presidio + BERT pipeline that uses Gemma as a chat rewriter would not be a meaningful demonstration of what Gemma can do. CloakBot puts Gemma where the trust decision actually happens — **the trust layer is the model**.
+
+### The honest trade-off
+
+Gemma is ~50–200 ms per detector call (measured on an RTX 5090 via vLLM) vs. regex's <1 ms. CloakBot mitigates this by (a) running general + digit detectors concurrently, (b) keeping regex on the fast path for known formats, (c) per-chunk concurrency for long documents. End result: HR p95 ~0.9 s, medical p95 ~6 s on entity-dense turns (see [Evals](#evals--trust-by-measurement)). The MacBook (Ollama) deployment path runs end-to-end but slower. Streaming + per-turn batching is the next milestone.
 
 ---
 
@@ -176,6 +215,8 @@ We refused to ship trust-by-assertion. Three end-to-end leak eval layers run aga
 
 Full per-template breakdown, methodology, and self-caught eval bugs in [`docs/HACKATHON_WRITEUP_DRAFT.md`](docs/HACKATHON_WRITEUP_DRAFT.md). Reproducibility: one command per layer in `tests/eval/runners/`.
 
+> *All p95 latency numbers measured with Gemma 4 E2B served via vLLM on an RTX 5090. The MacBook (Ollama) deployment path is functionally end-to-end but slower — MacBook is the target hardware, not the measurement rig.*
+
 ---
 
 ## Setup
@@ -233,7 +274,7 @@ GEMMA_API_KEY=ollama        # Ollama doesn't enforce auth; any value works
 GEMMA_MODEL=gemma4:e2b
 ```
 
-This is the path we recommend for real-world adoption — the privacy kernel runs on a 2019 MacBook Air.
+This is the path we recommend for real-world adoption — the privacy kernel runs on a MacBook.
 
 > Either backend exposes the same OpenAI-compatible surface. CloakBot's sanitiser uses it exclusively for PII detection — the remote LLM call (Claude / GPT / Gemini) is completely separate.
 
