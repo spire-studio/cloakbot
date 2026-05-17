@@ -13,6 +13,7 @@ from cloakbot.agent.tools.schema import (
 )
 from cloakbot.cron.service import CronService
 from cloakbot.cron.types import CronJob, CronJobState, CronSchedule
+from cloakbot.tool_privacy import ToolPrivacyClass
 
 
 @tool_parameters(
@@ -58,6 +59,10 @@ class CronTool(Tool):
         """Set the current session context for delivery."""
         self._channel = channel
         self._chat_id = chat_id
+
+    @property
+    def privacy_class(self) -> ToolPrivacyClass:
+        return ToolPrivacyClass.SIDE_EFFECT
 
     def set_cron_context(self, active: bool):
         """Mark whether the tool is executing inside a cron job callback."""

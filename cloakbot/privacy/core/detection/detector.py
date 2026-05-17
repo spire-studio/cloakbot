@@ -9,10 +9,15 @@ import re
 from loguru import logger
 
 from cloakbot.privacy.core.detection.digit_detector import DigitPrivacyDetector
-from cloakbot.privacy.core.detection.general_detector import GeneralPrivacyDetector
+from cloakbot.privacy.core.detection.general_detector import (
+    DedupeTarget,
+    GeneralPrivacyDetector,
+    PartialCandidate,
+)
 from cloakbot.privacy.core.types import (
     DetectedEntity,
     DetectionResult,
+    GeneralEntity,
     Severity,
 )
 
@@ -22,6 +27,7 @@ _ENTITY_PRIORITY = {
     "email": 100,
     "phone": 100,
     "ip_address": 100,
+    "local_path": 100,
     "url": 100,
     "address": 95,
     "identifier": 95,
@@ -36,6 +42,10 @@ _ENTITY_PRIORITY = {
     "amount": 55,
     "value": 50,
 }
+_LOCAL_PATH_PATTERN = re.compile(
+    r"(?<!\S)(?:file://[^\s<>'\"]+|~[/\\][^\s<>'\"]+|/[^<>'\"\s]+|\.{1,2}[/\\][^\s<>'\"]+|[A-Za-z]:[\\/][^\s<>'\"]+)"
+)
+_LOCAL_PATH_TRAILING = ".,;:!?)\\]}"
 
 
 class PiiDetector:
@@ -50,15 +60,22 @@ class PiiDetector:
         prompt: str,
         *,
         intent_hint: str | None = None,
+        partial_candidates: list[PartialCandidate] | None = None,
+        dedupe_targets: list[DedupeTarget] | None = None,
     ) -> DetectionResult:
         # Run both detectors concurrently to halve the latency
         general_result, digit_result = await asyncio.gather(
-            self._general.detect(prompt), self._digit.detect(prompt)
+            self._general.detect(
+                prompt,
+                partial_candidates=partial_candidates,
+                dedupe_targets=dedupe_targets,
+            ),
+            self._digit.detect(prompt),
         )
         latency_ms = max(general_result.latency_ms, digit_result.latency_ms)
 
         entities_by_text: dict[str, DetectedEntity] = {}
-        for entity in general_result.entities + digit_result.entities:
+        for entity in general_result.entities + digit_result.entities + _detect_local_paths(prompt):
             # Central filter: Ignore anything that looks like our own internal tokens
             if _TOKEN_PATTERN.search(entity.text):
                 logger.debug("PiiDetector: ignoring internal token match '{}'", entity.text)
@@ -96,6 +113,20 @@ class PiiDetector:
 
 def _entity_priority(entity: DetectedEntity) -> int:
     return _ENTITY_PRIORITY.get(entity.entity_type, 0)
+
+
+def _detect_local_paths(prompt: str) -> list[GeneralEntity]:
+    entities: list[GeneralEntity] = []
+    seen: set[str] = set()
+    for match in _LOCAL_PATH_PATTERN.finditer(prompt):
+        value = match.group(0).rstrip(_LOCAL_PATH_TRAILING)
+        if not value or value in seen:
+            continue
+        if value.startswith(("http://", "https://")):
+            continue
+        seen.add(value)
+        entities.append(GeneralEntity(text=value, entity_type="local_path"))
+    return entities
 
 
 __all__ = [

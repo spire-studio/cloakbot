@@ -47,7 +47,6 @@ async def test_web_fetch_result_contains_untrusted_flag():
 
     fake_html = "<html><head><title>Test</title></head><body><p>Hello world</p></body></html>"
 
-    import httpx
 
     class FakeResponse:
         status_code = 200

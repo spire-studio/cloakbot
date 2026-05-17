@@ -1,0 +1,206 @@
+{
+  "seed": 8,
+  "template_id": "invoice_v1",
+  "width": 1240,
+  "height": 1600,
+  "spans": [
+    {
+      "text": "Wood Group",
+      "label": "vendor_name",
+      "entity_type": "org",
+      "bbox": [
+        700,
+        168,
+        803,
+        183
+      ]
+    },
+    {
+      "text": "23836 Stephen Motorway, Simpsonborough, MH 53281",
+      "label": "billing_address",
+      "entity_type": "address",
+      "bbox": [
+        700,
+        195,
+        1069,
+        209
+      ]
+    },
+    {
+      "text": "washingtonkatherine@adams.biz",
+      "label": "email",
+      "entity_type": "email",
+      "bbox": [
+        700,
+        219,
+        922,
+        233
+      ]
+    },
+    {
+      "text": "Mary Davis",
+      "label": "customer_name",
+      "entity_type": "person",
+      "bbox": [
+        60,
+        168,
+        150,
+        183
+      ]
+    },
+    {
+      "text": "610 Young Corners Suite 839, New Caleb, AZ 64551",
+      "label": "billing_address",
+      "entity_type": "address",
+      "bbox": [
+        60,
+        195,
+        410,
+        209
+      ]
+    },
+    {
+      "text": "+1 (329) 797-4856",
+      "label": "phone",
+      "entity_type": "phone",
+      "bbox": [
+        60,
+        219,
+        184,
+        233
+      ]
+    },
+    {
+      "text": "ericguzman@example.net",
+      "label": "email",
+      "entity_type": "email",
+      "bbox": [
+        60,
+        243,
+        235,
+        257
+      ]
+    },
+    {
+      "text": "INV-5578-T9J3",
+      "label": "invoice_number",
+      "entity_type": "identifier",
+      "bbox": [
+        74,
+        362,
+        189,
+        374
+      ]
+    },
+    {
+      "text": "2026-03-12",
+      "label": "date",
+      "entity_type": "temporal",
+      "bbox": [
+        447,
+        362,
+        534,
+        374
+      ]
+    },
+    {
+      "text": "2026-05-24",
+      "label": "date",
+      "entity_type": "temporal",
+      "bbox": [
+        820,
+        362,
+        907,
+        374
+      ]
+    },
+    {
+      "text": "$885.64",
+      "label": "amount",
+      "entity_type": "financial",
+      "bbox": [
+        1040,
+        485,
+        1102,
+        500
+      ]
+    },
+    {
+      "text": "$4,764.28",
+      "label": "amount",
+      "entity_type": "financial",
+      "bbox": [
+        1040,
+        521,
+        1116,
+        537
+      ]
+    },
+    {
+      "text": "$3,119.31",
+      "label": "amount",
+      "entity_type": "financial",
+      "bbox": [
+        1040,
+        557,
+        1115,
+        573
+      ]
+    },
+    {
+      "text": "$397.37",
+      "label": "amount",
+      "entity_type": "financial",
+      "bbox": [
+        1040,
+        593,
+        1101,
+        608
+      ]
+    },
+    {
+      "text": "$9,166.60",
+      "label": "amount",
+      "entity_type": "financial",
+      "bbox": [
+        1040,
+        659,
+        1116,
+        675
+      ]
+    },
+    {
+      "text": "Visa ending 3406",
+      "label": "account_number",
+      "entity_type": "identifier",
+      "bbox": [
+        106,
+        762,
+        245,
+        777
+      ]
+    },
+    {
+      "text": "US65 2963 2697 6619",
+      "label": "account_number",
+      "entity_type": "identifier",
+      "bbox": [
+        129,
+        798,
+        299,
+        810
+      ]
+    },
+    {
+      "text": "TXN-4X6K-46261203THAYW",
+      "label": "transaction_id",
+      "entity_type": "identifier",
+      "bbox": [
+        152,
+        834,
+        377,
+        846
+      ]
+    }
+  ]
+}

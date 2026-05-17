@@ -1,5 +1,5 @@
-from cloakbot.session.manager import Session
 from cloakbot.privacy.core.state.vault import _SessionMap
+from cloakbot.session.manager import Session
 
 
 def _assert_no_orphans(history: list[dict]) -> None:

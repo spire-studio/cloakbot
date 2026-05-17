@@ -13,8 +13,8 @@ from cloakbot.privacy.protocol.contracts import (
     PrivacyStage,
     ProtocolStatus,
     ToolInvocationContract,
-    TurnContract,
     TurnContextPayload,
+    TurnContract,
 )
 
 

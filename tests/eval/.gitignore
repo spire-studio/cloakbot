@@ -1,0 +1,5 @@
+# GPT raw-prompt audit log is verbose and transient; reproduce via the
+# paraphrase script if needed.
+reports/gpt_audit.jsonl
+__pycache__/
+*.pyc

@@ -5,6 +5,8 @@ from collections.abc import Callable
 from copy import deepcopy
 from typing import Any, TypeVar
 
+from cloakbot.tool_privacy import ToolPrivacyClass
+
 _ToolT = TypeVar("_ToolT", bound="Tool")
 
 # Matches :meth:`Tool._cast_value` / :meth:`Schema.validate_json_schema_value` behavior
@@ -155,6 +157,11 @@ class Tool(ABC):
     def read_only(self) -> bool:
         """Whether this tool is side-effect free and safe to parallelize."""
         return False
+
+    @property
+    def privacy_class(self) -> ToolPrivacyClass:
+        """How tool arguments should be handled by privacy interception."""
+        return ToolPrivacyClass.LOCAL
 
     @property
     def concurrency_safe(self) -> bool:

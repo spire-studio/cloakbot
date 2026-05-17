@@ -9,6 +9,7 @@ from loguru import logger
 
 from cloakbot.agent.tools.base import Tool
 from cloakbot.agent.tools.registry import ToolRegistry
+from cloakbot.tool_privacy import ToolPrivacyClass
 
 
 def _extract_nullable_branch(options: Any) -> tuple[dict[str, Any], bool] | None:
@@ -97,6 +98,10 @@ class MCPToolWrapper(Tool):
     @property
     def parameters(self) -> dict[str, Any]:
         return self._parameters
+
+    @property
+    def privacy_class(self) -> ToolPrivacyClass:
+        return ToolPrivacyClass.EXTERNAL
 
     async def execute(self, **kwargs: Any) -> str:
         from mcp import types

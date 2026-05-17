@@ -15,7 +15,7 @@ async def post_llm_hook(
 ) -> str:
     """
     Called in loop.py after the LLM response arrives.
-    Runs pass 2 detection, restores tokens, emits transparency report.
+    Applies local post-processing, restores tokens, and emits transparency reports.
     """
     _ = session_key
     return await _RUNTIME.finalize_turn(response, ctx, include_report=include_report)

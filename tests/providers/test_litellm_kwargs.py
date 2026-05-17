@@ -81,7 +81,7 @@ def test_openrouter_sets_default_attribution_headers() -> None:
         )
 
     headers = MockClient.call_args.kwargs["default_headers"]
-    assert headers["HTTP-Referer"] == "https://github.com/HKUDS/cloakbot"
+    assert headers["HTTP-Referer"] == "https://github.com/spire-studio/cloakbot"
     assert headers["X-OpenRouter-Title"] == "cloakbot"
     assert headers["X-OpenRouter-Categories"] == "cli-agent,personal-agent"
     assert "x-session-affinity" in headers

@@ -5,6 +5,7 @@ from typing import Any, Awaitable, Callable
 from cloakbot.agent.tools.base import Tool, tool_parameters
 from cloakbot.agent.tools.schema import ArraySchema, StringSchema, tool_parameters_schema
 from cloakbot.bus.events import OutboundMessage
+from cloakbot.tool_privacy import ToolPrivacyClass
 
 
 @tool_parameters(
@@ -48,6 +49,10 @@ class MessageTool(Tool):
     def start_turn(self) -> None:
         """Reset per-turn send tracking."""
         self._sent_in_turn = False
+
+    @property
+    def privacy_class(self) -> ToolPrivacyClass:
+        return ToolPrivacyClass.SIDE_EFFECT
 
     @property
     def name(self) -> str:

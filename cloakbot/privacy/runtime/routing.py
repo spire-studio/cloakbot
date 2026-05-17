@@ -4,7 +4,7 @@ from cloakbot.privacy.agents.base import BaseAgent
 from cloakbot.privacy.hooks.context import Intent
 from cloakbot.privacy.runtime.registry import get_worker
 
-_SUPPORTED_INTENTS = {Intent.CHAT, Intent.MATH, Intent.DOC}
+_SUPPORTED_INTENTS = {Intent.CHAT, Intent.MATH}
 
 
 def normalize_intent(intent: Intent) -> Intent:

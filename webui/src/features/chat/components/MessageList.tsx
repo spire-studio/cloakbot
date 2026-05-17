@@ -1,22 +1,55 @@
-import { Check, ChevronDown, ChevronRight, Copy } from 'lucide-react'
-import { useEffect, useRef, useState, type RefObject } from 'react'
+import {
+  ArrowLeftRight,
+  Check,
+  ChevronDown,
+  ChevronRight,
+  Copy,
+  FileText,
+  ShieldCheck,
+} from 'lucide-react'
+import { Fragment, useEffect, useRef, useState, type RefObject } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Chip } from '@/components/ui/chip'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { useRemoteView } from '@/features/chat/context/RemoteViewContext'
+import {
+  hasEntityMatches,
+  substituteEntities,
+  tokenizeRemoteText,
+} from '@/features/chat/lib/remote-view-substitute'
+import { RemoteViewDiffDialog } from '@/features/chat/components/RemoteViewDiffDialog'
+import { emptyPrivacySnapshot } from '@/features/chat/services/chat-socket'
 import type { ChatAssistantStatus, ChatMessage } from '@/features/chat/types'
-import type { PrivacyTimeline, PrivacyTimelineEvent } from '@/features/privacy/types'
+import type {
+  PrivacySnapshot,
+  PrivacyTimeline,
+  PrivacyTimelineEvent,
+  ToolApproval,
+} from '@/features/privacy/types'
 import { AnnotatedMarkdown } from '@/features/privacy/lib/annotated-markdown'
 import { cn } from '@/lib/utils'
 
 type MessageListProps = {
   messages: ChatMessage[]
+  snapshot?: PrivacySnapshot
   scrollRef: RefObject<HTMLDivElement | null>
+  onApproveToolCall: (approvalId: string) => void
 }
 
-export function MessageList({ messages, scrollRef }: MessageListProps) {
+const REMOTE_PLACEHOLDER_CHIP =
+  'inline-flex items-center rounded-md border border-[var(--privacy-medium-border)] bg-[var(--privacy-medium-bg)] px-1.5 py-[0.05rem] font-mono text-[0.78em] leading-[1.4] text-[var(--privacy-medium-text)] align-baseline'
+
+export function MessageList({
+  messages,
+  snapshot = emptyPrivacySnapshot,
+  scrollRef,
+  onApproveToolCall,
+}: MessageListProps) {
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null)
   const copiedResetTimeoutRef = useRef<number | null>(null)
+  const [diffMessage, setDiffMessage] = useState<ChatMessage | null>(null)
+  const { isRemote } = useRemoteView()
 
   useEffect(() => {
     return () => {
@@ -78,15 +111,46 @@ export function MessageList({ messages, scrollRef }: MessageListProps) {
                   message.role === 'assistant' && !message.content ? 'hidden' : '',
                 )}
               >
-                  {message.role === 'assistant' ? (
-                  <AnnotatedMarkdown
-                    content={message.content}
-                    annotations={message.privacyAnnotations ?? []}
-                  />
-                ) : (
-                  <div className="whitespace-pre-wrap break-words">{message.content}</div>
-                )}
+                  {message.role === 'user' && message.attachments && message.attachments.length > 0 ? (
+                    <MessageAttachmentGrid
+                      attachments={message.attachments.filter(
+                        (attachment) => (attachment.kind ?? 'image') === 'image',
+                      )}
+                      results={message.attachmentResults}
+                      isRemote={isRemote}
+                      onClick={() => setDiffMessage(message)}
+                    />
+                  ) : null}
+                  {message.role === 'user' && message.attachments && message.attachments.length > 0 ? (
+                    <MessageDocumentList
+                      attachments={message.attachments.filter(
+                        (attachment) => attachment.kind === 'document',
+                      )}
+                      results={message.documentResults}
+                      isRemote={isRemote}
+                      onClick={() => setDiffMessage(message)}
+                    />
+                  ) : null}
+                  {message.content ? (
+                    isRemote ? (
+                      <RemoteMessageBody content={message.content} snapshot={snapshot} />
+                    ) : message.role === 'assistant' ? (
+                      <AnnotatedMarkdown
+                        content={message.content}
+                        annotations={message.privacyAnnotations ?? []}
+                      />
+                    ) : (
+                      <div className="whitespace-pre-wrap break-words">{message.content}</div>
+                    )
+                  ) : null}
               </div>
+
+              {message.role === 'assistant' && message.toolApproval ? (
+                <ToolApprovalPanel
+                  approval={message.toolApproval}
+                  onApprove={onApproveToolCall}
+                />
+              ) : null}
 
               <div
                 className={cn(
@@ -108,13 +172,274 @@ export function MessageList({ messages, scrollRef }: MessageListProps) {
                   {copiedMessageId === message.id ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
                   <span>{copiedMessageId === message.id ? 'Copied' : 'Copy'}</span>
                 </Button>
+                {hasEntityMatches(message.content, snapshot) ||
+                (message.role === 'user' &&
+                  ((message.attachments?.length ?? 0) > 0 ||
+                    (message.documentResults?.length ?? 0) > 0)) ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 rounded-md px-2 text-[11px] text-muted-foreground hover:text-foreground"
+                    onClick={() => setDiffMessage(message)}
+                    aria-label={`Compare local and remote view of this ${message.role} message`}
+                  >
+                    <ArrowLeftRight className="h-3.5 w-3.5" />
+                    <span>Diff</span>
+                  </Button>
+                ) : null}
               </div>
             </div>
           </div>
         ))}
       </div>
+      <RemoteViewDiffDialog
+        open={diffMessage !== null}
+        onOpenChange={(open) => {
+          if (!open) setDiffMessage(null)
+        }}
+        message={diffMessage}
+        snapshot={snapshot}
+      />
     </ScrollArea>
   )
+}
+
+function MessageAttachmentGrid({
+  attachments,
+  results,
+  isRemote,
+  onClick,
+}: {
+  attachments: NonNullable<ChatMessage['attachments']>
+  results: ChatMessage['attachmentResults']
+  isRemote: boolean
+  onClick?: () => void
+}) {
+  if (attachments.length === 0) {
+    return null
+  }
+  return (
+    <div className="mb-2 flex flex-wrap gap-2">
+      {attachments.map((attachment, index) => {
+        const result = results?.[index]
+        const showRedacted = isRemote && result?.redactedDataUrl
+        const displayUrl = showRedacted ? result.redactedDataUrl! : attachment.dataUrl
+        const isOmitted = isRemote && result?.status === 'omitted'
+        const isPending = isRemote && !result
+        return (
+          <button
+            key={`${attachment.name ?? 'image'}-${index}`}
+            type="button"
+            onClick={onClick}
+            className="group relative block max-h-[18rem] max-w-[14rem] overflow-hidden rounded-xl border border-border bg-[var(--surface-subtle)] transition-colors hover:border-[var(--surface-outline-strong)]"
+            aria-label={`Open privacy diff for ${attachment.name ?? 'attached image'}`}
+          >
+            <img
+              src={displayUrl}
+              alt={attachment.name ?? `attachment ${index + 1}`}
+              className="max-h-[18rem] w-auto max-w-full object-contain"
+              loading="lazy"
+            />
+            {isOmitted ? (
+              <div className="absolute inset-0 grid place-items-center bg-background/95 px-3 text-center text-[11px] leading-[1.45] text-muted-foreground">
+                Image omitted from remote payload.{' '}
+                {result?.reason ?? 'Fail-closed redaction.'}
+              </div>
+            ) : null}
+            {isPending ? (
+              <div className="absolute inset-0 grid place-items-center bg-background/80 text-[11px] text-muted-foreground">
+                Awaiting redaction…
+              </div>
+            ) : null}
+            {isRemote && result?.redactedDataUrl ? (
+              <div className="pointer-events-none absolute bottom-1 left-1 rounded-md bg-card/90 px-1.5 py-[0.05rem] text-[10px] font-medium text-muted-foreground shadow-[0_0_0_1px_var(--surface-outline)]">
+                remote view
+              </div>
+            ) : null}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+function MessageDocumentList({
+  attachments,
+  results,
+  isRemote,
+  onClick,
+}: {
+  attachments: NonNullable<ChatMessage['attachments']>
+  results: ChatMessage['documentResults']
+  isRemote: boolean
+  onClick?: () => void
+}) {
+  if (attachments.length === 0) {
+    return null
+  }
+  return (
+    <div className="mb-2 flex flex-col gap-2">
+      {attachments.map((attachment, index) => {
+        const result = results?.[index]
+        const isPending = !result
+        const isFailClosed = result?.chunksFailed ?? false
+        const body =
+          isRemote && result
+            ? result.sanitizedText
+            : isRemote && !result
+              ? '(awaiting redaction — the chunker is still running)'
+              : (result?.originalText ?? '(original text not available — vault read failed)')
+        const charCount = result?.charCount ?? attachment.dataUrl.length
+        const chunksTotal = result?.chunksTotal
+        const documentName = attachment.name ?? result?.documentName ?? 'document'
+        return (
+          <button
+            key={`${attachment.name ?? 'document'}-${index}`}
+            type="button"
+            onClick={onClick}
+            className={cn(
+              'group relative flex w-full max-w-[34rem] flex-col items-stretch gap-1.5 rounded-xl border border-border bg-[var(--surface-subtle)] px-3 py-2.5 text-left transition-colors hover:border-[var(--surface-outline-strong)]',
+              isFailClosed && 'border-[var(--privacy-high-border)]',
+            )}
+            aria-label={`Open privacy diff for document ${documentName}`}
+          >
+            <div className="flex items-center gap-2">
+              <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+              <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-foreground">
+                {documentName}
+              </span>
+              <span className="shrink-0 text-[11px] text-muted-foreground">
+                {formatCharCount(charCount)}
+              </span>
+              {chunksTotal && chunksTotal > 1 ? (
+                <Chip className="border-[var(--privacy-medium-border)] bg-[var(--privacy-medium-bg)] text-[var(--privacy-medium-text)]">
+                  {chunksTotal} chunks
+                </Chip>
+              ) : null}
+              {isRemote && result?.wasSanitized ? (
+                <Chip className="border-[var(--privacy-low-border)] bg-[var(--privacy-low-bg)] text-[var(--privacy-low-text)]">
+                  sanitized
+                </Chip>
+              ) : null}
+              {isFailClosed ? (
+                <Chip className="border-[var(--privacy-high-border)] bg-[var(--privacy-high-bg)] text-[var(--privacy-high-text)]">
+                  fail-closed
+                </Chip>
+              ) : null}
+            </div>
+            <pre
+              className={cn(
+                'max-h-32 overflow-hidden whitespace-pre-wrap break-words font-mono text-[11.5px] leading-[1.55] text-muted-foreground',
+                isRemote && 'text-foreground',
+              )}
+            >
+              {clampPreviewText(body, 360)}
+            </pre>
+            {isPending ? (
+              <span className="text-[11px] italic text-muted-foreground">
+                Awaiting redaction…
+              </span>
+            ) : null}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+function formatCharCount(chars: number) {
+  if (chars < 1_000) return `${chars} chars`
+  return `${(chars / 1_000).toFixed(1)}k chars`
+}
+
+function clampPreviewText(value: string, max: number): string {
+  if (value.length <= max) return value
+  return `${value.slice(0, max)}…`
+}
+
+function RemoteMessageBody({ content, snapshot }: { content: string; snapshot: PrivacySnapshot }) {
+  const remoteText = substituteEntities(content, snapshot.entities)
+  const fragments = tokenizeRemoteText(remoteText)
+  if (fragments.length === 0) {
+    return <span className="whitespace-pre-wrap break-words font-mono text-[0.95em]">{remoteText}</span>
+  }
+  return (
+    <div className="whitespace-pre-wrap break-words font-mono text-[0.95em] leading-[1.6]">
+      {fragments.map((fragment, index) =>
+        fragment.type === 'placeholder' ? (
+          <span key={`p-${index}`} className={REMOTE_PLACEHOLDER_CHIP}>
+            {fragment.value}
+          </span>
+        ) : (
+          <Fragment key={`t-${index}`}>{fragment.value}</Fragment>
+        ),
+      )}
+    </div>
+  )
+}
+
+function ToolApprovalPanel({
+  approval,
+  onApprove,
+}: {
+  approval: ToolApproval
+  onApprove: (approvalId: string) => void
+}) {
+  const isPending = approval.status === 'pending'
+
+  return (
+    <div className="mt-3 w-full rounded-lg border border-border bg-card p-3 text-sm shadow-[0_4px_18px_var(--shadow-soft)]">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-2">
+          <ShieldCheck className="h-4 w-4 shrink-0 text-muted-foreground" />
+          <div className="min-w-0">
+            <div className="truncate font-medium text-foreground">
+              {approval.toolName}
+            </div>
+            <div className="text-xs text-muted-foreground">
+              {formatPrivacyClass(approval.privacyClass)} tool
+            </div>
+          </div>
+        </div>
+        <Chip className={isPending ? 'border-[var(--privacy-medium-border)] bg-[var(--privacy-medium-bg)] text-[var(--privacy-medium-text)]' : 'border-[var(--privacy-low-border)] bg-[var(--privacy-low-bg)] text-[var(--privacy-low-text)]'}>
+          {approval.status}
+        </Chip>
+      </div>
+
+      {approval.detectedEntities.length > 0 ? (
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          {approval.detectedEntities.map((entity, index) => (
+            <Chip key={`${approval.approvalId}-${entity.entity_type}-${index}`}>
+              {formatEventLabel(entity.entity_type)}
+            </Chip>
+          ))}
+        </div>
+      ) : null}
+
+      <pre className="mt-3 max-h-36 overflow-auto rounded-md bg-[var(--surface-subtle)] p-2 font-mono text-[11px] leading-5 text-muted-foreground">
+        {JSON.stringify(approval.restoredArguments, null, 2)}
+      </pre>
+
+      {isPending ? (
+        <div className="mt-3 flex justify-end">
+          <Button
+            type="button"
+            size="sm"
+            className="h-8 rounded-md px-3"
+            onClick={() => onApprove(approval.approvalId)}
+          >
+            <ShieldCheck className="h-3.5 w-3.5" />
+            <span>Approve</span>
+          </Button>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+function formatPrivacyClass(value: ToolApproval['privacyClass']) {
+  return value.replaceAll('_', ' ')
 }
 
 function formatMessageTime(timestamp: number) {

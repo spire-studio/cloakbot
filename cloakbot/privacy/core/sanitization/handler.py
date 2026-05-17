@@ -75,17 +75,47 @@ def apply_tokens(
         if not positions:
             continue
 
-        # Get or create placeholder via vault
+        # Get or create placeholder via vault.
         tag = tag_map.get(entity.entity_type, "ENTITY")
-        placeholder = resolve_existing_placeholder(entity.text, tag, smap)
-        if placeholder is not None:
-            smap.register_alias(placeholder, entity.text, turn_id=turn_id)
-        else:
+
+        # Detector-emitted cross-turn dedupe decision (Plan C). When the
+        # local model has already judged whether this surface refers to a
+        # known entity, it overrides the legacy substring resolver — which
+        # only looks at lexical overlap and cannot distinguish "another
+        # person who shares a surname" from "the same person partially
+        # mentioned". A None / unknown hint falls back to the resolver, so
+        # callers that don't supply `dedupe_targets` get unchanged behavior.
+        hint = getattr(entity, "dedupe_hint", None)
+
+        placeholder: str | None = None
+        if hint == "new":
+            # Skip alias matching entirely. The Vault may still return an
+            # existing placeholder via `get_or_create_placeholder` if the
+            # surface text is already an EXACT alias of a registered entity,
+            # but that is the safe lexical-equality case (e.g. the same
+            # value repeated verbatim across turns), not the structural
+            # over-merging we are trying to avoid here.
             placeholder, _is_new = smap.get_or_create_placeholder(
                 entity.text,
                 tag,
                 turn_id=turn_id,
             )
+        elif hint and _IS_PLACEHOLDER_RE.fullmatch(hint) and hint in smap.placeholder_to_entity:
+            # Detector says this surface is the SAME as an existing
+            # placeholder. Honor it verbatim and register the surface as
+            # an additional alias of that placeholder.
+            placeholder = hint
+            smap.register_alias(placeholder, entity.text, turn_id=turn_id)
+        else:
+            placeholder = resolve_existing_placeholder(entity.text, tag, smap)
+            if placeholder is not None:
+                smap.register_alias(placeholder, entity.text, turn_id=turn_id)
+            else:
+                placeholder, _is_new = smap.get_or_create_placeholder(
+                    entity.text,
+                    tag,
+                    turn_id=turn_id,
+                )
 
         # Store computable value if applicable
         if isinstance(entity, ComputableEntity):

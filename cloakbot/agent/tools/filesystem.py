@@ -5,6 +5,8 @@ import mimetypes
 from pathlib import Path
 from typing import Any
 
+import fitz
+
 from cloakbot.agent.tools.base import Tool, tool_parameters
 from cloakbot.agent.tools.schema import (
     BooleanSchema,
@@ -14,6 +16,8 @@ from cloakbot.agent.tools.schema import (
 )
 from cloakbot.config.paths import get_media_dir
 from cloakbot.utils.helpers import build_image_content_blocks, detect_image_mime
+
+_PDF_RENDER_DPI = 200
 
 
 def _resolve_path(
@@ -94,8 +98,9 @@ class ReadFileTool(_FsTool):
     @property
     def description(self) -> str:
         return (
-            "Read the contents of a file. Returns numbered lines. "
-            "Use offset and limit to paginate through large files."
+            "Read a local file. UTF-8 text files return numbered lines; image files "
+            "and PDFs return page/image content for local OCR and document analysis. "
+            "Use offset and limit to paginate large text files."
         )
 
     @property
@@ -119,11 +124,28 @@ class ReadFileTool(_FsTool):
             mime = detect_image_mime(raw) or mimetypes.guess_type(path)[0]
             if mime and mime.startswith("image/"):
                 return build_image_content_blocks(raw, mime, str(fp), f"(Image file: {path})")
+            if mime == "application/pdf" or raw.startswith(b"%PDF-"):
+                # Fast path: try the PDF's embedded text layer first.
+                # Digitally-issued documents (most invoices, contracts,
+                # web-exported reports) ship with a selectable text
+                # layer that is far cheaper and more accurate than OCR.
+                # Only fall back to image rendering when the layer is
+                # missing or empty (scanned / image-only PDFs).
+                text_layer = _extract_pdf_text(raw)
+                if text_layer:
+                    return f"(PDF text layer extracted from: {path})\n\n{text_layer}"
+                rendered = _render_pdf_first_page_png(raw)
+                return build_image_content_blocks(
+                    rendered,
+                    "image/png",
+                    str(fp),
+                    f"(PDF file rendered as page 1 image: {path})",
+                )
 
             try:
                 text_content = raw.decode("utf-8")
             except UnicodeDecodeError:
-                return f"Error: Cannot read binary file {path} (MIME: {mime or 'unknown'}). Only UTF-8 text and images are supported."
+                return f"Error: Cannot read binary file {path} (MIME: {mime or 'unknown'}). Only UTF-8 text, PDFs, and images are supported."
 
             all_lines = text_content.splitlines()
             total = len(all_lines)
@@ -157,6 +179,74 @@ class ReadFileTool(_FsTool):
             return f"Error: {e}"
         except Exception as e:
             return f"Error reading file: {e}"
+
+
+def _render_pdf_first_page_png(raw: bytes) -> bytes:
+    doc = fitz.open(stream=raw, filetype="pdf")
+    try:
+        if doc.page_count < 1:
+            raise ValueError("PDF has no pages")
+        zoom = _PDF_RENDER_DPI / 72
+        page = doc.load_page(0)
+        pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom), alpha=False)
+        return pix.tobytes("png")
+    finally:
+        doc.close()
+
+
+_PDF_TEXT_PER_PAGE_LIMIT = 20_000
+_PDF_TEXT_TOTAL_LIMIT = 200_000
+
+
+def _extract_pdf_text(raw: bytes) -> str | None:
+    """Return the PDF's embedded text layer, or ``None`` if absent.
+
+    Each page is separated by a marker so the downstream chunker can
+    keep page-level provenance. Returns ``None`` when the document
+    contains no selectable text (likely a scanned image PDF), so the
+    caller knows to fall back to OCR rendering.
+
+    Truncation: very long PDFs are clipped at
+    ``_PDF_TEXT_TOTAL_LIMIT`` characters with an explicit marker so the
+    model knows there's more, and the agent can request additional
+    pages on demand.
+    """
+    try:
+        doc = fitz.open(stream=raw, filetype="pdf")
+    except Exception:
+        return None
+    try:
+        if doc.page_count < 1:
+            return None
+        chunks: list[str] = []
+        total = 0
+        for page_index in range(doc.page_count):
+            try:
+                page_text = doc.load_page(page_index).get_text("text") or ""
+            except Exception:
+                page_text = ""
+            page_text = page_text.strip()
+            if not page_text:
+                continue
+            if len(page_text) > _PDF_TEXT_PER_PAGE_LIMIT:
+                page_text = (
+                    page_text[:_PDF_TEXT_PER_PAGE_LIMIT]
+                    + f"\n… (page {page_index + 1} truncated at "
+                    f"{_PDF_TEXT_PER_PAGE_LIMIT} chars)"
+                )
+            chunks.append(f"--- Page {page_index + 1} ---\n{page_text}")
+            total += len(page_text)
+            if total >= _PDF_TEXT_TOTAL_LIMIT:
+                chunks.append(
+                    f"… (remaining pages omitted at {_PDF_TEXT_TOTAL_LIMIT}"
+                    f" total chars; request specific pages to continue)"
+                )
+                break
+        if not chunks:
+            return None
+        return "\n\n".join(chunks)
+    finally:
+        doc.close()
 
 
 # ---------------------------------------------------------------------------

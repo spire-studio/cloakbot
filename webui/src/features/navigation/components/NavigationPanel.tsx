@@ -186,9 +186,9 @@ function GatewayStatus({ collapsed, sectionPaddingClass }: { collapsed: boolean;
   }, [])
 
   const isOnline = state === 'connected'
-  const label = isOnline ? 'Gateway: Connected' : 'Gatewat: Disconnected'
+  const label = isOnline ? 'Gateway: Connected' : 'Gateway: Disconnected'
   return (
-    <div className={cn('border-t border-sidebar-border bg-sidebar-accent/55 py-3', sectionPaddingClass)}>
+    <div className={cn('border-t border-sidebar-border bg-sidebar-accent py-3', sectionPaddingClass)}>
       <div
         className={cn(
           'flex min-h-11 items-center gap-4 text-[12px] text-muted-foreground',

@@ -1,0 +1,206 @@
+{
+  "seed": 3,
+  "template_id": "invoice_v1",
+  "width": 1240,
+  "height": 1600,
+  "spans": [
+    {
+      "text": "Watkins and Sons",
+      "label": "vendor_name",
+      "entity_type": "org",
+      "bbox": [
+        700,
+        168,
+        846,
+        180
+      ]
+    },
+    {
+      "text": "919 Regina Mountains Suite 833, Weaverside, NJ 52554",
+      "label": "billing_address",
+      "entity_type": "address",
+      "bbox": [
+        700,
+        195,
+        1078,
+        209
+      ]
+    },
+    {
+      "text": "jessehernandez@price.com",
+      "label": "email",
+      "entity_type": "email",
+      "bbox": [
+        699,
+        219,
+        886,
+        233
+      ]
+    },
+    {
+      "text": "Leslie Turner",
+      "label": "customer_name",
+      "entity_type": "person",
+      "bbox": [
+        60,
+        168,
+        166,
+        180
+      ]
+    },
+    {
+      "text": "9666 Maynard Dale Suite 102, Robinsonchester, WI 82637",
+      "label": "billing_address",
+      "entity_type": "address",
+      "bbox": [
+        60,
+        195,
+        451,
+        209
+      ]
+    },
+    {
+      "text": "+1 (468) 695-8969",
+      "label": "phone",
+      "entity_type": "phone",
+      "bbox": [
+        60,
+        219,
+        184,
+        233
+      ]
+    },
+    {
+      "text": "rebeccafleming@example.org",
+      "label": "email",
+      "entity_type": "email",
+      "bbox": [
+        60,
+        243,
+        260,
+        257
+      ]
+    },
+    {
+      "text": "INV-4925-K8G9",
+      "label": "invoice_number",
+      "entity_type": "identifier",
+      "bbox": [
+        74,
+        362,
+        195,
+        374
+      ]
+    },
+    {
+      "text": "2026-04-08",
+      "label": "date",
+      "entity_type": "temporal",
+      "bbox": [
+        447,
+        362,
+        534,
+        374
+      ]
+    },
+    {
+      "text": "2026-05-22",
+      "label": "date",
+      "entity_type": "temporal",
+      "bbox": [
+        820,
+        362,
+        907,
+        374
+      ]
+    },
+    {
+      "text": "$2,487.36",
+      "label": "amount",
+      "entity_type": "financial",
+      "bbox": [
+        1040,
+        485,
+        1116,
+        501
+      ]
+    },
+    {
+      "text": "$1,319.80",
+      "label": "amount",
+      "entity_type": "financial",
+      "bbox": [
+        1040,
+        521,
+        1116,
+        537
+      ]
+    },
+    {
+      "text": "$4,248.81",
+      "label": "amount",
+      "entity_type": "financial",
+      "bbox": [
+        1040,
+        557,
+        1116,
+        573
+      ]
+    },
+    {
+      "text": "$4,260.11",
+      "label": "amount",
+      "entity_type": "financial",
+      "bbox": [
+        1040,
+        593,
+        1115,
+        609
+      ]
+    },
+    {
+      "text": "$12,316.08",
+      "label": "amount",
+      "entity_type": "financial",
+      "bbox": [
+        1040,
+        659,
+        1125,
+        675
+      ]
+    },
+    {
+      "text": "Visa ending 1620",
+      "label": "account_number",
+      "entity_type": "identifier",
+      "bbox": [
+        106,
+        762,
+        245,
+        777
+      ]
+    },
+    {
+      "text": "US01 1980 3649 4205",
+      "label": "account_number",
+      "entity_type": "identifier",
+      "bbox": [
+        129,
+        798,
+        299,
+        810
+      ]
+    },
+    {
+      "text": "TXN-4V6J-61099069RGPCT",
+      "label": "transaction_id",
+      "entity_type": "identifier",
+      "bbox": [
+        152,
+        834,
+        373,
+        846
+      ]
+    }
+  ]
+}

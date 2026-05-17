@@ -1,0 +1,206 @@
+{
+  "seed": 0,
+  "template_id": "invoice_v1",
+  "width": 1240,
+  "height": 1600,
+  "spans": [
+    {
+      "text": "Chang-Fisher",
+      "label": "vendor_name",
+      "entity_type": "org",
+      "bbox": [
+        700,
+        168,
+        810,
+        183
+      ]
+    },
+    {
+      "text": "4759 William Haven Apt. 194, West Corey, CA 90152",
+      "label": "billing_address",
+      "entity_type": "address",
+      "bbox": [
+        700,
+        195,
+        1052,
+        209
+      ]
+    },
+    {
+      "text": "thomas15@stewart-bowman.com",
+      "label": "email",
+      "entity_type": "email",
+      "bbox": [
+        700,
+        219,
+        924,
+        233
+      ]
+    },
+    {
+      "text": "Karen Grimes",
+      "label": "customer_name",
+      "entity_type": "person",
+      "bbox": [
+        60,
+        168,
+        171,
+        180
+      ]
+    },
+    {
+      "text": "60975 Jessica Squares, East Sallybury, IA 19178",
+      "label": "billing_address",
+      "entity_type": "address",
+      "bbox": [
+        60,
+        195,
+        387,
+        209
+      ]
+    },
+    {
+      "text": "+1 (871) 158-7148",
+      "label": "phone",
+      "entity_type": "phone",
+      "bbox": [
+        60,
+        219,
+        184,
+        233
+      ]
+    },
+    {
+      "text": "jasmine85@example.net",
+      "label": "email",
+      "entity_type": "email",
+      "bbox": [
+        59,
+        243,
+        226,
+        257
+      ]
+    },
+    {
+      "text": "INV-3989-F4M7",
+      "label": "invoice_number",
+      "entity_type": "identifier",
+      "bbox": [
+        74,
+        362,
+        194,
+        374
+      ]
+    },
+    {
+      "text": "2026-04-14",
+      "label": "date",
+      "entity_type": "temporal",
+      "bbox": [
+        447,
+        362,
+        534,
+        374
+      ]
+    },
+    {
+      "text": "2026-05-25",
+      "label": "date",
+      "entity_type": "temporal",
+      "bbox": [
+        820,
+        362,
+        907,
+        374
+      ]
+    },
+    {
+      "text": "$2,283.37",
+      "label": "amount",
+      "entity_type": "financial",
+      "bbox": [
+        1040,
+        485,
+        1116,
+        501
+      ]
+    },
+    {
+      "text": "$1,806.24",
+      "label": "amount",
+      "entity_type": "financial",
+      "bbox": [
+        1040,
+        521,
+        1116,
+        537
+      ]
+    },
+    {
+      "text": "$1,829.40",
+      "label": "amount",
+      "entity_type": "financial",
+      "bbox": [
+        1040,
+        557,
+        1116,
+        573
+      ]
+    },
+    {
+      "text": "$2,430.60",
+      "label": "amount",
+      "entity_type": "financial",
+      "bbox": [
+        1040,
+        593,
+        1116,
+        609
+      ]
+    },
+    {
+      "text": "$8,349.61",
+      "label": "amount",
+      "entity_type": "financial",
+      "bbox": [
+        1040,
+        659,
+        1116,
+        675
+      ]
+    },
+    {
+      "text": "Amex ending 1220",
+      "label": "account_number",
+      "entity_type": "identifier",
+      "bbox": [
+        107,
+        762,
+        256,
+        777
+      ]
+    },
+    {
+      "text": "US51 5917 9533 0413",
+      "label": "account_number",
+      "entity_type": "identifier",
+      "bbox": [
+        129,
+        798,
+        299,
+        810
+      ]
+    },
+    {
+      "text": "TXN-1L8R-68483396CFQPS",
+      "label": "transaction_id",
+      "entity_type": "identifier",
+      "bbox": [
+        152,
+        834,
+        373,
+        847
+      ]
+    }
+  ]
+}

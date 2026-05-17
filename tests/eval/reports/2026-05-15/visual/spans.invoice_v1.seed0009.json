@@ -1,0 +1,206 @@
+{
+  "seed": 9,
+  "template_id": "invoice_v1",
+  "width": 1240,
+  "height": 1600,
+  "spans": [
+    {
+      "text": "Austin-Adams",
+      "label": "vendor_name",
+      "entity_type": "org",
+      "bbox": [
+        700,
+        168,
+        815,
+        180
+      ]
+    },
+    {
+      "text": "8791 Spencer Ridges, Lake Nicholasmouth, VA 55890",
+      "label": "billing_address",
+      "entity_type": "address",
+      "bbox": [
+        700,
+        195,
+        1061,
+        209
+      ]
+    },
+    {
+      "text": "garywilliams@hunter.com",
+      "label": "email",
+      "entity_type": "email",
+      "bbox": [
+        700,
+        219,
+        871,
+        233
+      ]
+    },
+    {
+      "text": "Janet Reese",
+      "label": "customer_name",
+      "entity_type": "person",
+      "bbox": [
+        60,
+        168,
+        159,
+        180
+      ]
+    },
+    {
+      "text": "36143 Campbell Valleys Apt. 306, South Meganberg, AK 31530",
+      "label": "billing_address",
+      "entity_type": "address",
+      "bbox": [
+        60,
+        195,
+        481,
+        209
+      ]
+    },
+    {
+      "text": "+1 (619) 019-3350",
+      "label": "phone",
+      "entity_type": "phone",
+      "bbox": [
+        60,
+        219,
+        184,
+        233
+      ]
+    },
+    {
+      "text": "andersonsamantha@example.net",
+      "label": "email",
+      "entity_type": "email",
+      "bbox": [
+        60,
+        243,
+        286,
+        257
+      ]
+    },
+    {
+      "text": "INV-1978-E3Z6",
+      "label": "invoice_number",
+      "entity_type": "identifier",
+      "bbox": [
+        74,
+        362,
+        191,
+        374
+      ]
+    },
+    {
+      "text": "2026-02-28",
+      "label": "date",
+      "entity_type": "temporal",
+      "bbox": [
+        447,
+        362,
+        534,
+        374
+      ]
+    },
+    {
+      "text": "2026-06-07",
+      "label": "date",
+      "entity_type": "temporal",
+      "bbox": [
+        820,
+        362,
+        907,
+        374
+      ]
+    },
+    {
+      "text": "$1,490.22",
+      "label": "amount",
+      "entity_type": "financial",
+      "bbox": [
+        1040,
+        485,
+        1116,
+        501
+      ]
+    },
+    {
+      "text": "$637.60",
+      "label": "amount",
+      "entity_type": "financial",
+      "bbox": [
+        1040,
+        521,
+        1101,
+        536
+      ]
+    },
+    {
+      "text": "$2,511.71",
+      "label": "amount",
+      "entity_type": "financial",
+      "bbox": [
+        1040,
+        557,
+        1115,
+        573
+      ]
+    },
+    {
+      "text": "$1,523.95",
+      "label": "amount",
+      "entity_type": "financial",
+      "bbox": [
+        1040,
+        593,
+        1116,
+        609
+      ]
+    },
+    {
+      "text": "$6,163.48",
+      "label": "amount",
+      "entity_type": "financial",
+      "bbox": [
+        1040,
+        659,
+        1116,
+        675
+      ]
+    },
+    {
+      "text": "Visa ending 9016",
+      "label": "account_number",
+      "entity_type": "identifier",
+      "bbox": [
+        106,
+        762,
+        245,
+        777
+      ]
+    },
+    {
+      "text": "US39 0695 0613 3745",
+      "label": "account_number",
+      "entity_type": "identifier",
+      "bbox": [
+        129,
+        798,
+        299,
+        810
+      ]
+    },
+    {
+      "text": "TXN-3W2H-98058991LXCNZ",
+      "label": "transaction_id",
+      "entity_type": "identifier",
+      "bbox": [
+        152,
+        834,
+        377,
+        846
+      ]
+    }
+  ]
+}

@@ -1,0 +1,596 @@
+template_id: long_email_v1
+variants:
+- id: long_email_v1_p00
+  turns:
+  - role: user
+    text: I need to send a leadership-wide memo announcing that {new_hire} has signed
+      and will be joining us on {start_date}. Can you draft the email body?
+  - role: assistant
+    text: Happy to. Send me the full set of details — comp package, prior employer,
+      who they'll report to, IT/security provisioning, and the contact info you want
+      surfaced in the memo — and I'll structure it for you.
+  - role: user
+    text: 'Subject: Closing announcement — senior engineering hire ({new_hire}). To
+      leadership@; bcc {author_email}. From: {author}, VP People. Body — please use
+      this verbatim where possible. ANNOUNCEMENT: Team, I am delighted to announce
+      that {new_hire} has countersigned our offer as of {offer_signed_date} and will
+      be joining us in a senior engineering capacity starting {start_date}. This concludes
+      a search that the People team has been running since the opening of the fiscal
+      year, and it reflects a great deal of persistence from the recruiting team,
+      who deserve credit for staying with the process through multiple rounds, competing
+      priorities, and three separate offers that were being weighed by peer organizations.
+      BACKGROUND ON THE HIRE: {new_hire} is joining us from {previous_employer}, where
+      they led a multi-team platform function covering identity, data plane, and developer
+      tooling. Over a number of years at {previous_employer}, they built an operating
+      model that became a reference point for scale, and that kind of progression
+      is precisely why we have long tracked their work from the outside. The fact
+      that they are leaving {previous_employer} after such a durable tenure is a strong
+      indicator of how compelling they found the opportunity here and how closely
+      our roadmap aligns with the kind of problems they want to solve next. Reference
+      checks with former peers and direct reports were consistently positive, especially
+      on the combination of deep technical judgment and the ability to maintain a
+      demanding engineering bar without creating unnecessary organizational drag.
+      COMPENSATION PACKAGE: The offer package, which finance has already booked against
+      the FY plan, comprises a base salary of {base_salary}, a one-time signing bonus
+      of {signing_bonus} payable net thirty after the start date and clawback-protected
+      for two years, a four-year RSU grant with a total target value of {equity_grant}
+      under our standard one-year cliff and quarterly vest thereafter, and a relocation
+      allowance of {relocation_amount} to be administered through our preferred vendor
+      for the household and short-term housing components. Per the offer letter we
+      sent {new_hire} on {offer_signed_date}, the relocation reimbursement window
+      runs through the end of the calendar year and any unused balance of the {relocation_amount}
+      is forfeited rather than paid as cash. The {signing_bonus} is processed through
+      the regular payroll cycle, not as an off-cycle wire. REPORTING STRUCTURE: {new_hire}
+      will report directly to {direct_manager}, who will be the day-to-day manager
+      and the primary point of escalation for the first six months. The skip-level
+      for the role is {skip_level}, who has already agreed to sponsor {new_hire}''s
+      onboarding through the standard ninety-day ramp and to act as tie-breaker on
+      any cross-team coordination questions during that period. {direct_manager} should
+      be looped in on all onboarding touch points, both formal and informal, and may
+      be reached at {direct_manager_email} for scheduling. {skip_level} will host
+      the welcome breakfast on the morning of {start_date} and a follow-up roundtable
+      in the second week. LOGISTICS: The shipping address for the laptop, badge, and
+      welcome packet is {new_hire_address}, and the preferred personal contact details
+      {new_hire} has shared with People are {new_hire_email} and {new_hire_phone}.
+      People will own the welcome packet contents end-to-end and will coordinate with
+      facilities to make sure desk assignments and parking access are sorted by close
+      of business the Friday before {start_date}. IT AND SECURITY: IT has pre-provisioned
+      account {it_account_id} and physical badge {badge_number}; both will be active
+      by close of business on the business day preceding {start_date}. The on-call
+      rotation will not pull {new_hire} until the post-cliff date; until then, the
+      pager handle {pager_handle} is reserved but unassigned, and pages to that handle
+      will route to {direct_manager} as the interim owner. Security has approved laptop
+      provisioning under the standard senior-engineering policy and has agreed that
+      no additional access reviews are needed before {start_date}. EXTERNAL COMMUNICATIONS:
+      People is the single source of truth for {new_hire}''s arrival communications;
+      please route any external announcements (LinkedIn, press, partner emails) through
+      me at {author_email} or {author_phone} before they go out. Anyone tempted to
+      congratulate {new_hire} publicly on social media before the official window
+      opens should hold the post for forty-eight hours. RECEPTION AND ANNOUNCEMENTS
+      TIMELINE: People will run a coordinated reception cadence for {new_hire}''s
+      arrival. The day-of welcome on {start_date} is anchored by the breakfast hosted
+      by {skip_level} and a one-on-one onboarding window with {direct_manager}. The
+      internal-wide announcement to the engineering all-hands list goes out at 09:00
+      that morning, and the leadership-list version of this memo (i.e. the one you
+      are reading) goes out at 07:00 the same morning so leadership has two hours
+      of advance context. Any partner or customer announcements involving {previous_employer}''s
+      name are gated on legal review by {author_email} regardless of who the external
+      requester is. Tagging {new_hire} publicly on LinkedIn or external channels before
+      09:00 on {start_date} is not authorized. TRANSITION PLAN AND RAMP: The standard
+      ninety-day ramp plan owned by {direct_manager} kicks in at {start_date} and
+      includes weekly one-on-ones with {direct_manager}, biweekly skip-levels with
+      {skip_level}, a thirty-day technical-direction checkpoint, a sixty-day cross-functional
+      partner survey, and a ninety-day written retrospective shared back to me at
+      {author_email}. {new_hire} will not be on the formal performance calibration
+      cycle until one full calibration window has elapsed; that is the standard treatment
+      for senior engineering hires and should be applied uniformly across the leadership
+      list. ESCALATION PROTOCOL: Any onboarding friction affecting {new_hire} — relocation
+      issues that would consume more than {relocation_amount} of approved budget,
+      IT delays pushing past the active date for account {it_account_id} or badge
+      {badge_number}, or recruiting follow-ups that re-engage with {previous_employer}
+      on referenceability — should be escalated to {direct_manager} at {direct_manager_email}
+      in the first instance, with skip-level escalation to {skip_level} and ultimate
+      escalation to me at {author_email} and {author_phone}. Do not let an onboarding
+      issue languish on the assumption that People is already handling it. SIGNATURE
+      AND DISCLAIMERS: This memo is internal-only and is not to be forwarded outside
+      the leadership distribution list without prior written approval from {author}
+      or {author_email}. The compensation figures ({base_salary}, {signing_bonus},
+      {equity_grant}, {relocation_amount}) reflect the offer letter signed on {offer_signed_date}
+      and should not be cross-referenced in any external communication or in any benchmarking
+      exchange. The contact details for {new_hire} ({new_hire_email}, {new_hire_phone},
+      {new_hire_address}) are restricted to operational use within the leadership
+      and onboarding lists and should not be shared with vendors or partners without
+      explicit consent. CLOSING: We are extremely fortunate to be bringing {new_hire}
+      on board and I''d encourage everyone on the leadership list to find fifteen
+      minutes for an introductory chat within the first two weeks. Reach out to {direct_manager}
+      at {direct_manager_email} for scheduling and to me at {author_email} or {author_phone}
+      for any leadership-list coordination questions. Thanks, {author}.'
+  - role: assistant
+    text: Read through the full memo. The eight-section structure flows well and each
+      operative number ties back to the offer letter reference. Two things I want
+      to flag before sending — do you want the COMPENSATION PACKAGE section to stay
+      in the leadership-wide version (it currently exposes {base_salary}, {signing_bonus},
+      {equity_grant}, and {relocation_amount} to a wide internal list), and should
+      the IT AND SECURITY section also CC the IT lead so they're explicitly looped
+      in on {it_account_id} and {badge_number}?
+  - role: user
+    text: Send as is, but trim the COMPENSATION PACKAGE section from the leadership-wide
+      version — {base_salary} and {equity_grant} should not appear in the broad email.
+      Keep the full package in the version that goes only to {direct_manager} at {direct_manager_email}.
+      Also confirm IT account {it_account_id} ties to badge {badge_number} so we don't
+      have a mismatch when {new_hire} walks in on {start_date}.
+- id: long_email_v1_p01
+  turns:
+  - role: user
+    text: I need to send a leadership-wide memo announcing that {new_hire} has signed
+      and will be joining us on {start_date}. Can you draft the email body?
+  - role: assistant
+    text: Happy to. Send me the full set of details — comp package, prior employer,
+      who they'll report to, IT/security provisioning, and the contact info you want
+      surfaced in the memo — and I'll structure it for you.
+  - role: user
+    text: 'Subject: Leadership notice — confirmed senior engineering hire ({new_hire}).
+      To: leadership@. Bcc: {author_email}. From: {author}, VP People. Please keep
+      the body close to the text below, with only light formatting changes if needed.
+      ANNOUNCEMENT: Leadership team, I am pleased to share that {new_hire} has now
+      countersigned our offer as of {offer_signed_date} and is scheduled to begin
+      in a senior engineering role on {start_date}. This is the successful close of
+      a search effort that the People organization has been carrying since the beginning
+      of the fiscal year. Recruiting should be acknowledged explicitly for their tenacity;
+      this was not a straightforward process, and their follow-through mattered in
+      the face of three competing offers from peer companies and a long evaluation
+      cycle. BACKGROUND ON THE HIRE: {new_hire} comes to us from {previous_employer},
+      where they led a multi-team platform organization that included identity, data
+      plane, and developer tooling. Their body of work over the past several years
+      at {previous_employer} has served as a useful external benchmark for what strong
+      scaling discipline can look like, and we have watched that trajectory with considerable
+      respect. Their choice to leave {previous_employer} after such a substantial
+      tenure suggests a high level of conviction about our roadmap and the opportunity
+      set ahead. References from former peers and reports came back uniformly positive,
+      with particular emphasis on technical depth, sound judgment, and the ability
+      to keep the engineering standard high without exhausting the team around them.
+      COMPENSATION PACKAGE: The offer package, which finance has already booked against
+      the FY plan, comprises a base salary of {base_salary}, a one-time signing bonus
+      of {signing_bonus} payable net thirty after the start date and clawback-protected
+      for two years, a four-year RSU grant with a total target value of {equity_grant}
+      under our standard one-year cliff and quarterly vest thereafter, and a relocation
+      allowance of {relocation_amount} to be administered through our preferred vendor
+      for the household and short-term housing components. Per the offer letter we
+      sent {new_hire} on {offer_signed_date}, the relocation reimbursement window
+      runs through the end of the calendar year and any unused balance of the {relocation_amount}
+      is forfeited rather than paid as cash. The {signing_bonus} is processed through
+      the regular payroll cycle, not as an off-cycle wire. REPORTING STRUCTURE: {new_hire}
+      will report directly to {direct_manager}, who will be the day-to-day manager
+      and the primary point of escalation for the first six months. The skip-level
+      for the role is {skip_level}, who has already agreed to sponsor {new_hire}''s
+      onboarding through the standard ninety-day ramp and to act as tie-breaker on
+      any cross-team coordination questions during that period. {direct_manager} should
+      be looped in on all onboarding touch points, both formal and informal, and may
+      be reached at {direct_manager_email} for scheduling. {skip_level} will host
+      the welcome breakfast on the morning of {start_date} and a follow-up roundtable
+      in the second week. LOGISTICS: The shipping address for the laptop, badge, and
+      welcome packet is {new_hire_address}, and the preferred personal contact details
+      {new_hire} has shared with People are {new_hire_email} and {new_hire_phone}.
+      People will own the welcome packet contents end-to-end and will coordinate with
+      facilities to make sure desk assignments and parking access are sorted by close
+      of business the Friday before {start_date}. IT AND SECURITY: IT has pre-provisioned
+      account {it_account_id} and physical badge {badge_number}; both will be active
+      by close of business on the business day preceding {start_date}. The on-call
+      rotation will not pull {new_hire} until the post-cliff date; until then, the
+      pager handle {pager_handle} is reserved but unassigned, and pages to that handle
+      will route to {direct_manager} as the interim owner. Security has approved laptop
+      provisioning under the standard senior-engineering policy and has agreed that
+      no additional access reviews are needed before {start_date}. EXTERNAL COMMUNICATIONS:
+      People is the single source of truth for {new_hire}''s arrival communications;
+      please route any external announcements (LinkedIn, press, partner emails) through
+      me at {author_email} or {author_phone} before they go out. Anyone tempted to
+      congratulate {new_hire} publicly on social media before the official window
+      opens should hold the post for forty-eight hours. RECEPTION AND ANNOUNCEMENTS
+      TIMELINE: People will run a coordinated reception cadence for {new_hire}''s
+      arrival. The day-of welcome on {start_date} is anchored by the breakfast hosted
+      by {skip_level} and a one-on-one onboarding window with {direct_manager}. The
+      internal-wide announcement to the engineering all-hands list goes out at 09:00
+      that morning, and the leadership-list version of this memo (i.e. the one you
+      are reading) goes out at 07:00 the same morning so leadership has two hours
+      of advance context. Any partner or customer announcements involving {previous_employer}''s
+      name are gated on legal review by {author_email} regardless of who the external
+      requester is. Tagging {new_hire} publicly on LinkedIn or external channels before
+      09:00 on {start_date} is not authorized. TRANSITION PLAN AND RAMP: The standard
+      ninety-day ramp plan owned by {direct_manager} kicks in at {start_date} and
+      includes weekly one-on-ones with {direct_manager}, biweekly skip-levels with
+      {skip_level}, a thirty-day technical-direction checkpoint, a sixty-day cross-functional
+      partner survey, and a ninety-day written retrospective shared back to me at
+      {author_email}. {new_hire} will not be on the formal performance calibration
+      cycle until one full calibration window has elapsed; that is the standard treatment
+      for senior engineering hires and should be applied uniformly across the leadership
+      list. ESCALATION PROTOCOL: Any onboarding friction affecting {new_hire} — relocation
+      issues that would consume more than {relocation_amount} of approved budget,
+      IT delays pushing past the active date for account {it_account_id} or badge
+      {badge_number}, or recruiting follow-ups that re-engage with {previous_employer}
+      on referenceability — should be escalated to {direct_manager} at {direct_manager_email}
+      in the first instance, with skip-level escalation to {skip_level} and ultimate
+      escalation to me at {author_email} and {author_phone}. Do not let an onboarding
+      issue languish on the assumption that People is already handling it. SIGNATURE
+      AND DISCLAIMERS: This memo is internal-only and is not to be forwarded outside
+      the leadership distribution list without prior written approval from {author}
+      or {author_email}. The compensation figures ({base_salary}, {signing_bonus},
+      {equity_grant}, {relocation_amount}) reflect the offer letter signed on {offer_signed_date}
+      and should not be cross-referenced in any external communication or in any benchmarking
+      exchange. The contact details for {new_hire} ({new_hire_email}, {new_hire_phone},
+      {new_hire_address}) are restricted to operational use within the leadership
+      and onboarding lists and should not be shared with vendors or partners without
+      explicit consent. CLOSING: We are extremely fortunate to be bringing {new_hire}
+      on board and I''d encourage everyone on the leadership list to find fifteen
+      minutes for an introductory chat within the first two weeks. Reach out to {direct_manager}
+      at {direct_manager_email} for scheduling and to me at {author_email} or {author_phone}
+      for any leadership-list coordination questions. Thanks, {author}.'
+  - role: assistant
+    text: Read through the full memo. The eight-section structure flows well and each
+      operative number ties back to the offer letter reference. Two things I want
+      to flag before sending — do you want the COMPENSATION PACKAGE section to stay
+      in the leadership-wide version (it currently exposes {base_salary}, {signing_bonus},
+      {equity_grant}, and {relocation_amount} to a wide internal list), and should
+      the IT AND SECURITY section also CC the IT lead so they're explicitly looped
+      in on {it_account_id} and {badge_number}?
+  - role: user
+    text: Send as is, but trim the COMPENSATION PACKAGE section from the leadership-wide
+      version — {base_salary} and {equity_grant} should not appear in the broad email.
+      Keep the full package in the version that goes only to {direct_manager} at {direct_manager_email}.
+      Also confirm IT account {it_account_id} ties to badge {badge_number} so we don't
+      have a mismatch when {new_hire} walks in on {start_date}.
+- id: long_email_v1_p02
+  turns:
+  - role: user
+    text: I need to send a leadership-wide memo announcing that {new_hire} has signed
+      and will be joining us on {start_date}. Can you draft the email body?
+  - role: assistant
+    text: Happy to. Send me the full set of details — comp package, prior employer,
+      who they'll report to, IT/security provisioning, and the contact info you want
+      surfaced in the memo — and I'll structure it for you.
+  - role: user
+    text: 'Subject: Internal leadership update — senior engineering hire confirmation
+      ({new_hire}). To leadership@; bcc {author_email}. From {author}, VP People.
+      Please treat the following as the base text for distribution. ANNOUNCEMENT:
+      Leadership, I am happy to confirm that {new_hire} has countersigned our offer
+      as of {offer_signed_date} and will be joining the company in a senior engineering
+      capacity on {start_date}. This marks the close of a multi-month search effort
+      that People has been shepherding since the start of the fiscal year. The recruiting
+      team should be called out by name for their persistence, especially given the
+      competitive context and the fact that {new_hire} was balancing three separate
+      offers from peer companies before deciding to move forward with us. BACKGROUND
+      ON THE HIRE: {new_hire} joins us from {previous_employer}, where they led a
+      platform organization spanning identity, data plane, and developer tooling across
+      multiple teams. Their work there has been a strong outside benchmark for scaling
+      excellence, and we have followed it for some time with genuine admiration. Leaving
+      {previous_employer} after such a sustained tenure is a notable signal of how
+      strongly they believe in the opportunity here and how much they see in the roadmap
+      we are executing. The reference checks we completed with former peers and reports
+      were consistently favorable, with repeated comments on technical depth, sound
+      judgment, and the ability to maintain a high engineering bar without exhausting
+      the organization around them. COMPENSATION PACKAGE: The offer package, which
+      finance has already booked against the FY plan, comprises a base salary of {base_salary},
+      a one-time signing bonus of {signing_bonus} payable net thirty after the start
+      date and clawback-protected for two years, a four-year RSU grant with a total
+      target value of {equity_grant} under our standard one-year cliff and quarterly
+      vest thereafter, and a relocation allowance of {relocation_amount} to be administered
+      through our preferred vendor for the household and short-term housing components.
+      Per the offer letter we sent {new_hire} on {offer_signed_date}, the relocation
+      reimbursement window runs through the end of the calendar year and any unused
+      balance of the {relocation_amount} is forfeited rather than paid as cash. The
+      {signing_bonus} is processed through the regular payroll cycle, not as an off-cycle
+      wire. REPORTING STRUCTURE: {new_hire} will report directly to {direct_manager},
+      who will be the day-to-day manager and the primary point of escalation for the
+      first six months. The skip-level for the role is {skip_level}, who has already
+      agreed to sponsor {new_hire}''s onboarding through the standard ninety-day ramp
+      and to act as tie-breaker on any cross-team coordination questions during that
+      period. {direct_manager} should be looped in on all onboarding touch points,
+      both formal and informal, and may be reached at {direct_manager_email} for scheduling.
+      {skip_level} will host the welcome breakfast on the morning of {start_date}
+      and a follow-up roundtable in the second week. LOGISTICS: The shipping address
+      for the laptop, badge, and welcome packet is {new_hire_address}, and the preferred
+      personal contact details {new_hire} has shared with People are {new_hire_email}
+      and {new_hire_phone}. People will own the welcome packet contents end-to-end
+      and will coordinate with facilities to make sure desk assignments and parking
+      access are sorted by close of business the Friday before {start_date}. IT AND
+      SECURITY: IT has pre-provisioned account {it_account_id} and physical badge
+      {badge_number}; both will be active by close of business on the business day
+      preceding {start_date}. The on-call rotation will not pull {new_hire} until
+      the post-cliff date; until then, the pager handle {pager_handle} is reserved
+      but unassigned, and pages to that handle will route to {direct_manager} as the
+      interim owner. Security has approved laptop provisioning under the standard
+      senior-engineering policy and has agreed that no additional access reviews are
+      needed before {start_date}. EXTERNAL COMMUNICATIONS: People is the single source
+      of truth for {new_hire}''s arrival communications; please route any external
+      announcements (LinkedIn, press, partner emails) through me at {author_email}
+      or {author_phone} before they go out. Anyone tempted to congratulate {new_hire}
+      publicly on social media before the official window opens should hold the post
+      for forty-eight hours. RECEPTION AND ANNOUNCEMENTS TIMELINE: People will run
+      a coordinated reception cadence for {new_hire}''s arrival. The day-of welcome
+      on {start_date} is anchored by the breakfast hosted by {skip_level} and a one-on-one
+      onboarding window with {direct_manager}. The internal-wide announcement to the
+      engineering all-hands list goes out at 09:00 that morning, and the leadership-list
+      version of this memo (i.e. the one you are reading) goes out at 07:00 the same
+      morning so leadership has two hours of advance context. Any partner or customer
+      announcements involving {previous_employer}''s name are gated on legal review
+      by {author_email} regardless of who the external requester is. Tagging {new_hire}
+      publicly on LinkedIn or external channels before 09:00 on {start_date} is not
+      authorized. TRANSITION PLAN AND RAMP: The standard ninety-day ramp plan owned
+      by {direct_manager} kicks in at {start_date} and includes weekly one-on-ones
+      with {direct_manager}, biweekly skip-levels with {skip_level}, a thirty-day
+      technical-direction checkpoint, a sixty-day cross-functional partner survey,
+      and a ninety-day written retrospective shared back to me at {author_email}.
+      {new_hire} will not be on the formal performance calibration cycle until one
+      full calibration window has elapsed; that is the standard treatment for senior
+      engineering hires and should be applied uniformly across the leadership list.
+      ESCALATION PROTOCOL: Any onboarding friction affecting {new_hire} — relocation
+      issues that would consume more than {relocation_amount} of approved budget,
+      IT delays pushing past the active date for account {it_account_id} or badge
+      {badge_number}, or recruiting follow-ups that re-engage with {previous_employer}
+      on referenceability — should be escalated to {direct_manager} at {direct_manager_email}
+      in the first instance, with skip-level escalation to {skip_level} and ultimate
+      escalation to me at {author_email} and {author_phone}. Do not let an onboarding
+      issue languish on the assumption that People is already handling it. SIGNATURE
+      AND DISCLAIMERS: This memo is internal-only and is not to be forwarded outside
+      the leadership distribution list without prior written approval from {author}
+      or {author_email}. The compensation figures ({base_salary}, {signing_bonus},
+      {equity_grant}, {relocation_amount}) reflect the offer letter signed on {offer_signed_date}
+      and should not be cross-referenced in any external communication or in any benchmarking
+      exchange. The contact details for {new_hire} ({new_hire_email}, {new_hire_phone},
+      {new_hire_address}) are restricted to operational use within the leadership
+      and onboarding lists and should not be shared with vendors or partners without
+      explicit consent. CLOSING: We are extremely fortunate to be bringing {new_hire}
+      on board and I''d encourage everyone on the leadership list to find fifteen
+      minutes for an introductory chat within the first two weeks. Reach out to {direct_manager}
+      at {direct_manager_email} for scheduling and to me at {author_email} or {author_phone}
+      for any leadership-list coordination questions. Thanks, {author}.'
+  - role: assistant
+    text: Read through the full memo. The eight-section structure flows well and each
+      operative number ties back to the offer letter reference. Two things I want
+      to flag before sending — do you want the COMPENSATION PACKAGE section to stay
+      in the leadership-wide version (it currently exposes {base_salary}, {signing_bonus},
+      {equity_grant}, and {relocation_amount} to a wide internal list), and should
+      the IT AND SECURITY section also CC the IT lead so they're explicitly looped
+      in on {it_account_id} and {badge_number}?
+  - role: user
+    text: Send as is, but trim the COMPENSATION PACKAGE section from the leadership-wide
+      version — {base_salary} and {equity_grant} should not appear in the broad email.
+      Keep the full package in the version that goes only to {direct_manager} at {direct_manager_email}.
+      Also confirm IT account {it_account_id} ties to badge {badge_number} so we don't
+      have a mismatch when {new_hire} walks in on {start_date}.
+- id: long_email_v1_p03
+  turns:
+  - role: user
+    text: I need to send a leadership-wide memo announcing that {new_hire} has signed
+      and will be joining us on {start_date}. Can you draft the email body?
+  - role: assistant
+    text: Happy to. Send me the full set of details — comp package, prior employer,
+      who they'll report to, IT/security provisioning, and the contact info you want
+      surfaced in the memo — and I'll structure it for you.
+  - role: user
+    text: 'Subject: Leadership distribution — finalized senior engineering hire ({new_hire}).
+      To leadership@; bcc {author_email}. From: {author}, VP People. Use this as the
+      working draft, keeping the substance intact. ANNOUNCEMENT: Leadership team,
+      I am pleased to confirm that {new_hire} has countersigned our offer as of {offer_signed_date}
+      and will begin in a senior engineering capacity on {start_date}. This is the
+      culmination of a search that the People team has been managing since the beginning
+      of the fiscal year. Recruiting should be recognized directly for the persistence
+      required to close the candidate, particularly given the market conditions, the
+      extended interview process, and the fact that {new_hire} was weighing three
+      competing offers from peer companies at the point of decision. BACKGROUND ON
+      THE HIRE: {new_hire} is joining us from {previous_employer}, where they led
+      a multi-team platform organization spanning identity, data plane, and developer
+      tooling. Their work at {previous_employer} has served as a useful standard for
+      scaling rigor, and we have watched their trajectory from the outside with a
+      great deal of respect. Leaving {previous_employer} after a sustained tenure
+      signals a real belief in the opportunity in front of us and in the importance
+      of the roadmap we are pursuing. Reference feedback from former peers and reports
+      was uniformly positive, especially on the combination of technical depth, operational
+      judgment, and the ability to hold a high engineering standard without creating
+      unnecessary burn across the team. COMPENSATION PACKAGE: The offer package, which
+      finance has already booked against the FY plan, comprises a base salary of {base_salary},
+      a one-time signing bonus of {signing_bonus} payable net thirty after the start
+      date and clawback-protected for two years, a four-year RSU grant with a total
+      target value of {equity_grant} under our standard one-year cliff and quarterly
+      vest thereafter, and a relocation allowance of {relocation_amount} to be administered
+      through our preferred vendor for the household and short-term housing components.
+      Per the offer letter we sent {new_hire} on {offer_signed_date}, the relocation
+      reimbursement window runs through the end of the calendar year and any unused
+      balance of the {relocation_amount} is forfeited rather than paid as cash. The
+      {signing_bonus} is processed through the regular payroll cycle, not as an off-cycle
+      wire. REPORTING STRUCTURE: {new_hire} will report directly to {direct_manager},
+      who will be the day-to-day manager and the primary point of escalation for the
+      first six months. The skip-level for the role is {skip_level}, who has already
+      agreed to sponsor {new_hire}''s onboarding through the standard ninety-day ramp
+      and to act as tie-breaker on any cross-team coordination questions during that
+      period. {direct_manager} should be looped in on all onboarding touch points,
+      both formal and informal, and may be reached at {direct_manager_email} for scheduling.
+      {skip_level} will host the welcome breakfast on the morning of {start_date}
+      and a follow-up roundtable in the second week. LOGISTICS: The shipping address
+      for the laptop, badge, and welcome packet is {new_hire_address}, and the preferred
+      personal contact details {new_hire} has shared with People are {new_hire_email}
+      and {new_hire_phone}. People will own the welcome packet contents end-to-end
+      and will coordinate with facilities to make sure desk assignments and parking
+      access are sorted by close of business the Friday before {start_date}. IT AND
+      SECURITY: IT has pre-provisioned account {it_account_id} and physical badge
+      {badge_number}; both will be active by close of business on the business day
+      preceding {start_date}. The on-call rotation will not pull {new_hire} until
+      the post-cliff date; until then, the pager handle {pager_handle} is reserved
+      but unassigned, and pages to that handle will route to {direct_manager} as the
+      interim owner. Security has approved laptop provisioning under the standard
+      senior-engineering policy and has agreed that no additional access reviews are
+      needed before {start_date}. EXTERNAL COMMUNICATIONS: People is the single source
+      of truth for {new_hire}''s arrival communications; please route any external
+      announcements (LinkedIn, press, partner emails) through me at {author_email}
+      or {author_phone} before they go out. Anyone tempted to congratulate {new_hire}
+      publicly on social media before the official window opens should hold the post
+      for forty-eight hours. RECEPTION AND ANNOUNCEMENTS TIMELINE: People will run
+      a coordinated reception cadence for {new_hire}''s arrival. The day-of welcome
+      on {start_date} is anchored by the breakfast hosted by {skip_level} and a one-on-one
+      onboarding window with {direct_manager}. The internal-wide announcement to the
+      engineering all-hands list goes out at 09:00 that morning, and the leadership-list
+      version of this memo (i.e. the one you are reading) goes out at 07:00 the same
+      morning so leadership has two hours of advance context. Any partner or customer
+      announcements involving {previous_employer}''s name are gated on legal review
+      by {author_email} regardless of who the external requester is. Tagging {new_hire}
+      publicly on LinkedIn or external channels before 09:00 on {start_date} is not
+      authorized. TRANSITION PLAN AND RAMP: The standard ninety-day ramp plan owned
+      by {direct_manager} kicks in at {start_date} and includes weekly one-on-ones
+      with {direct_manager}, biweekly skip-levels with {skip_level}, a thirty-day
+      technical-direction checkpoint, a sixty-day cross-functional partner survey,
+      and a ninety-day written retrospective shared back to me at {author_email}.
+      {new_hire} will not be on the formal performance calibration cycle until one
+      full calibration window has elapsed; that is the standard treatment for senior
+      engineering hires and should be applied uniformly across the leadership list.
+      ESCALATION PROTOCOL: Any onboarding friction affecting {new_hire} — relocation
+      issues that would consume more than {relocation_amount} of approved budget,
+      IT delays pushing past the active date for account {it_account_id} or badge
+      {badge_number}, or recruiting follow-ups that re-engage with {previous_employer}
+      on referenceability — should be escalated to {direct_manager} at {direct_manager_email}
+      in the first instance, with skip-level escalation to {skip_level} and ultimate
+      escalation to me at {author_email} and {author_phone}. Do not let an onboarding
+      issue languish on the assumption that People is already handling it. SIGNATURE
+      AND DISCLAIMERS: This memo is internal-only and is not to be forwarded outside
+      the leadership distribution list without prior written approval from {author}
+      or {author_email}. The compensation figures ({base_salary}, {signing_bonus},
+      {equity_grant}, {relocation_amount}) reflect the offer letter signed on {offer_signed_date}
+      and should not be cross-referenced in any external communication or in any benchmarking
+      exchange. The contact details for {new_hire} ({new_hire_email}, {new_hire_phone},
+      {new_hire_address}) are restricted to operational use within the leadership
+      and onboarding lists and should not be shared with vendors or partners without
+      explicit consent. CLOSING: We are extremely fortunate to be bringing {new_hire}
+      on board and I''d encourage everyone on the leadership list to find fifteen
+      minutes for an introductory chat within the first two weeks. Reach out to {direct_manager}
+      at {direct_manager_email} for scheduling and to me at {author_email} or {author_phone}
+      for any leadership-list coordination questions. Thanks, {author}.'
+  - role: assistant
+    text: Read through the full memo. The eight-section structure flows well and each
+      operative number ties back to the offer letter reference. Two things I want
+      to flag before sending — do you want the COMPENSATION PACKAGE section to stay
+      in the leadership-wide version (it currently exposes {base_salary}, {signing_bonus},
+      {equity_grant}, and {relocation_amount} to a wide internal list), and should
+      the IT AND SECURITY section also CC the IT lead so they're explicitly looped
+      in on {it_account_id} and {badge_number}?
+  - role: user
+    text: Send as is, but trim the COMPENSATION PACKAGE section from the leadership-wide
+      version — {base_salary} and {equity_grant} should not appear in the broad email.
+      Keep the full package in the version that goes only to {direct_manager} at {direct_manager_email}.
+      Also confirm IT account {it_account_id} ties to badge {badge_number} so we don't
+      have a mismatch when {new_hire} walks in on {start_date}.
+- id: long_email_v1_p04
+  turns:
+  - role: user
+    text: I need to send a leadership-wide memo announcing that {new_hire} has signed
+      and will be joining us on {start_date}. Can you draft the email body?
+  - role: assistant
+    text: Happy to. Send me the full set of details — comp package, prior employer,
+      who they'll report to, IT/security provisioning, and the contact info you want
+      surfaced in the memo — and I'll structure it for you.
+  - role: user
+    text: 'Subject: Leadership-wide note — senior engineering hire now confirmed ({new_hire}).
+      To leadership@; bcc {author_email}. From: {author}, VP People. Below is the
+      draft text for the announcement. ANNOUNCEMENT: Team, I am pleased to confirm
+      that {new_hire} has countersigned our offer as of {offer_signed_date} and will
+      join us in a senior engineering role on {start_date}. This closes a search that
+      the People team has been carrying for several months, beginning at the start
+      of the fiscal year. The recruiting team should be recognized for its persistence
+      and judgment, especially because they navigated a process in which {new_hire}
+      was considering three competing offers from peer companies. BACKGROUND ON THE
+      HIRE: {new_hire} is joining from {previous_employer}, where they led a multi-team
+      platform organization across identity, data plane, and developer tooling. Their
+      work over the past several years at {previous_employer} has been an outside
+      benchmark for scaling maturity, and it is fair to say we have watched that arc
+      closely and with admiration. The decision to leave {previous_employer} after
+      such a long tenure is a strong vote of confidence in our roadmap and in the
+      scope of the challenge we are asking them to take on here. Reference feedback
+      from former peers and direct reports was consistently positive, with repeated
+      comments about technical depth and the ability to set and maintain a high engineering
+      bar without burning out the organization. COMPENSATION PACKAGE: The offer package,
+      which finance has already booked against the FY plan, comprises a base salary
+      of {base_salary}, a one-time signing bonus of {signing_bonus} payable net thirty
+      after the start date and clawback-protected for two years, a four-year RSU grant
+      with a total target value of {equity_grant} under our standard one-year cliff
+      and quarterly vest thereafter, and a relocation allowance of {relocation_amount}
+      to be administered through our preferred vendor for the household and short-term
+      housing components. Per the offer letter we sent {new_hire} on {offer_signed_date},
+      the relocation reimbursement window runs through the end of the calendar year
+      and any unused balance of the {relocation_amount} is forfeited rather than paid
+      as cash. The {signing_bonus} is processed through the regular payroll cycle,
+      not as an off-cycle wire. REPORTING STRUCTURE: {new_hire} will report directly
+      to {direct_manager}, who will be the day-to-day manager and the primary point
+      of escalation for the first six months. The skip-level for the role is {skip_level},
+      who has already agreed to sponsor {new_hire}''s onboarding through the standard
+      ninety-day ramp and to act as tie-breaker on any cross-team coordination questions
+      during that period. {direct_manager} should be looped in on all onboarding touch
+      points, both formal and informal, and may be reached at {direct_manager_email}
+      for scheduling. {skip_level} will host the welcome breakfast on the morning
+      of {start_date} and a follow-up roundtable in the second week. LOGISTICS: The
+      shipping address for the laptop, badge, and welcome packet is {new_hire_address},
+      and the preferred personal contact details {new_hire} has shared with People
+      are {new_hire_email} and {new_hire_phone}. People will own the welcome packet
+      contents end-to-end and will coordinate with facilities to make sure desk assignments
+      and parking access are sorted by close of business the Friday before {start_date}.
+      IT AND SECURITY: IT has pre-provisioned account {it_account_id} and physical
+      badge {badge_number}; both will be active by close of business on the business
+      day preceding {start_date}. The on-call rotation will not pull {new_hire} until
+      the post-cliff date; until then, the pager handle {pager_handle} is reserved
+      but unassigned, and pages to that handle will route to {direct_manager} as the
+      interim owner. Security has approved laptop provisioning under the standard
+      senior-engineering policy and has agreed that no additional access reviews are
+      needed before {start_date}. EXTERNAL COMMUNICATIONS: People is the single source
+      of truth for {new_hire}''s arrival communications; please route any external
+      announcements (LinkedIn, press, partner emails) through me at {author_email}
+      or {author_phone} before they go out. Anyone tempted to congratulate {new_hire}
+      publicly on social media before the official window opens should hold the post
+      for forty-eight hours. RECEPTION AND ANNOUNCEMENTS TIMELINE: People will run
+      a coordinated reception cadence for {new_hire}''s arrival. The day-of welcome
+      on {start_date} is anchored by the breakfast hosted by {skip_level} and a one-on-one
+      onboarding window with {direct_manager}. The internal-wide announcement to the
+      engineering all-hands list goes out at 09:00 that morning, and the leadership-list
+      version of this memo (i.e. the one you are reading) goes out at 07:00 the same
+      morning so leadership has two hours of advance context. Any partner or customer
+      announcements involving {previous_employer}''s name are gated on legal review
+      by {author_email} regardless of who the external requester is. Tagging {new_hire}
+      publicly on LinkedIn or external channels before 09:00 on {start_date} is not
+      authorized. TRANSITION PLAN AND RAMP: The standard ninety-day ramp plan owned
+      by {direct_manager} kicks in at {start_date} and includes weekly one-on-ones
+      with {direct_manager}, biweekly skip-levels with {skip_level}, a thirty-day
+      technical-direction checkpoint, a sixty-day cross-functional partner survey,
+      and a ninety-day written retrospective shared back to me at {author_email}.
+      {new_hire} will not be on the formal performance calibration cycle until one
+      full calibration window has elapsed; that is the standard treatment for senior
+      engineering hires and should be applied uniformly across the leadership list.
+      ESCALATION PROTOCOL: Any onboarding friction affecting {new_hire} — relocation
+      issues that would consume more than {relocation_amount} of approved budget,
+      IT delays pushing past the active date for account {it_account_id} or badge
+      {badge_number}, or recruiting follow-ups that re-engage with {previous_employer}
+      on referenceability — should be escalated to {direct_manager} at {direct_manager_email}
+      in the first instance, with skip-level escalation to {skip_level} and ultimate
+      escalation to me at {author_email} and {author_phone}. Do not let an onboarding
+      issue languish on the assumption that People is already handling it. SIGNATURE
+      AND DISCLAIMERS: This memo is internal-only and is not to be forwarded outside
+      the leadership distribution list without prior written approval from {author}
+      or {author_email}. The compensation figures ({base_salary}, {signing_bonus},
+      {equity_grant}, {relocation_amount}) reflect the offer letter signed on {offer_signed_date}
+      and should not be cross-referenced in any external communication or in any benchmarking
+      exchange. The contact details for {new_hire} ({new_hire_email}, {new_hire_phone},
+      {new_hire_address}) are restricted to operational use within the leadership
+      and onboarding lists and should not be shared with vendors or partners without
+      explicit consent. CLOSING: We are extremely fortunate to be bringing {new_hire}
+      on board and I''d encourage everyone on the leadership list to find fifteen
+      minutes for an introductory chat within the first two weeks. Reach out to {direct_manager}
+      at {direct_manager_email} for scheduling and to me at {author_email} or {author_phone}
+      for any leadership-list coordination questions. Thanks, {author}.'
+  - role: assistant
+    text: Read through the full memo. The eight-section structure flows well and each
+      operative number ties back to the offer letter reference. Two things I want
+      to flag before sending — do you want the COMPENSATION PACKAGE section to stay
+      in the leadership-wide version (it currently exposes {base_salary}, {signing_bonus},
+      {equity_grant}, and {relocation_amount} to a wide internal list), and should
+      the IT AND SECURITY section also CC the IT lead so they're explicitly looped
+      in on {it_account_id} and {badge_number}?
+  - role: user
+    text: Send as is, but trim the COMPENSATION PACKAGE section from the leadership-wide
+      version — {base_salary} and {equity_grant} should not appear in the broad email.
+      Keep the full package in the version that goes only to {direct_manager} at {direct_manager_email}.
+      Also confirm IT account {it_account_id} ties to badge {badge_number} so we don't
+      have a mismatch when {new_hire} walks in on {start_date}.

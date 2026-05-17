@@ -6,6 +6,7 @@ import json
 import os
 import re
 import tempfile
+import unicodedata
 from pathlib import Path
 from typing import Any
 
@@ -57,8 +58,24 @@ class _SessionMap(BaseModel):
     counters: dict[str, int] = Field(default_factory=dict)
 
     def normalize_text(self, text: str) -> str:
-        """Collapse benign formatting differences for alias matching."""
-        collapsed = " ".join(text.strip().split()).lower()
+        """Collapse benign formatting differences for alias matching.
+
+        Steps:
+          1. NFKC normalisation (full-width → half-width, ligatures
+             unfolded), so ``"ＡＢＣ"`` aliases to ``"abc"``.
+          2. Strip combining marks (NFD then drop ``Mn``), so
+             ``"café"`` aliases to ``"cafe"``.
+          3. Whitespace collapse + lowercase.
+          4. Punctuation removal — but if the result would be empty we
+             fall back to the punctuation-preserving form so tokens
+             like email handles still resolve.
+        """
+        if not text:
+            return ""
+        normalised = unicodedata.normalize("NFKC", text)
+        decomposed = unicodedata.normalize("NFD", normalised)
+        no_marks = "".join(ch for ch in decomposed if not unicodedata.combining(ch))
+        collapsed = " ".join(no_marks.strip().split()).lower()
         if not collapsed:
             return ""
         cleaned = re.sub(r"[^\w\s]", "", collapsed)
@@ -331,10 +348,23 @@ def _safe_key(session_key: str) -> str:
     return re.sub(r"[^a-zA-Z0-9_-]", "_", session_key)
 
 
+def _safe_filename(filename: str) -> str:
+    name = Path(filename).name
+    return re.sub(r"[^a-zA-Z0-9_.-]", "_", name)
+
+
 def _map_path(session_key: str) -> Path:
     maps_dir = get_privacy_vault_dir(_workspace) / "maps"
     maps_dir.mkdir(parents=True, exist_ok=True)
     return maps_dir / f"{_safe_key(session_key)}.json"
+
+
+def _artifacts_dir(session_key: str, turn_id: str, tool_call_id: str) -> Path:
+    root = get_privacy_vault_dir(_workspace) / "artifacts"
+    path = root / _safe_key(session_key) / _safe_key(turn_id) / _safe_key(tool_call_id)
+    path.mkdir(parents=True, exist_ok=True)
+    path.chmod(0o700)
+    return path
 
 
 def _prune_legacy_indexes(
@@ -412,6 +442,54 @@ def _save_map(session_key: str, smap: _SessionMap) -> None:
         if tmp_path is not None:
             tmp_path.unlink(missing_ok=True)
         raise
+
+
+def _write_artifact_atomic(path: Path, data: bytes) -> Path:
+    tmp_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="wb",
+            dir=path.parent,
+            prefix=f"{path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as tmp:
+            tmp_path = Path(tmp.name)
+            tmp.write(data)
+        os.replace(tmp_path, path)
+        path.chmod(0o600)
+        return path
+    except Exception:
+        if tmp_path is not None:
+            tmp_path.unlink(missing_ok=True)
+        raise
+
+
+def save_artifact_bytes(
+    session_key: str,
+    turn_id: str,
+    tool_call_id: str,
+    filename: str,
+    data: bytes,
+) -> Path:
+    path = _artifacts_dir(session_key, turn_id, tool_call_id) / _safe_filename(filename)
+    return _write_artifact_atomic(path, data)
+
+
+def save_artifact_text(
+    session_key: str,
+    turn_id: str,
+    tool_call_id: str,
+    filename: str,
+    text: str,
+) -> Path:
+    return save_artifact_bytes(
+        session_key,
+        turn_id,
+        tool_call_id,
+        filename,
+        text.encode("utf-8"),
+    )
 
 
 def get_map(session_key: str) -> _SessionMap:

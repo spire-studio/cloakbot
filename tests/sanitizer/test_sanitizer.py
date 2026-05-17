@@ -29,9 +29,9 @@ from cloakbot.privacy.core.sanitization.sanitize import (
     sanitize_input_with_detection,
 )
 from cloakbot.privacy.core.state.vault import (
-    _SessionMap,
     _load_map,
     _save_map,
+    _SessionMap,
     clear_cache,
 )
 from cloakbot.privacy.core.types import (
@@ -40,7 +40,6 @@ from cloakbot.privacy.core.types import (
     DetectionResult,
     GeneralEntity,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers

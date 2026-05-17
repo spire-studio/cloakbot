@@ -13,10 +13,9 @@ except ImportError:
 if not DINGTALK_AVAILABLE:
     pytest.skip("DingTalk dependencies not installed (dingtalk-stream)", allow_module_level=True)
 
-from cloakbot.bus.queue import MessageBus
 import cloakbot.channels.dingtalk as dingtalk_module
-from cloakbot.channels.dingtalk import DingTalkChannel, CloakbotDingTalkHandler
-from cloakbot.channels.dingtalk import DingTalkConfig
+from cloakbot.bus.queue import MessageBus
+from cloakbot.channels.dingtalk import CloakbotDingTalkHandler, DingTalkChannel, DingTalkConfig
 
 
 class _FakeResponse:

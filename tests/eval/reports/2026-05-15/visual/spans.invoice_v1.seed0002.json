@@ -1,0 +1,206 @@
+{
+  "seed": 2,
+  "template_id": "invoice_v1",
+  "width": 1240,
+  "height": 1600,
+  "spans": [
+    {
+      "text": "Davis LLC",
+      "label": "vendor_name",
+      "entity_type": "org",
+      "bbox": [
+        700,
+        168,
+        783,
+        180
+      ]
+    },
+    {
+      "text": "9390 Yvonne Route Suite 858, Shawton, VI 04098",
+      "label": "billing_address",
+      "entity_type": "address",
+      "bbox": [
+        700,
+        195,
+        1034,
+        209
+      ]
+    },
+    {
+      "text": "steven56@snow-fox.net",
+      "label": "email",
+      "entity_type": "email",
+      "bbox": [
+        700,
+        219,
+        862,
+        233
+      ]
+    },
+    {
+      "text": "David Thompson",
+      "label": "customer_name",
+      "entity_type": "person",
+      "bbox": [
+        60,
+        168,
+        198,
+        183
+      ]
+    },
+    {
+      "text": "827 Navarro Track Suite 955, Martinfurt, VT 97309",
+      "label": "billing_address",
+      "entity_type": "address",
+      "bbox": [
+        60,
+        195,
+        396,
+        209
+      ]
+    },
+    {
+      "text": "+1 (783) 747-8857",
+      "label": "phone",
+      "entity_type": "phone",
+      "bbox": [
+        60,
+        219,
+        184,
+        233
+      ]
+    },
+    {
+      "text": "ubell@example.net",
+      "label": "email",
+      "entity_type": "email",
+      "bbox": [
+        60,
+        243,
+        189,
+        257
+      ]
+    },
+    {
+      "text": "INV-7735-R2X9",
+      "label": "invoice_number",
+      "entity_type": "identifier",
+      "bbox": [
+        74,
+        362,
+        193,
+        374
+      ]
+    },
+    {
+      "text": "2026-04-23",
+      "label": "date",
+      "entity_type": "temporal",
+      "bbox": [
+        447,
+        362,
+        534,
+        374
+      ]
+    },
+    {
+      "text": "2026-05-24",
+      "label": "date",
+      "entity_type": "temporal",
+      "bbox": [
+        820,
+        362,
+        907,
+        374
+      ]
+    },
+    {
+      "text": "$4,430.71",
+      "label": "amount",
+      "entity_type": "financial",
+      "bbox": [
+        1040,
+        485,
+        1116,
+        501
+      ]
+    },
+    {
+      "text": "$4,541.64",
+      "label": "amount",
+      "entity_type": "financial",
+      "bbox": [
+        1040,
+        521,
+        1116,
+        537
+      ]
+    },
+    {
+      "text": "$3,631.39",
+      "label": "amount",
+      "entity_type": "financial",
+      "bbox": [
+        1040,
+        557,
+        1116,
+        573
+      ]
+    },
+    {
+      "text": "$2,002.62",
+      "label": "amount",
+      "entity_type": "financial",
+      "bbox": [
+        1040,
+        593,
+        1116,
+        609
+      ]
+    },
+    {
+      "text": "$14,606.36",
+      "label": "amount",
+      "entity_type": "financial",
+      "bbox": [
+        1040,
+        659,
+        1125,
+        675
+      ]
+    },
+    {
+      "text": "Mastercard ending 5915",
+      "label": "account_number",
+      "entity_type": "identifier",
+      "bbox": [
+        107,
+        762,
+        301,
+        777
+      ]
+    },
+    {
+      "text": "US60 0552 3011 1000",
+      "label": "account_number",
+      "entity_type": "identifier",
+      "bbox": [
+        129,
+        798,
+        298,
+        810
+      ]
+    },
+    {
+      "text": "TXN-0W3H-10904931IRPND",
+      "label": "transaction_id",
+      "entity_type": "identifier",
+      "bbox": [
+        152,
+        834,
+        373,
+        846
+      ]
+    }
+  ]
+}

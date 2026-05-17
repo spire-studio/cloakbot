@@ -1,6 +1,6 @@
 """Tests for Feishu reaction add/remove and auto-cleanup on stream end."""
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 

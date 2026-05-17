@@ -21,7 +21,8 @@ def test_build_math_execution_instruction_lists_numeric_tokens() -> None:
     assert "PRIVACY MODE ENABLED" in instruction
     assert "FINANCE_1" in instruction
     assert "PERCENTAGE_1" in instruction
-    assert "PERCENTAGE_* are percent/share values" in instruction
+    assert "PERCENTAGE_*" in instruction
+    assert "percent/share" in instruction
     assert "PERSON_1" not in instruction
 
 
@@ -152,8 +153,9 @@ async def test_apply_privacy_math_persists_calc_placeholder(monkeypatch) -> None
     result = await apply_privacy_math_for_turn(response, "cli:test", turn_id="turn-1")
 
     assert result.display_text == "Result below\n25000"
-    assert "<<CALC_1>>" in result.remote_history_text
-    assert "Local calculation result for python_snippet_1" in result.remote_history_text
+    assert result.remote_history_text == "Result below\n<<CALC_1>>"
+    assert "python_snippet_1" not in result.remote_history_text
+    assert "Local calculation result" not in result.remote_history_text
     assert smap.placeholder_to_value["<<CALC_1>>"] == 25000
     assert smap.placeholder_to_computation["<<CALC_1>>"].expression == "FINANCE_1 * 0.25"
     assert saved == [smap]
@@ -196,7 +198,7 @@ async def test_apply_privacy_math_reuses_existing_calc_placeholder(monkeypatch) 
     result = await apply_privacy_math_for_turn(response, "cli:test", turn_id="turn-2")
 
     assert result.display_text == "Result below\n25000"
-    assert computation.placeholder in result.remote_history_text
+    assert result.remote_history_text == f"Result below\n{computation.placeholder}"
     assert smap.counters["CALC"] == 1
     assert save_calls == []
 
@@ -235,4 +237,99 @@ async def test_apply_privacy_math_skips_execution_when_calc_marker_exists(monkey
     result = await apply_privacy_math_for_turn(response, "cli:test", turn_id="turn-2")
 
     assert result.display_text == "Result below\n25000"
-    assert result.remote_history_text == response
+    assert result.remote_history_text == f"Result below\n{computation.placeholder}"
+
+
+@pytest.mark.asyncio
+async def test_apply_privacy_math_chains_calc_within_single_response(monkeypatch) -> None:
+    """Regression: a snippet that references a CALC_N produced earlier in the
+    SAME response must execute successfully. The locally-built `values` dict
+    has to be refreshed after each successful snippet — otherwise the AST
+    validator on the next snippet rejects the freshly-created CALC_N as an
+    unknown variable, which is the exact failure pattern observed in the
+    annuity-FV production case (snippets 3/4/5 cascading on CALC_1/2/3)."""
+    smap = _SessionMap(
+        original_to_placeholder={
+            "CNY 85,000/month": "<<FINANCE_1>>",
+            "7.2%": "<<PERCENTAGE_1>>",
+            "30%": "<<PERCENTAGE_2>>",
+            "42": "<<VALUE_1>>",
+            "60": "<<VALUE_2>>",
+        },
+        placeholder_to_original={
+            "<<FINANCE_1>>": "CNY 85,000/month",
+            "<<PERCENTAGE_1>>": "7.2%",
+            "<<PERCENTAGE_2>>": "30%",
+            "<<VALUE_1>>": "42",
+            "<<VALUE_2>>": "60",
+        },
+        placeholder_to_value={
+            "<<FINANCE_1>>": 85000,
+            "<<PERCENTAGE_1>>": 0.072,
+            "<<PERCENTAGE_2>>": 0.30,
+            "<<VALUE_1>>": 42,
+            "<<VALUE_2>>": 60,
+        },
+        counters={"FINANCE": 1, "PERCENTAGE": 2, "VALUE": 2},
+    )
+    response = (
+        "Retirement projection:\n"
+        "<python_snippet_1>result = VALUE_2 - VALUE_1</python_snippet_1>\n"
+        "<python_snippet_2>result = 12 * FINANCE_1 * PERCENTAGE_2</python_snippet_2>\n"
+        "<python_snippet_3>result = (1 + PERCENTAGE_1) ** CALC_1</python_snippet_3>"
+    )
+
+    monkeypatch.setattr("cloakbot.privacy.core.math.math_executor.get_map", lambda _session_key: smap)
+    monkeypatch.setattr(
+        "cloakbot.privacy.core.math.math_executor.save_map",
+        lambda *_args, **_kwargs: None,
+    )
+
+    result = await apply_privacy_math_for_turn(response, "cli:test", turn_id="turn-1")
+
+    assert "<python_snippet_" not in result.display_text
+    # snippet 1: 60 - 42 = 18
+    assert "18" in result.display_text
+    # snippet 2: 12 * 85000 * 0.3 = 306000
+    assert "306000" in result.display_text
+    # snippet 3: (1 + 0.072) ** 18 ≈ 3.495474485
+    assert "3.495" in result.display_text
+    # Three CALC placeholders should have been allocated in this single response.
+    assert smap.placeholder_to_value["<<CALC_1>>"] == 18
+    assert smap.placeholder_to_value["<<CALC_2>>"] == 306000
+    assert abs(float(smap.placeholder_to_value["<<CALC_3>>"]) - 1.072 ** 18) < 1e-9
+
+
+@pytest.mark.asyncio
+async def test_apply_privacy_math_rejects_unknown_calc_reference(monkeypatch) -> None:
+    """A snippet that references a CALC_N which was never produced in any
+    earlier snippet must still fail. The chain-refresh fix in
+    apply_privacy_math_for_turn must NOT relax this — undefined names are
+    still detector-side errors that need to surface as warnings."""
+    smap = _SessionMap(
+        original_to_placeholder={"$100,000": "<<FINANCE_1>>"},
+        placeholder_to_original={"<<FINANCE_1>>": "$100,000"},
+        placeholder_to_value={"<<FINANCE_1>>": 100000},
+        counters={"FINANCE": 1},
+    )
+    response = (
+        "Bad chain:\n"
+        "<python_snippet_1>result = FINANCE_1 * 0.5</python_snippet_1>\n"
+        "<python_snippet_2>result = CALC_99 + 1</python_snippet_2>"
+    )
+
+    monkeypatch.setattr("cloakbot.privacy.core.math.math_executor.get_map", lambda _session_key: smap)
+    monkeypatch.setattr(
+        "cloakbot.privacy.core.math.math_executor.save_map",
+        lambda *_args, **_kwargs: None,
+    )
+
+    result = await apply_privacy_math_for_turn(response, "cli:test", turn_id="turn-1")
+
+    # Snippet 1 succeeded.
+    assert "50000" in result.display_text
+    assert smap.placeholder_to_value["<<CALC_1>>"] == 50000
+    # Snippet 2 must NOT have produced a CALC_2 — CALC_99 is undefined.
+    assert "<<CALC_2>>" not in smap.placeholder_to_value
+    # The failed snippet's raw content is preserved in the output (existing behavior).
+    assert "CALC_99 + 1" in result.display_text

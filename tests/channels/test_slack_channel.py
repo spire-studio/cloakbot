@@ -10,8 +10,7 @@ except ImportError:
 
 from cloakbot.bus.events import OutboundMessage
 from cloakbot.bus.queue import MessageBus
-from cloakbot.channels.slack import SlackChannel
-from cloakbot.channels.slack import SlackConfig
+from cloakbot.channels.slack import SlackChannel, SlackConfig
 
 
 class _FakeAsyncWebClient:

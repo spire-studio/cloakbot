@@ -1,7 +1,7 @@
 import pytest
 
-from cloakbot.utils.evaluator import evaluate_response
 from cloakbot.providers.base import LLMProvider, LLMResponse, ToolCallRequest
+from cloakbot.utils.evaluator import evaluate_response
 
 
 class DummyProvider(LLMProvider):

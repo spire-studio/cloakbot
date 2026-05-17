@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from cloakbot.bus.events import InboundMessage, OutboundMessage
+from cloakbot.bus.events import InboundMessage
 from cloakbot.providers.base import LLMResponse
 
 

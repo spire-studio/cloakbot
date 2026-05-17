@@ -1,0 +1,82 @@
+id: medical_followup_v1
+domain: medical
+density: dense
+language: en
+description: >
+  Adult child calling a clinic to schedule a follow-up for an elderly parent.
+  Five turns; multiple PII categories spread across turns; the patient name
+  and the doctor name each recur in three turns — the dialogue is designed
+  to surface alias-consistency regressions.
+
+slots:
+  patient:
+    type: PERSON
+    faker: name_female
+  dob:
+    type: DATE
+    faker: date_of_birth
+    args: {minimum_age: 60, maximum_age: 90}
+    format: "%B %-d, %Y"
+  doctor:
+    type: PERSON
+    faker: name
+  diagnosis:
+    type: MEDICAL
+    choices:
+      - hypertension
+      - type 2 diabetes
+      - atrial fibrillation
+      - chronic obstructive pulmonary disease
+      - stage 2 chronic kidney disease
+  medication:
+    type: MEDICAL
+    choices:
+      - Metformin 500mg twice daily
+      - Lisinopril 10mg every morning
+      - Apixaban 5mg twice daily
+      - Tiotropium 18mcg inhaler once daily
+      - Atorvastatin 40mg nightly
+  phone:
+    type: PHONE
+    faker: phone_number
+  address:
+    type: ADDRESS
+    faker: address
+  insurance_id:
+    type: ID
+    faker: bothify
+    args: {text: "???-####-####", letters: "ABCDEFGHJKMNPQRSTUVWXYZ"}
+  copay:
+    type: FINANCE
+    choices:
+      - "$45.00"
+      - "$72.50"
+      - "$120.00"
+      - "$245.00"
+      - "$60.00"
+      - "$35.50"
+      - "$185.00"
+
+turns:
+  - role: user
+    text: >-
+      Hi, I'm calling to schedule a follow-up visit for my mother {patient},
+      born {dob}. Dr. {doctor} saw her last month for {diagnosis} and started
+      her on {medication}.
+  - role: assistant
+    text: >-
+      I have {patient} on file. Before I book her, can you confirm the contact
+      details we have? Sometimes things drift between visits.
+  - role: user
+    text: >-
+      Sure — phone is {phone}. We moved last year so the new mailing address
+      is {address}. Her BlueCross member ID is {insurance_id}.
+  - role: assistant
+    text: >-
+      Got it. One more thing — there's a {copay} copay outstanding from
+      {patient}'s previous visit with Dr. {doctor}. Should I roll that into
+      the new appointment confirmation email?
+  - role: user
+    text: >-
+      Yes please. And please make sure Dr. {doctor} is the one she sees this
+      time — she trusts him and gets anxious with new providers.

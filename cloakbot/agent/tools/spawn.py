@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, Any
 
 from cloakbot.agent.tools.base import Tool, tool_parameters
 from cloakbot.agent.tools.schema import StringSchema, tool_parameters_schema
+from cloakbot.tool_privacy import ToolPrivacyClass
 
 if TYPE_CHECKING:
     from cloakbot.agent.subagent import SubagentManager
@@ -30,6 +31,10 @@ class SpawnTool(Tool):
         self._origin_channel = channel
         self._origin_chat_id = chat_id
         self._session_key = f"{channel}:{chat_id}"
+
+    @property
+    def privacy_class(self) -> ToolPrivacyClass:
+        return ToolPrivacyClass.SIDE_EFFECT
 
     @property
     def name(self) -> str:

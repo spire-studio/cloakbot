@@ -9,7 +9,6 @@ from unittest.mock import patch
 
 from cloakbot.providers.openai_compat_provider import OpenAICompatProvider
 
-
 # ── _parse: non-streaming ─────────────────────────────────────────────────
 
 
