@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { buildSessionTitle } from '@/features/chat/lib/session-title'
 
 import type {
+  ChatAttachment,
   ChatMessage,
   ChatSessionRecord,
   ChatSessionState,
@@ -290,9 +291,10 @@ export function useChatSession(options: UseChatSessionOptions = {}) {
     }
   }, [])
 
-  const sendMessage = () => {
-    const trimmed = input.trim()
-    if (!trimmed) {
+  const sendMessage = (textOverride?: string, attachmentsOverride?: ChatAttachment[]) => {
+    const trimmed = (textOverride ?? input).trim()
+    const attachments = attachmentsOverride ?? []
+    if (!trimmed && attachments.length === 0) {
       return
     }
 
@@ -305,11 +307,12 @@ export function useChatSession(options: UseChatSessionOptions = {}) {
       return
     }
 
-    const nextMessage = {
+    const nextMessage: ChatMessage = {
       id: createMessageIdRef.current(),
-      role: 'user' as const,
+      role: 'user',
       content: trimmed,
       createdAt: Date.now(),
+      ...(attachments.length > 0 ? { attachments } : {}),
     }
 
     setSessions((previousSessions) =>
@@ -334,7 +337,16 @@ export function useChatSession(options: UseChatSessionOptions = {}) {
     if (isSocketWritable(socket)) {
       try {
         const startedAt = Date.now()
-        socket.send(JSON.stringify({ content: trimmed }))
+        socket.send(
+          JSON.stringify({
+            content: trimmed,
+            attachments: attachments.map(({ mimeType, dataUrl, name }) => ({
+              mimeType,
+              dataUrl,
+              ...(name ? { name } : {}),
+            })),
+          }),
+        )
         inFlightAssistantSessionIdRef.current = targetSessionId
         setSessions((previousSessions) =>
           previousSessions.map((session) => {
@@ -357,6 +369,59 @@ export function useChatSession(options: UseChatSessionOptions = {}) {
     }
 
     setInput('')
+  }
+
+  const approveToolCall = (approvalId: string) => {
+    const targetSessionId = activeSessionId ?? sessions[0]?.id
+    if (!targetSessionId || inFlightAssistantSessionIdRef.current !== null) {
+      return
+    }
+
+    const socket = socketRef.current
+    if (!isSocketWritable(socket)) {
+      return
+    }
+
+    try {
+      const startedAt = Date.now()
+      socket.send(JSON.stringify({
+        type: 'tool_approval',
+        approvalId,
+        approved: true,
+      }))
+      setSessions((previousSessions) =>
+        previousSessions.map((session) => {
+          if (session.id !== targetSessionId) {
+            return session
+          }
+
+          return {
+            ...session,
+            messages: [
+              ...session.messages.map((message) => {
+                if (message.toolApproval?.approvalId !== approvalId) {
+                  return message
+                }
+                return {
+                  ...message,
+                  toolApproval: {
+                    ...message.toolApproval,
+                    status: 'approved' as const,
+                  },
+                }
+              }),
+              createPendingAssistantMessage(() => createMessageIdRef.current(), startedAt),
+            ],
+            updatedAt: Date.now(),
+          }
+        }),
+      )
+      inFlightAssistantSessionIdRef.current = targetSessionId
+      setIsAwaitingAssistant(true)
+    } catch {
+      inFlightAssistantSessionIdRef.current = null
+      setIsAwaitingAssistant(false)
+    }
   }
 
   const startNewSession = () => {
@@ -392,6 +457,7 @@ export function useChatSession(options: UseChatSessionOptions = {}) {
     input,
     setInput,
     sendMessage,
+    approveToolCall,
     isAwaitingAssistant,
   }
 }

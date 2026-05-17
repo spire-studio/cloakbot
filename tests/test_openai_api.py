@@ -10,9 +10,9 @@ import pytest
 import pytest_asyncio
 
 from cloakbot.api.server import (
+    AGENT_LOOP_KEY,
     API_CHAT_ID,
     API_SESSION_KEY,
-    AGENT_LOOP_KEY,
     MODEL_NAME_KEY,
     REQUEST_TIMEOUT_KEY,
     SESSION_LOCKS_KEY,

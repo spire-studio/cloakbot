@@ -2,21 +2,25 @@ import { useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
-import type { ChatMessage } from '@/features/chat/types'
+import type { ChatAttachment, ChatMessage } from '@/features/chat/types'
+import type { DemoScenario } from '@/features/chat/lib/demo-scenarios'
 import { PrivacyPanel } from '@/features/privacy/components/PrivacyPanel'
 import type { PrivacySnapshot, PrivacyTurn } from '@/features/privacy/types'
 
 import { Composer } from './Composer'
+import { DemoLauncher } from './DemoLauncher'
 import { MessageList } from './MessageList'
 
 type ChatViewProps = {
   activeSessionId: string
+  sessionId: string
   messages: ChatMessage[]
   privacySnapshot: PrivacySnapshot
   privacyTurns: PrivacyTurn[]
   input: string
   setInput: (value: string) => void
-  onSend: () => void
+  onSend: (textOverride?: string, attachments?: ChatAttachment[]) => void
+  onApproveToolCall: (approvalId: string) => void
   isAwaitingAssistant: boolean
   privacyPanelOpen: boolean
   setPrivacyPanelOpen: (value: boolean | ((previous: boolean) => boolean)) => void
@@ -25,17 +29,27 @@ type ChatViewProps = {
 
 export function ChatView({
   activeSessionId,
+  sessionId,
   messages,
   privacySnapshot,
   privacyTurns,
   input,
   setInput,
   onSend,
+  onApproveToolCall,
   isAwaitingAssistant,
   privacyPanelOpen,
   setPrivacyPanelOpen,
   scrollRef,
 }: ChatViewProps) {
+  const handleLoadScenario = (scenario: DemoScenario) => {
+    if (isAwaitingAssistant) {
+      return
+    }
+    setInput(scenario.prompt)
+    onSend(scenario.prompt)
+  }
+
   const [emptyComposerOffset, setEmptyComposerOffset] = useState(0)
   const emptyStateRef = useRef<HTMLDivElement | null>(null)
   const emptyGreeting = useMemo(() => getEmptyGreeting(activeSessionId), [activeSessionId])
@@ -113,10 +127,16 @@ export function ChatView({
                   <Composer
                     input={input}
                     onInputChange={setInput}
-                    onSend={onSend}
+                    onSend={(attachments) => onSend(undefined, attachments)}
                     isAwaitingAssistant={isAwaitingAssistant}
                     layout="landing"
                     className="w-full"
+                  />
+                </div>
+                <div className="mt-5 w-full">
+                  <DemoLauncher
+                    onLoadScenario={handleLoadScenario}
+                    disabled={isAwaitingAssistant}
                   />
                 </div>
               </div>
@@ -124,11 +144,16 @@ export function ChatView({
           </div>
         ) : (
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-            <MessageList messages={messages} scrollRef={scrollRef} />
+            <MessageList
+              messages={messages}
+              snapshot={privacySnapshot}
+              scrollRef={scrollRef}
+              onApproveToolCall={onApproveToolCall}
+            />
             <Composer
               input={input}
               onInputChange={setInput}
-              onSend={onSend}
+              onSend={() => onSend()}
               isAwaitingAssistant={isAwaitingAssistant}
               layout="conversation"
             />
@@ -143,6 +168,7 @@ export function ChatView({
           onToggle={() => setPrivacyPanelOpen((previous) => !previous)}
           snapshot={privacySnapshot}
           turns={privacyTurns}
+          sessionId={sessionId}
         />
       </div>
 
@@ -154,6 +180,7 @@ export function ChatView({
               onToggle={() => setPrivacyPanelOpen(false)}
               snapshot={privacySnapshot}
               turns={privacyTurns}
+              sessionId={sessionId}
             />
           </div>
         </SheetContent>

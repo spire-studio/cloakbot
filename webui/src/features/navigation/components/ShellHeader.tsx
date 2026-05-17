@@ -1,6 +1,9 @@
 import { PanelLeft } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
+import { RemoteViewToggle } from '@/features/chat/components/RemoteViewToggle'
+import { BlockedCounter } from '@/features/privacy/components/BlockedCounter'
+import { usePrivacyState } from '@/features/privacy/context/PrivacyStateContext'
 
 import { chatViewItem, navigationItems, type WorkspaceViewId } from '../navigation.config'
 import { ThemeSwitch } from './ThemeSwitch'
@@ -16,6 +19,8 @@ export function ShellHeader({ currentView, onOpenNavigation }: ShellHeaderProps)
       ? chatViewItem
       : navigationItems.find((item) => item.id === currentView) ?? navigationItems[0]
   const ActiveIcon = activeItem.icon
+  const { stats } = usePrivacyState()
+  const isChatView = currentView === 'chat'
 
   return (
     <header className="border-b border-border bg-background/90 px-4 py-4 backdrop-blur-xl md:px-6">
@@ -33,8 +38,16 @@ export function ShellHeader({ currentView, onOpenNavigation }: ShellHeaderProps)
             <ActiveIcon className="h-4 w-4 shrink-0 text-muted-foreground" />
             <h1 className="truncate text-lg text-foreground md:text-[1.35rem]">{activeItem.name}</h1>
           </div>
+          {isChatView ? (
+            <div className="hidden sm:block">
+              <BlockedCounter total={stats.totalEntities} />
+            </div>
+          ) : null}
         </div>
-        <ThemeSwitch />
+        <div className="flex items-center gap-2">
+          {isChatView ? <RemoteViewToggle /> : null}
+          <ThemeSwitch />
+        </div>
       </div>
     </header>
   )

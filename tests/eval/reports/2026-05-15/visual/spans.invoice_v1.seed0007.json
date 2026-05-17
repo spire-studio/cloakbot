@@ -1,0 +1,206 @@
+{
+  "seed": 7,
+  "template_id": "invoice_v1",
+  "width": 1240,
+  "height": 1600,
+  "spans": [
+    {
+      "text": "Gould-Foster",
+      "label": "vendor_name",
+      "entity_type": "org",
+      "bbox": [
+        700,
+        168,
+        807,
+        180
+      ]
+    },
+    {
+      "text": "9083 Christopher Manor, East Christopherchester, AR 74616",
+      "label": "billing_address",
+      "entity_type": "address",
+      "bbox": [
+        700,
+        195,
+        1104,
+        209
+      ]
+    },
+    {
+      "text": "mezacrystal@meza.com",
+      "label": "email",
+      "entity_type": "email",
+      "bbox": [
+        700,
+        219,
+        864,
+        233
+      ]
+    },
+    {
+      "text": "Scott Roberts",
+      "label": "customer_name",
+      "entity_type": "person",
+      "bbox": [
+        60,
+        168,
+        171,
+        180
+      ]
+    },
+    {
+      "text": "482 Bonnie Route, West Connor, VT 08730",
+      "label": "billing_address",
+      "entity_type": "address",
+      "bbox": [
+        60,
+        195,
+        348,
+        209
+      ]
+    },
+    {
+      "text": "+1 (909) 378-6579",
+      "label": "phone",
+      "entity_type": "phone",
+      "bbox": [
+        60,
+        219,
+        184,
+        233
+      ]
+    },
+    {
+      "text": "pward@example.org",
+      "label": "email",
+      "entity_type": "email",
+      "bbox": [
+        60,
+        243,
+        199,
+        257
+      ]
+    },
+    {
+      "text": "INV-3194-V8U7",
+      "label": "invoice_number",
+      "entity_type": "identifier",
+      "bbox": [
+        74,
+        362,
+        193,
+        374
+      ]
+    },
+    {
+      "text": "2026-03-19",
+      "label": "date",
+      "entity_type": "temporal",
+      "bbox": [
+        447,
+        362,
+        534,
+        374
+      ]
+    },
+    {
+      "text": "2026-06-02",
+      "label": "date",
+      "entity_type": "temporal",
+      "bbox": [
+        820,
+        362,
+        907,
+        374
+      ]
+    },
+    {
+      "text": "$899.15",
+      "label": "amount",
+      "entity_type": "financial",
+      "bbox": [
+        1040,
+        485,
+        1101,
+        500
+      ]
+    },
+    {
+      "text": "$4,493.53",
+      "label": "amount",
+      "entity_type": "financial",
+      "bbox": [
+        1040,
+        521,
+        1116,
+        537
+      ]
+    },
+    {
+      "text": "$1,651.96",
+      "label": "amount",
+      "entity_type": "financial",
+      "bbox": [
+        1040,
+        557,
+        1116,
+        573
+      ]
+    },
+    {
+      "text": "$3,102.19",
+      "label": "amount",
+      "entity_type": "financial",
+      "bbox": [
+        1040,
+        593,
+        1116,
+        609
+      ]
+    },
+    {
+      "text": "$10,146.83",
+      "label": "amount",
+      "entity_type": "financial",
+      "bbox": [
+        1040,
+        659,
+        1125,
+        675
+      ]
+    },
+    {
+      "text": "Visa ending 6018",
+      "label": "account_number",
+      "entity_type": "identifier",
+      "bbox": [
+        106,
+        762,
+        245,
+        777
+      ]
+    },
+    {
+      "text": "US49 7465 0752 9170",
+      "label": "account_number",
+      "entity_type": "identifier",
+      "bbox": [
+        129,
+        798,
+        299,
+        810
+      ]
+    },
+    {
+      "text": "TXN-9R5E-55979711SQEDU",
+      "label": "transaction_id",
+      "entity_type": "identifier",
+      "bbox": [
+        152,
+        834,
+        375,
+        847
+      ]
+    }
+  ]
+}

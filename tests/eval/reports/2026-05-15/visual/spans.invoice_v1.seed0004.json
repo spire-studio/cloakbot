@@ -1,0 +1,206 @@
+{
+  "seed": 4,
+  "template_id": "invoice_v1",
+  "width": 1240,
+  "height": 1600,
+  "spans": [
+    {
+      "text": "Turner Ltd",
+      "label": "vendor_name",
+      "entity_type": "org",
+      "bbox": [
+        700,
+        168,
+        784,
+        180
+      ]
+    },
+    {
+      "text": "10684 Jeffrey Plain, Joshuaburgh, GU 14418",
+      "label": "billing_address",
+      "entity_type": "address",
+      "bbox": [
+        700,
+        195,
+        1000,
+        209
+      ]
+    },
+    {
+      "text": "jason04@lee-collins.com",
+      "label": "email",
+      "entity_type": "email",
+      "bbox": [
+        699,
+        219,
+        867,
+        233
+      ]
+    },
+    {
+      "text": "Larry Powers",
+      "label": "customer_name",
+      "entity_type": "person",
+      "bbox": [
+        60,
+        168,
+        168,
+        183
+      ]
+    },
+    {
+      "text": "74184 Regina Ports, Melaniehaven, ID 54757",
+      "label": "billing_address",
+      "entity_type": "address",
+      "bbox": [
+        60,
+        195,
+        364,
+        209
+      ]
+    },
+    {
+      "text": "+1 (694) 672-3440",
+      "label": "phone",
+      "entity_type": "phone",
+      "bbox": [
+        60,
+        219,
+        184,
+        233
+      ]
+    },
+    {
+      "text": "williamsconnie@example.com",
+      "label": "email",
+      "entity_type": "email",
+      "bbox": [
+        60,
+        243,
+        261,
+        257
+      ]
+    },
+    {
+      "text": "INV-8875-E2A3",
+      "label": "invoice_number",
+      "entity_type": "identifier",
+      "bbox": [
+        74,
+        362,
+        193,
+        374
+      ]
+    },
+    {
+      "text": "2026-04-23",
+      "label": "date",
+      "entity_type": "temporal",
+      "bbox": [
+        447,
+        362,
+        534,
+        374
+      ]
+    },
+    {
+      "text": "2026-06-03",
+      "label": "date",
+      "entity_type": "temporal",
+      "bbox": [
+        820,
+        362,
+        907,
+        374
+      ]
+    },
+    {
+      "text": "$3,913.35",
+      "label": "amount",
+      "entity_type": "financial",
+      "bbox": [
+        1040,
+        485,
+        1116,
+        501
+      ]
+    },
+    {
+      "text": "$1,804.45",
+      "label": "amount",
+      "entity_type": "financial",
+      "bbox": [
+        1040,
+        521,
+        1116,
+        537
+      ]
+    },
+    {
+      "text": "$3,871.95",
+      "label": "amount",
+      "entity_type": "financial",
+      "bbox": [
+        1040,
+        557,
+        1116,
+        573
+      ]
+    },
+    {
+      "text": "$2,926.81",
+      "label": "amount",
+      "entity_type": "financial",
+      "bbox": [
+        1040,
+        593,
+        1116,
+        609
+      ]
+    },
+    {
+      "text": "$12,516.56",
+      "label": "amount",
+      "entity_type": "financial",
+      "bbox": [
+        1040,
+        659,
+        1125,
+        675
+      ]
+    },
+    {
+      "text": "Mastercard ending 3510",
+      "label": "account_number",
+      "entity_type": "identifier",
+      "bbox": [
+        107,
+        762,
+        301,
+        777
+      ]
+    },
+    {
+      "text": "US50 5452 6914 9374",
+      "label": "account_number",
+      "entity_type": "identifier",
+      "bbox": [
+        129,
+        798,
+        300,
+        810
+      ]
+    },
+    {
+      "text": "TXN-3B4C-99315247WSFSV",
+      "label": "transaction_id",
+      "entity_type": "identifier",
+      "bbox": [
+        152,
+        834,
+        378,
+        846
+      ]
+    }
+  ]
+}

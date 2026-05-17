@@ -45,7 +45,9 @@ describe('useChatSession', () => {
         startedAt: 1000,
       },
     })
-    expect(send).toHaveBeenCalledWith(JSON.stringify({ content: 'hello world' }))
+    expect(send).toHaveBeenCalledWith(
+      JSON.stringify({ content: 'hello world', attachments: [] }),
+    )
     expect(result.current.input).toBe('')
     expect(result.current.isAwaitingAssistant).toBe(true)
   })
@@ -71,7 +73,9 @@ describe('useChatSession', () => {
       result.current.sendMessage()
     })
 
-    expect(send).toHaveBeenCalledWith(JSON.stringify({ content: 'hello again' }))
+    expect(send).toHaveBeenCalledWith(
+      JSON.stringify({ content: 'hello again', attachments: [] }),
+    )
     expect(result.current.messages.findLast((message) => message.role === 'user')).toMatchObject({
       role: 'user',
       content: 'hello again',
@@ -521,6 +525,59 @@ describe('useChatSession', () => {
         state: 'done',
         startedAt: 1000,
         finishedAt: 13000,
+      },
+    })
+  })
+
+  it('sends a tool approval payload and marks the approval message approved', () => {
+    vi.spyOn(Date, 'now').mockReturnValue(1000)
+    const socket = {
+      send: vi.fn(),
+      close: vi.fn(),
+      readyState: openReadyState,
+      onmessage: null as ((event: MessageEvent<string>) => void) | null,
+    }
+
+    const { result } = renderHook(() =>
+      useChatSession({
+        createSocket: () => socket,
+        initialMessages: [
+          {
+            id: 'assistant-approval',
+            role: 'assistant',
+            content: 'Tool approval required',
+            createdAt: 1,
+            toolApproval: {
+              approvalId: 'approval-1',
+              toolCallId: 'call-1',
+              toolName: 'web_search',
+              privacyClass: 'external',
+              remoteArguments: { query: 'hello <<PERSON_1>>' },
+              restoredArguments: { query: 'hello Alice' },
+              detectedEntities: [],
+              status: 'pending',
+            },
+          },
+        ],
+      }),
+    )
+
+    act(() => {
+      result.current.approveToolCall('approval-1')
+    })
+
+    expect(socket.send).toHaveBeenCalledWith(JSON.stringify({
+      type: 'tool_approval',
+      approvalId: 'approval-1',
+      approved: true,
+    }))
+    expect(result.current.messages[0]?.toolApproval?.status).toBe('approved')
+    expect(result.current.messages.at(-1)).toMatchObject({
+      role: 'assistant',
+      content: '',
+      assistantStatus: {
+        state: 'thinking',
+        startedAt: 1000,
       },
     })
   })

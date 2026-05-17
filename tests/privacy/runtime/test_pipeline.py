@@ -1,3 +1,4 @@
+import base64
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
@@ -9,6 +10,17 @@ from cloakbot.privacy.hooks.context import Intent, TurnContext
 from cloakbot.privacy.protocol.contracts import EventType
 from cloakbot.privacy.protocol.observability import get_event_sink
 from cloakbot.privacy.runtime.pipeline import PrivacyRuntime
+from cloakbot.privacy.visual_redaction import (
+    VisualBlocksResult,
+    VisualPrivacyRedaction,
+    VisualVaultEntry,
+)
+
+# Smallest possible PNG payload — pre-encoded by hand so the magic bytes match
+# detect_image_mime() and the file passes the "is it an image?" gate.
+_TINY_PNG_BYTES = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGD4DwABBAEAfbLI3wAAAABJRU5ErkJggg=="
+)
 
 
 def _entity(text: str, entity_type: str) -> GeneralEntity:
@@ -247,3 +259,132 @@ async def test_runtime_finalize_turn_adds_local_computation_annotations() -> Non
     assert len(ctx.display_output_annotations) == 1
     assert ctx.display_output_annotations[0].annotation_type == "local_computation"
     assert ctx.display_output_annotations[0].formula == "205000000 * 1.23"
+
+
+@pytest.mark.asyncio
+async def test_runtime_prepare_turn_routes_user_attached_images_through_visual_pipeline(
+    tmp_path,
+) -> None:
+    """User-attached prompt images must go through ``process_visual_blocks``.
+
+    Regression coverage for the historical leak where ``pre_llm_hook`` only
+    received text, letting the raw image bytes flow straight to the remote
+    LLM via the context builder's untouched media path.
+    """
+    runtime = PrivacyRuntime(channel="cli")
+
+    image_path = tmp_path / "invoice.png"
+    image_path.write_bytes(_TINY_PNG_BYTES)
+    redacted_blocks = [
+        {
+            "type": "image_url",
+            "image_url": {"url": "data:image/png;base64,cmVkYWN0ZWQ="},
+            "_meta": {"path": str(image_path)},
+        }
+    ]
+    visual_record = VisualPrivacyRedaction(
+        sourcePath=str(image_path),
+        status="redacted",
+        detectedItems=1,
+        redactionBoxes=1,
+        labels=["customer_name"],
+    )
+    visual_result = VisualBlocksResult(
+        redacted_blocks=redacted_blocks,
+        sanitized_text="Hello <<PERSON_1>>",
+        modified=True,
+        entities=[_entity("Laurie", "person")],
+        visual_redactions=[visual_record],
+        vault_entries=[
+            VisualVaultEntry(
+                kind="redacted_image",
+                path=str(tmp_path / "redacted.png"),
+                media_type="image/png",
+            ),
+            VisualVaultEntry(
+                kind="ocr_sanitized_text",
+                path=str(tmp_path / "ocr.txt"),
+                media_type="text/plain",
+            ),
+        ],
+        omitted_count=0,
+        image_count=1,
+    )
+
+    captured_blocks: list[list[dict]] = []
+
+    async def fake_process(blocks, **_kwargs):
+        captured_blocks.append(blocks)
+        return visual_result
+
+    with patch(
+        "cloakbot.privacy.runtime.pipeline.sanitize_input_with_detection",
+        new=AsyncMock(return_value=("look at this", False, [], None)),
+    ), patch(
+        "cloakbot.privacy.runtime.pipeline.analyze_user_intent",
+        new=AsyncMock(return_value=Intent.CHAT),
+    ), patch(
+        "cloakbot.privacy.runtime.pipeline.process_visual_blocks",
+        new=AsyncMock(side_effect=fake_process),
+    ):
+        prepared, ctx = await runtime.prepare_turn(
+            "look at this",
+            "cli:test",
+            media=[str(image_path)],
+        )
+
+    # The processed-blocks list is what reaches the remote LLM, so check it
+    # tightly: the redacted image block must be present, and the user-typed
+    # text must follow as a separate text block.
+    assert isinstance(prepared, list)
+    assert prepared[0] == redacted_blocks[0]
+    assert prepared[-1] == {"type": "text", "text": "look at this"}
+
+    # And process_visual_blocks must have been handed a fresh image_url
+    # block — not the raw filesystem path — so the visual detector sees the
+    # bytes, not a path string.
+    assert len(captured_blocks) == 1
+    only_call = captured_blocks[0]
+    assert only_call[0]["type"] == "image_url"
+    assert only_call[0]["image_url"]["url"].startswith("data:image/png;base64,")
+
+    assert ctx.user_input_visual_redactions == [visual_record]
+    assert [a.kind for a in ctx.user_input_vault_artifacts] == [
+        "redacted_image",
+        "ocr_sanitized_text",
+    ]
+    assert ctx.user_input_entities == [_entity("Laurie", "person")]
+    assert ctx.was_sanitized is True
+
+
+@pytest.mark.asyncio
+async def test_runtime_prepare_turn_fails_closed_when_visual_pipeline_raises(
+    tmp_path,
+) -> None:
+    """Visual pipeline failure must drop the attachment, never forward it."""
+    runtime = PrivacyRuntime(channel="cli")
+    image_path = tmp_path / "invoice.png"
+    image_path.write_bytes(_TINY_PNG_BYTES)
+
+    with patch(
+        "cloakbot.privacy.runtime.pipeline.sanitize_input_with_detection",
+        new=AsyncMock(return_value=("hi", False, [], None)),
+    ), patch(
+        "cloakbot.privacy.runtime.pipeline.analyze_user_intent",
+        new=AsyncMock(return_value=Intent.CHAT),
+    ), patch(
+        "cloakbot.privacy.runtime.pipeline.process_visual_blocks",
+        new=AsyncMock(side_effect=RuntimeError("vllm down")),
+    ):
+        prepared, _ctx = await runtime.prepare_turn(
+            "hi",
+            "cli:test",
+            media=[str(image_path)],
+        )
+
+    assert isinstance(prepared, list)
+    # No image_url block survives the failure; the user only sees the
+    # placeholder + the text turn.
+    assert not any(block.get("type") == "image_url" for block in prepared)
+    placeholder = next(block for block in prepared if block.get("type") == "text")
+    assert "visual privacy pipeline unavailable" in placeholder["text"]

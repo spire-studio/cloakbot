@@ -5,6 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+
 discord = pytest.importorskip("discord")
 
 from cloakbot.bus.events import OutboundMessage

@@ -1,0 +1,206 @@
+{
+  "seed": 6,
+  "template_id": "invoice_v1",
+  "width": 1240,
+  "height": 1600,
+  "spans": [
+    {
+      "text": "Short, Washington and Green",
+      "label": "vendor_name",
+      "entity_type": "org",
+      "bbox": [
+        700,
+        168,
+        939,
+        183
+      ]
+    },
+    {
+      "text": "550 Burns Flat Suite 881, New Angela, AS 96037",
+      "label": "billing_address",
+      "entity_type": "address",
+      "bbox": [
+        700,
+        195,
+        1027,
+        209
+      ]
+    },
+    {
+      "text": "elizabeth91@rogers-davis.biz",
+      "label": "email",
+      "entity_type": "email",
+      "bbox": [
+        700,
+        219,
+        898,
+        233
+      ]
+    },
+    {
+      "text": "Jill Davis",
+      "label": "customer_name",
+      "entity_type": "person",
+      "bbox": [
+        60,
+        168,
+        134,
+        180
+      ]
+    },
+    {
+      "text": "09357 Xavier Rue Apt. 539, Torresshire, DE 12256",
+      "label": "billing_address",
+      "entity_type": "address",
+      "bbox": [
+        60,
+        195,
+        397,
+        209
+      ]
+    },
+    {
+      "text": "+1 (883) 194-4367",
+      "label": "phone",
+      "entity_type": "phone",
+      "bbox": [
+        60,
+        219,
+        184,
+        233
+      ]
+    },
+    {
+      "text": "devinclark@example.net",
+      "label": "email",
+      "entity_type": "email",
+      "bbox": [
+        60,
+        243,
+        225,
+        257
+      ]
+    },
+    {
+      "text": "INV-8032-J0Q5",
+      "label": "invoice_number",
+      "entity_type": "identifier",
+      "bbox": [
+        74,
+        362,
+        192,
+        375
+      ]
+    },
+    {
+      "text": "2026-04-01",
+      "label": "date",
+      "entity_type": "temporal",
+      "bbox": [
+        447,
+        362,
+        534,
+        374
+      ]
+    },
+    {
+      "text": "2026-05-24",
+      "label": "date",
+      "entity_type": "temporal",
+      "bbox": [
+        820,
+        362,
+        907,
+        374
+      ]
+    },
+    {
+      "text": "$3,391.67",
+      "label": "amount",
+      "entity_type": "financial",
+      "bbox": [
+        1040,
+        485,
+        1116,
+        501
+      ]
+    },
+    {
+      "text": "$3,488.37",
+      "label": "amount",
+      "entity_type": "financial",
+      "bbox": [
+        1040,
+        521,
+        1116,
+        537
+      ]
+    },
+    {
+      "text": "$1,339.86",
+      "label": "amount",
+      "entity_type": "financial",
+      "bbox": [
+        1040,
+        557,
+        1116,
+        573
+      ]
+    },
+    {
+      "text": "$4,303.60",
+      "label": "amount",
+      "entity_type": "financial",
+      "bbox": [
+        1040,
+        593,
+        1116,
+        609
+      ]
+    },
+    {
+      "text": "$12,523.50",
+      "label": "amount",
+      "entity_type": "financial",
+      "bbox": [
+        1040,
+        659,
+        1125,
+        675
+      ]
+    },
+    {
+      "text": "Amex ending 6961",
+      "label": "account_number",
+      "entity_type": "identifier",
+      "bbox": [
+        107,
+        762,
+        256,
+        777
+      ]
+    },
+    {
+      "text": "US47 7200 8149 5348",
+      "label": "account_number",
+      "entity_type": "identifier",
+      "bbox": [
+        129,
+        798,
+        299,
+        810
+      ]
+    },
+    {
+      "text": "TXN-7E3T-19776186TAFMV",
+      "label": "transaction_id",
+      "entity_type": "identifier",
+      "bbox": [
+        152,
+        834,
+        371,
+        846
+      ]
+    }
+  ]
+}

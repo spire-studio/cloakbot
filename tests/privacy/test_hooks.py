@@ -36,6 +36,7 @@ async def test_pre_llm_hook_delegates_to_runtime() -> None:
     mocked_prepare.assert_awaited_once_with(
         "Revenue is 100 and cost is 60.",
         "cli:test",
+        media=None,
         fail_open=True,
     )
     assert result_ctx is ctx

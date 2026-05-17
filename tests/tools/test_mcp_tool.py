@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import asyncio
-from contextlib import AsyncExitStack, asynccontextmanager
 import sys
+from contextlib import AsyncExitStack, asynccontextmanager
 from types import ModuleType, SimpleNamespace
 
 import pytest

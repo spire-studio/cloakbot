@@ -11,7 +11,6 @@ from unittest.mock import patch
 from cloakbot.providers.base import ToolCallRequest
 from cloakbot.providers.openai_compat_provider import OpenAICompatProvider
 
-
 GEMINI_EXTRA = {"google": {"thought_signature": "sig-abc-123"}}
 
 

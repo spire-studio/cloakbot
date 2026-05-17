@@ -7,7 +7,6 @@ import pytest
 from cloakbot.providers.azure_openai_provider import AzureOpenAIProvider
 from cloakbot.providers.base import LLMResponse
 
-
 # ---------------------------------------------------------------------------
 # Init & validation
 # ---------------------------------------------------------------------------

@@ -1,6 +1,5 @@
 """Tests for multi-provider web search."""
 
-import asyncio
 
 import httpx
 import pytest
@@ -79,7 +78,6 @@ async def test_duckduckgo_search(monkeypatch):
     import cloakbot.agent.tools.web as web_mod
     monkeypatch.setattr(web_mod, "DDGS", MockDDGS, raising=False)
 
-    from ddgs import DDGS
     monkeypatch.setattr("ddgs.DDGS", MockDDGS)
 
     tool = _tool(provider="duckduckgo")

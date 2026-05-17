@@ -15,8 +15,10 @@
 #   bash scripts/start_vllm.sh
 #
 # Env overrides:
-#   GEMMA_MODEL_ID   HuggingFace model ID (default: google/gemma-4-E2B-it)
-#   VLLM_API_KEY     Bearer token clients must send (required)
+#   GEMMA_MODEL      Model tag served by vLLM (default: google/gemma-4-E2B-it)
+#                    Also the value cloakbot's client uses for inference calls.
+#   GEMMA_API_KEY    Bearer token (required). Passed to vllm --api-key, and
+#                    must match what the cloakbot client sends.
 #   VLLM_PORT        Port to listen on (default: 8000)
 #   VLLM_DTYPE       Torch dtype: bfloat16 | float16 (default: bfloat16)
 #   VLLM_MAX_LEN     Max context length in tokens (default: 8192)
@@ -32,15 +34,15 @@ if [[ -f .env ]]; then
     set -a && source .env && set +a
 fi
 
-MODEL="${VLLM_MODEL:-${GEMMA_MODEL_ID:-google/gemma-4-E2B-it}}"
+MODEL="${GEMMA_MODEL:-google/gemma-4-E2B-it}"
 PORT="${VLLM_PORT:-8000}"
 DTYPE="${VLLM_DTYPE:-bfloat16}"
 MAX_LEN="${VLLM_MAX_LEN:-8192}"
 LIMIT_MM="${VLLM_LIMIT_MM:-{\"image\":0,\"audio\":0}}"
 
-if [[ -z "${VLLM_API_KEY:-}" ]]; then
-    echo "ERROR: VLLM_API_KEY is not set."
-    echo "  export VLLM_API_KEY=your-secret-token"
+if [[ -z "${GEMMA_API_KEY:-}" ]]; then
+    echo "ERROR: GEMMA_API_KEY is not set."
+    echo "  export GEMMA_API_KEY=your-secret-token"
     echo "  or copy .env.example to .env and fill it in."
     exit 1
 fi
@@ -87,7 +89,7 @@ args=(
     serve "$MODEL"
     --host 0.0.0.0
     --port "$PORT"
-    --api-key "$VLLM_API_KEY"
+    --api-key "$GEMMA_API_KEY"
     --dtype "$DTYPE"
     --max-model-len "$MAX_LEN"
 )
@@ -96,4 +98,4 @@ if [[ -n "$LIMIT_MM" ]]; then
     args+=(--limit-mm-per-prompt "$LIMIT_MM")
 fi
 
-env -u VLLM_BASE_URL -u VLLM_MODEL "$VLLM_BIN" "${args[@]}"
+env -u GEMMA_BASE_URL -u GEMMA_MODEL "$VLLM_BIN" "${args[@]}"

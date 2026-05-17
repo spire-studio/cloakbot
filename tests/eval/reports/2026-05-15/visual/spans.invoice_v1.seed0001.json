@@ -1,0 +1,206 @@
+{
+  "seed": 1,
+  "template_id": "invoice_v1",
+  "width": 1240,
+  "height": 1600,
+  "spans": [
+    {
+      "text": "Carroll Inc",
+      "label": "vendor_name",
+      "entity_type": "org",
+      "bbox": [
+        700,
+        168,
+        785,
+        180
+      ]
+    },
+    {
+      "text": "7631 Johnson Village Suite 690, Adamsbury, OR 13900",
+      "label": "billing_address",
+      "entity_type": "address",
+      "bbox": [
+        700,
+        195,
+        1070,
+        209
+      ]
+    },
+    {
+      "text": "anthony08@crosby.com",
+      "label": "email",
+      "entity_type": "email",
+      "bbox": [
+        700,
+        219,
+        861,
+        233
+      ]
+    },
+    {
+      "text": "Molly Rose",
+      "label": "customer_name",
+      "entity_type": "person",
+      "bbox": [
+        60,
+        168,
+        150,
+        183
+      ]
+    },
+    {
+      "text": "353 Kathleen Highway Apt. 681, Lake Victoria, VI 39349",
+      "label": "billing_address",
+      "entity_type": "address",
+      "bbox": [
+        60,
+        195,
+        433,
+        209
+      ]
+    },
+    {
+      "text": "+1 (158) 683-4497",
+      "label": "phone",
+      "entity_type": "phone",
+      "bbox": [
+        60,
+        219,
+        184,
+        233
+      ]
+    },
+    {
+      "text": "cchapman@example.com",
+      "label": "email",
+      "entity_type": "email",
+      "bbox": [
+        60,
+        243,
+        234,
+        257
+      ]
+    },
+    {
+      "text": "INV-3662-S5X8",
+      "label": "invoice_number",
+      "entity_type": "identifier",
+      "bbox": [
+        74,
+        362,
+        192,
+        374
+      ]
+    },
+    {
+      "text": "2026-04-05",
+      "label": "date",
+      "entity_type": "temporal",
+      "bbox": [
+        447,
+        362,
+        534,
+        374
+      ]
+    },
+    {
+      "text": "2026-05-26",
+      "label": "date",
+      "entity_type": "temporal",
+      "bbox": [
+        820,
+        362,
+        907,
+        374
+      ]
+    },
+    {
+      "text": "$3,895.84",
+      "label": "amount",
+      "entity_type": "financial",
+      "bbox": [
+        1040,
+        485,
+        1116,
+        501
+      ]
+    },
+    {
+      "text": "$4,465.13",
+      "label": "amount",
+      "entity_type": "financial",
+      "bbox": [
+        1040,
+        521,
+        1116,
+        537
+      ]
+    },
+    {
+      "text": "$1,641.66",
+      "label": "amount",
+      "entity_type": "financial",
+      "bbox": [
+        1040,
+        557,
+        1116,
+        573
+      ]
+    },
+    {
+      "text": "$3,521.47",
+      "label": "amount",
+      "entity_type": "financial",
+      "bbox": [
+        1040,
+        593,
+        1116,
+        609
+      ]
+    },
+    {
+      "text": "$13,524.10",
+      "label": "amount",
+      "entity_type": "financial",
+      "bbox": [
+        1040,
+        659,
+        1125,
+        675
+      ]
+    },
+    {
+      "text": "Visa ending 0704",
+      "label": "account_number",
+      "entity_type": "identifier",
+      "bbox": [
+        106,
+        762,
+        245,
+        777
+      ]
+    },
+    {
+      "text": "US57 4890 6828 8360",
+      "label": "account_number",
+      "entity_type": "identifier",
+      "bbox": [
+        129,
+        798,
+        299,
+        810
+      ]
+    },
+    {
+      "text": "TXN-9I9J-96228303OZGWK",
+      "label": "transaction_id",
+      "entity_type": "identifier",
+      "bbox": [
+        152,
+        834,
+        372,
+        846
+      ]
+    }
+  ]
+}

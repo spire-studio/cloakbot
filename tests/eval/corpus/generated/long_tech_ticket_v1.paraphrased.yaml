@@ -1,0 +1,800 @@
+template_id: long_tech_ticket_v1
+variants:
+- id: long_tech_ticket_v1_p00
+  turns:
+  - role: user
+    text: Opening a P0 escalation. Ticket {ticket_id}, customer {customer_company},
+      primary contact is {customer_contact}. I need to attach the full incident write-up
+      — can you take it and structure it for the on-call thread?
+  - role: assistant
+    text: Yes, paste the write-up. I'll preserve the contact block, the environment
+      details, the timeline, the financial impact, and the paging instructions verbatim,
+      then surface the entity references our support team will need for handoff.
+  - role: user
+    text: 'INCIDENT REPORT — {ticket_id} — {customer_company}
+
+
+      CUSTOMER CONTACT BLOCK: primary technical contact is {customer_contact} ({customer_email},
+      {customer_phone}); billing contact and shipping address of record for any hardware
+      RMAs is {customer_address}. ACCOUNT: {account_id} (enterprise tier, named account).
+      ASSIGNED SUPPORT: {support_engineer}, reachable directly at {support_engineer_email}.
+
+
+      This report is being submitted as a formal escalation for an active production
+      incident affecting the customer’s primary operating environment. The request
+      is to preserve the operational facts in a format suitable for immediate on-call
+      triage, while also retaining the business-facing details needed by support,
+      account management, and incident command. The issue has been treated by the
+      customer as a top-priority outage event rather than a routine degradation, and
+      the language below reflects that posture.
+
+
+      SUMMARY: at {incident_start}, {customer_contact} reported that a sustained majority
+      of API traffic into their {environment} deployment was returning {error_code}
+      responses with no error body and no structured client-side trace. Customer-side
+      dashboards confirm that the impact began at {incident_start} and that customer
+      mitigations (regional failover, CDN-level cache warming, retry backoff tuning)
+      had no measurable effect on the {error_code} rate. Initial pageout from our
+      side fired at {detection_time} after the synthetic probe for that region crossed
+      the pre-configured threshold.
+
+
+      The customer’s first description of the failure indicated that calls were entering
+      the platform successfully but failing after routing, which is consistent with
+      a downstream service disruption rather than a front-door availability problem.
+      Their internal monitoring showed a sharp step-function increase in rejected
+      requests, followed by a sustained plateau with only brief oscillations. Because
+      the responses did not include a body, the customer could not use application-layer
+      diagnostics to distinguish between authorization, dependency timeout, or internal
+      execution failure. The absence of structured client-side traces further suggests
+      that the issue is occurring before the point at which their instrumentation
+      normally records a useful exception object.
+
+
+      ENVIRONMENT: {customer_company} is pinned to {product_version}, deployed across
+      the {environment} cluster fronted by host {primary_host}. The last version confirmed
+      healthy under {customer_company}''s production load is {last_known_good_version},
+      which was the rollout candidate two releases prior to {product_version}. We
+      have not yet confirmed whether the regression bisects to the upgrade window
+      or to a separate configuration drift on {primary_host} itself; the host has
+      not been rebooted within the impact window and is therefore a candidate for
+      an isolation pull.
+
+
+      Operationally, the deployment is in the customer’s standard enterprise configuration,
+      with the active path relying on the same host-fronted entrypoint used during
+      the most recent stable cycle. That makes {primary_host} the first place to validate
+      for process-level drift, partial restart state, stale sidecar configuration,
+      or any runtime artifact that could explain why the failure appears concentrated
+      rather than evenly distributed. Given that the customer is pinned to {product_version},
+      we should also compare the observed behavior against the delta introduced between
+      {last_known_good_version} and the current build, including any change in request
+      classification, retry behavior, or service mesh interaction.
+
+
+      LOGS AND OBSERVABILITY: from {incident_start} forward, the {primary_host} request
+      log shows a steady-state mix of 200 OK responses interleaved with windows of
+      {error_code} that recur every approximately seven to nine seconds and that correlate
+      with garbage collection pauses in the {product_version} runtime. Tracing data
+      from {customer_company}''s side shows that all {error_code} responses originate
+      from a single internal service whose service mesh identity resolves back to
+      a sidecar on {primary_host}; this matches our hypothesis that the failure is
+      host-local rather than fleet-wide.
+
+
+      The periodicity is important because it points away from a one-off routing accident
+      and toward a resource-management or scheduling pattern. The fact that successful
+      requests continue to complete in the same time window means the host is not
+      fully saturated; instead, there appears to be a recurring condition that briefly
+      disrupts one request path while leaving others intact. The sidecar identity
+      alignment strengthens the case for isolating {primary_host} and checking whether
+      the proxy layer is holding a bad configuration snapshot, encountering backpressure,
+      or reacting to local GC pauses in a way that starves or resets the request stream.
+
+
+      We have not yet confirmed whether the customer’s telemetry is capturing the
+      same cadence as our own synthetic probe, but the broad pattern is consistent
+      across the available sources. If the on-call investigation uncovers a host-level
+      anomaly, the next diagnostic step should be to determine whether the service
+      mesh component is the cause, the victim, or merely the first visible indicator
+      of a deeper runtime condition.
+
+
+      BUSINESS IMPACT: {customer_contact} reports that {customer_company} is currently
+      experiencing a revenue impact estimated at {business_impact} per hour while
+      the {error_code} condition persists. Their executive sponsor has formally requested
+      a remediation plan with a committed resolution by {resolution_deadline}, after
+      which {customer_company} will consider invoking the contractual SLA credit and
+      escalation clause.
+
+
+      The customer has made clear that the issue is affecting live commercial traffic
+      rather than an internal test path, and that the revenue estimate reflects ongoing
+      lost conversion and abandoned workflow completion. In addition to the direct
+      hourly impact, they are concerned about downstream support burden and brand
+      exposure if the failure remains unresolved through their stated deadline. For
+      that reason, they are asking not only for a fix, but for a stable plan of record
+      that identifies the isolation strategy, owner, and communications cadence.
+
+
+      PAGER AND ON-CALL: the on-call rotation for the {environment} cluster is currently
+      held by {on_call_engineer}, who can be paged directly at {on_call_phone} or
+      via the PagerDuty handle {pager_handle}. {support_engineer} will hold the customer-facing
+      comms thread and is the canonical relay for any updates to {customer_contact}.
+
+
+      At this stage, the operational expectation is that the paging path should remain
+      crisp and single-threaded. The on-call engineer needs the incident summary,
+      the affected host, the observed signature, and the customer’s deadline context.
+      Support should avoid parallel customer updates that could conflict with the
+      live diagnostic plan. If the page requires a handoff note, it should explicitly
+      mention that the request is tied to the {environment} cluster, that the observed
+      failure mode is {error_code}, and that the customer expects a rapid isolation
+      decision on {primary_host}.
+
+
+      NEXT STEPS REQUESTED: please confirm an ETA for isolation pull of {primary_host},
+      a fleet-wide audit for any other sidecars exhibiting the same {error_code} signature,
+      and a written postmortem within five business days of resolution.
+
+
+      The immediate operational preference is to remove ambiguity on whether the issue
+      is confined to a single host or whether the signature is beginning to propagate.
+      If the host pull clears the symptom, please document the exact before-and-after
+      state, including whether the sidecar identity changes, whether the garbage collection
+      correlation disappears, and whether the customer’s synthetic probe recovers
+      without additional mitigation. End of report.'
+  - role: assistant
+    text: Got the full report. I've structured it into the on-call thread with the
+      contact block, environment fingerprint, timeline, impact, and pager assignments
+      split for fast handoff. Want me to push the page to {on_call_engineer} now?
+  - role: user
+    text: Yes — page {on_call_engineer} at {on_call_phone}, and copy {support_engineer_email}
+      on the page so {support_engineer} sees the same signal. Reference {ticket_id}
+      and {error_code} in the page body. If {on_call_engineer} doesn't ack within
+      fifteen minutes, escalate to whoever owns the {environment} rotation after them
+      and re-page through {pager_handle}.
+- id: long_tech_ticket_v1_p01
+  turns:
+  - role: user
+    text: Opening a P0 escalation. Ticket {ticket_id}, customer {customer_company},
+      primary contact is {customer_contact}. I need to attach the full incident write-up
+      — can you take it and structure it for the on-call thread?
+  - role: assistant
+    text: Yes, paste the write-up. I'll preserve the contact block, the environment
+      details, the timeline, the financial impact, and the paging instructions verbatim,
+      then surface the entity references our support team will need for handoff.
+  - role: user
+    text: 'INCIDENT REPORT — {ticket_id} — {customer_company}
+
+
+      Purpose of this note: provide a concise but complete operational packet for
+      the current production failure, suitable for paging, incident review, and customer
+      communications. The record below is intentionally written to support both engineering
+      triage and account management follow-through. All contact details, environment
+      identifiers, and escalation points are preserved in-line so that the on-call
+      thread can be actioned without requiring a second source of truth.
+
+
+      CUSTOMER CONTACT BLOCK: primary technical contact is {customer_contact} ({customer_email},
+      {customer_phone}); billing contact and shipping address of record for any hardware
+      RMAs is {customer_address}. ACCOUNT: {account_id} (enterprise tier, named account).
+      ASSIGNED SUPPORT: {support_engineer}, reachable directly at {support_engineer_email}.
+
+
+      The customer asks that all updates continue to flow through the technical contact
+      first, with billing and logistics references retained in case the mitigation
+      path requires hardware replacement or shipment coordination. Although the present
+      problem is not yet confirmed to involve physical equipment, the customer’s record
+      of address and billing ownership is needed because the account is managed as
+      a named enterprise relationship, and any remediation that crosses into hardware
+      swap territory must not introduce delay later in the incident.
+
+
+      SUMMARY: at {incident_start}, {customer_contact} reported that a sustained majority
+      of API traffic into their {environment} deployment was returning {error_code}
+      responses with no error body and no structured client-side trace. Customer-side
+      dashboards confirm that the impact began at {incident_start} and that customer
+      mitigations (regional failover, CDN-level cache warming, retry backoff tuning)
+      had no measurable effect on the {error_code} rate. Initial pageout from our
+      side fired at {detection_time} after the synthetic probe for that region crossed
+      the pre-configured threshold.
+
+
+      The customer’s internal view is that the service was functioning until a specific
+      transition point and then began failing in a consistent, repetitive manner.
+      Their mitigation steps were sensible and layered: they shifted traffic regionally,
+      warmed cached content at the CDN, and adjusted retry behavior to reduce pressure
+      on the platform. None of those actions changed the shape of the incident, which
+      indicates the problem is likely beyond a front-line capacity or load-balancing
+      issue. The first external alert arrived when our synthetic probe crossed threshold,
+      aligning our detection with the customer’s own observations rather than pre-empting
+      them.
+
+
+      ENVIRONMENT: {customer_company} is pinned to {product_version}, deployed across
+      the {environment} cluster fronted by host {primary_host}. The last version confirmed
+      healthy under {customer_company}''s production load is {last_known_good_version},
+      which was the rollout candidate two releases prior to {product_version}. We
+      have not yet confirmed whether the regression bisects to the upgrade window
+      or to a separate configuration drift on {primary_host} itself; the host has
+      not been rebooted within the impact window and is therefore a candidate for
+      an isolation pull.
+
+
+      The deployment pattern suggests that we should treat the host as the likely
+      point of concentration while still keeping an open mind about the upgrade path.
+      Because {last_known_good_version} was healthy under similar production pressure,
+      the delta between that release and {product_version} deserves scrutiny for any
+      changes to request lifecycle handling, sidecar startup, local cache behavior,
+      or GC sensitivity. At the same time, the fact that the host has not been rebooted
+      during the impact window matters procedurally: we can still reproduce the current
+      state, and isolating the machine before any restart may preserve the evidence
+      needed to determine whether the issue is tied to runtime state rather than static
+      configuration.
+
+
+      LOGS AND OBSERVABILITY: from {incident_start} forward, the {primary_host} request
+      log shows a steady-state mix of 200 OK responses interleaved with windows of
+      {error_code} that recur every approximately seven to nine seconds and that correlate
+      with garbage collection pauses in the {product_version} runtime. Tracing data
+      from {customer_company}''s side shows that all {error_code} responses originate
+      from a single internal service whose service mesh identity resolves back to
+      a sidecar on {primary_host}; this matches our hypothesis that the failure is
+      host-local rather than fleet-wide.
+
+
+      This is the strongest technical clue in the packet. The recurrence interval
+      is regular enough to imply an underlying cycle, and the correlation with garbage
+      collection pauses suggests a resource or runtime pressure issue rather than
+      a random transient. Because successful requests still land between failures,
+      the host is not appearing completely unavailable; instead, some component tied
+      to the same node is intermittently incapable of serving the affected path. The
+      service mesh identity tracing back to a sidecar on {primary_host} is the key
+      linkage, because it narrows the blast radius and supports an immediate decision
+      to isolate that machine from the pool while the rest of the fleet remains under
+      observation.
+
+
+      If the sidecar itself is not the root cause, it may still be the best sensor
+      for discovering it. The investigation should therefore include whether the sidecar
+      restarts, loses configuration, or encounters a short-lived resource starvation
+      event in lockstep with the observed response spikes. It would also be useful
+      to verify whether the GC pause timing is aligning with any housekeeping task,
+      telemetry flush, or local process churn. Any one of those could explain why
+      the error surfaces in repeating windows instead of as a clean outage.
+
+
+      BUSINESS IMPACT: {customer_contact} reports that {customer_company} is currently
+      experiencing a revenue impact estimated at {business_impact} per hour while
+      the {error_code} condition persists. Their executive sponsor has formally requested
+      a remediation plan with a committed resolution by {resolution_deadline}, after
+      which {customer_company} will consider invoking the contractual SLA credit and
+      escalation clause.
+
+
+      In customer terms, this is not simply a technical degradation but a material
+      business interruption. The estimate above is being used internally by the customer
+      to brief leadership on losses associated with live traffic failing at the API
+      layer. Because they have already escalated to an executive sponsor, they are
+      expecting a concrete response plan with owner names, a likely containment step,
+      and a forecast for restoration. The resolution deadline is being treated as
+      an external commitment point; if we miss it, the customer has indicated they
+      are prepared to formalize the service-credit path.
+
+
+      PAGER AND ON-CALL: the on-call rotation for the {environment} cluster is currently
+      held by {on_call_engineer}, who can be paged directly at {on_call_phone} or
+      via the PagerDuty handle {pager_handle}. {support_engineer} will hold the customer-facing
+      comms thread and is the canonical relay for any updates to {customer_contact}.
+
+
+      For the thread itself, the main goal is to make the assignment obvious: engineering
+      owns diagnosis and isolation; support owns outbound messaging and timing. The
+      page to {on_call_engineer} should carry the incident ID, the affected environment,
+      the error pattern, and the requested action on {primary_host}. If a secondary
+      responder needs to be looped in, they should be pulled from the same {environment}
+      rotation after the primary ack window expires, not from an unrelated queue.
+      That keeps the incident coherent and reduces the chance of duplicated work or
+      conflicting status updates.
+
+
+      NEXT STEPS REQUESTED: please confirm an ETA for isolation pull of {primary_host},
+      a fleet-wide audit for any other sidecars exhibiting the same {error_code} signature,
+      and a written postmortem within five business days of resolution.
+
+
+      The immediate ask is deliberately narrow: isolate the host, compare the fleet,
+      and prepare a written record once the incident closes. If the host pull resolves
+      the issue, please capture whether the failure signature disappears immediately
+      or decays over a short period, since that will help determine whether the sidecar
+      or runtime state was actively causing the problem. End of report.'
+  - role: assistant
+    text: Got the full report. I've structured it into the on-call thread with the
+      contact block, environment fingerprint, timeline, impact, and pager assignments
+      split for fast handoff. Want me to push the page to {on_call_engineer} now?
+  - role: user
+    text: Yes — page {on_call_engineer} at {on_call_phone}, and copy {support_engineer_email}
+      on the page so {support_engineer} sees the same signal. Reference {ticket_id}
+      and {error_code} in the page body. If {on_call_engineer} doesn't ack within
+      fifteen minutes, escalate to whoever owns the {environment} rotation after them
+      and re-page through {pager_handle}.
+- id: long_tech_ticket_v1_p02
+  turns:
+  - role: user
+    text: Opening a P0 escalation. Ticket {ticket_id}, customer {customer_company},
+      primary contact is {customer_contact}. I need to attach the full incident write-up
+      — can you take it and structure it for the on-call thread?
+  - role: assistant
+    text: Yes, paste the write-up. I'll preserve the contact block, the environment
+      details, the timeline, the financial impact, and the paging instructions verbatim,
+      then surface the entity references our support team will need for handoff.
+  - role: user
+    text: 'INCIDENT REPORT — {ticket_id} — {customer_company}
+
+
+      This document is intended for immediate incident routing. It combines the operational
+      facts needed by the engineer on call with the customer references needed by
+      support, account management, and any later postmortem reviewer. The customer
+      has described the issue as a high-severity production failure, and the requested
+      handling is consistent with an active P0: fast page, quick isolation decision,
+      clear ownership, and no ambiguity about the communications path.
+
+
+      CUSTOMER CONTACT BLOCK: primary technical contact is {customer_contact} ({customer_email},
+      {customer_phone}); billing contact and shipping address of record for any hardware
+      RMAs is {customer_address}. ACCOUNT: {account_id} (enterprise tier, named account).
+      ASSIGNED SUPPORT: {support_engineer}, reachable directly at {support_engineer_email}.
+
+
+      The customer contact should be treated as the authoritative interface for technical
+      updates, while the billing contact and address are retained in case the resolution
+      path requires replacement materials or physical shipment. Because the account
+      is enterprise-tier and named, any movement involving hardware or formal service
+      credits will need those details immediately available. {support_engineer} remains
+      the internal owner of customer-facing communication and should be copied into
+      all status changes that may be relayed externally.
+
+
+      SUMMARY: at {incident_start}, {customer_contact} reported that a sustained majority
+      of API traffic into their {environment} deployment was returning {error_code}
+      responses with no error body and no structured client-side trace. Customer-side
+      dashboards confirm that the impact began at {incident_start} and that customer
+      mitigations (regional failover, CDN-level cache warming, retry backoff tuning)
+      had no measurable effect on the {error_code} rate. Initial pageout from our
+      side fired at {detection_time} after the synthetic probe for that region crossed
+      the pre-configured threshold.
+
+
+      The practical meaning of the summary is that the customer’s live traffic is
+      still reaching the platform but is being rejected or interrupted after ingress.
+      Their own mitigations were the standard set one would expect in an outage runbook,
+      and the fact that they produced no improvement is a strong indicator that the
+      failure source is lower in the stack. The synthetic probe firing at {detection_time}
+      gives us our first internal timestamp, while {incident_start} remains the customer’s
+      first observed impact moment. Those two times should be preserved separately
+      in the thread because they help distinguish detection lag from actual service
+      onset.
+
+
+      ENVIRONMENT: {customer_company} is pinned to {product_version}, deployed across
+      the {environment} cluster fronted by host {primary_host}. The last version confirmed
+      healthy under {customer_company}''s production load is {last_known_good_version},
+      which was the rollout candidate two releases prior to {product_version}. We
+      have not yet confirmed whether the regression bisects to the upgrade window
+      or to a separate configuration drift on {primary_host} itself; the host has
+      not been rebooted within the impact window and is therefore a candidate for
+      an isolation pull.
+
+
+      There are two plausible lines of inquiry from the environment facts. The first
+      is a regression introduced in the transition from {last_known_good_version}
+      to {product_version}, especially if there were changes to the runtime, routing,
+      or sidecar behavior. The second is a host-specific configuration drift on {primary_host}
+      that happened independently of the version change. Because the host remained
+      up throughout the impact window, we can likely preserve useful state if we isolate
+      it before any restart or redeploy. That makes isolation the preferred first
+      operational move, not a last resort.
+
+
+      LOGS AND OBSERVABILITY: from {incident_start} forward, the {primary_host} request
+      log shows a steady-state mix of 200 OK responses interleaved with windows of
+      {error_code} that recur every approximately seven to nine seconds and that correlate
+      with garbage collection pauses in the {product_version} runtime. Tracing data
+      from {customer_company}''s side shows that all {error_code} responses originate
+      from a single internal service whose service mesh identity resolves back to
+      a sidecar on {primary_host}; this matches our hypothesis that the failure is
+      host-local rather than fleet-wide.
+
+
+      The recurring interval is useful because it suggests a repeating condition,
+      not a random spike. When errors appear in regular windows and line up with GC
+      pauses, the next suspicion is usually some form of runtime starvation, memory
+      pressure, or a proxy component being forced into a bad state repeatedly. The
+      fact that the 200s continue between failures tells us the cluster is not broadly
+      down. Instead, the evidence points to a very specific component path that is
+      being affected on a cycle, which is why the internal service identity and sidecar
+      mapping matter so much.
+
+
+      A host-local theory also explains why the customer’s side saw the same symptom
+      across their dashboards without a broader fleet signal. If the sidecar is the
+      component actually emitting or relaying the {error_code} responses, it may be
+      the best place to inspect for restarts, config reloads, or resource contention.
+      The engineering team should verify whether the GC pauses are merely coincident
+      or whether they are causally associated with the service mesh identity resolving
+      to that node. A fleet-wide issue would be much more visible across multiple
+      hosts; the current pattern looks narrower than that.
+
+
+      BUSINESS IMPACT: {customer_contact} reports that {customer_company} is currently
+      experiencing a revenue impact estimated at {business_impact} per hour while
+      the {error_code} condition persists. Their executive sponsor has formally requested
+      a remediation plan with a committed resolution by {resolution_deadline}, after
+      which {customer_company} will consider invoking the contractual SLA credit and
+      escalation clause.
+
+
+      From a business standpoint, the customer is treating the incident as live revenue
+      loss rather than inconvenience. The hourly estimate is being used to justify
+      urgent leadership involvement, and the request for a committed resolution by
+      {resolution_deadline} means the customer expects both technical progress and
+      a disciplined update cadence. The SLA reference indicates that if the incident
+      is not contained by that time, the customer will likely move from operational
+      escalation into contractual enforcement.
+
+
+      PAGER AND ON-CALL: the on-call rotation for the {environment} cluster is currently
+      held by {on_call_engineer}, who can be paged directly at {on_call_phone} or
+      via the PagerDuty handle {pager_handle}. {support_engineer} will hold the customer-facing
+      comms thread and is the canonical relay for any updates to {customer_contact}.
+
+
+      Please keep the response chain tight: page the current on-call, record the incident
+      ID in the message, and ensure the customer-facing thread remains with {support_engineer}.
+      If the initial page does not receive acknowledgment, the escalation should move
+      to the next owner of the {environment} rotation rather than branching into ad
+      hoc reassignment. That prevents duplicated triage and ensures the incident thread
+      remains authoritative.
+
+
+      NEXT STEPS REQUESTED: please confirm an ETA for isolation pull of {primary_host},
+      a fleet-wide audit for any other sidecars exhibiting the same {error_code} signature,
+      and a written postmortem within five business days of resolution.
+
+
+      The desired outcome is straightforward: isolate the host, compare for matching
+      signatures across the fleet, and document the root cause and remediation in
+      a postmortem once the incident closes. If the host isolation removes the symptom,
+      please note the exact timing of recovery and whether any additional service
+      mesh anomalies remain visible. End of report.'
+  - role: assistant
+    text: Got the full report. I've structured it into the on-call thread with the
+      contact block, environment fingerprint, timeline, impact, and pager assignments
+      split for fast handoff. Want me to push the page to {on_call_engineer} now?
+  - role: user
+    text: Yes — page {on_call_engineer} at {on_call_phone}, and copy {support_engineer_email}
+      on the page so {support_engineer} sees the same signal. Reference {ticket_id}
+      and {error_code} in the page body. If {on_call_engineer} doesn't ack within
+      fifteen minutes, escalate to whoever owns the {environment} rotation after them
+      and re-page through {pager_handle}.
+- id: long_tech_ticket_v1_p03
+  turns:
+  - role: user
+    text: Opening a P0 escalation. Ticket {ticket_id}, customer {customer_company},
+      primary contact is {customer_contact}. I need to attach the full incident write-up
+      — can you take it and structure it for the on-call thread?
+  - role: assistant
+    text: Yes, paste the write-up. I'll preserve the contact block, the environment
+      details, the timeline, the financial impact, and the paging instructions verbatim,
+      then surface the entity references our support team will need for handoff.
+  - role: user
+    text: 'INCIDENT REPORT — {ticket_id} — {customer_company}
+
+
+      Customer-facing summary and internal routing note. This incident package is
+      meant to be copied into the live escalation thread so the engineer on call can
+      triage without needing to cross-reference a second document. The facts below
+      are arranged to preserve operational priorities first and account details second,
+      but every required contact and environment identifier is included.
+
+
+      CUSTOMER CONTACT BLOCK: primary technical contact is {customer_contact} ({customer_email},
+      {customer_phone}); billing contact and shipping address of record for any hardware
+      RMAs is {customer_address}. ACCOUNT: {account_id} (enterprise tier, named account).
+      ASSIGNED SUPPORT: {support_engineer}, reachable directly at {support_engineer_email}.
+
+
+      Use {customer_contact} for technical coordination, because that is the person
+      who first observed the failure and who can validate whether any mitigation changes
+      are taking effect. Keep {customer_address} and the billing contact in the record
+      in case the resolution path shifts into replacement logistics or an SLA-related
+      administrative follow-up. {support_engineer} should remain the customer-communications
+      owner so the customer receives a single, consistent narrative about progress,
+      containment, and recovery.
+
+
+      SUMMARY: at {incident_start}, {customer_contact} reported that a sustained majority
+      of API traffic into their {environment} deployment was returning {error_code}
+      responses with no error body and no structured client-side trace. Customer-side
+      dashboards confirm that the impact began at {incident_start} and that customer
+      mitigations (regional failover, CDN-level cache warming, retry backoff tuning)
+      had no measurable effect on the {error_code} rate. Initial pageout from our
+      side fired at {detection_time} after the synthetic probe for that region crossed
+      the pre-configured threshold.
+
+
+      That description matters because it establishes both the time of first customer
+      impact and the fact that the customer already attempted standard resilience
+      measures. Regional failover should have shifted load away if the issue were
+      tied to a single zone, but it did not. CDN cache warming and retry backoff tuning
+      likewise had no measurable effect, which makes a front-door traffic issue unlikely.
+      The synthetic probe alert at {detection_time} corroborates the issue from our
+      side and provides the moment when our monitoring system first independently
+      recognized the degradation.
+
+
+      ENVIRONMENT: {customer_company} is pinned to {product_version}, deployed across
+      the {environment} cluster fronted by host {primary_host}. The last version confirmed
+      healthy under {customer_company}''s production load is {last_known_good_version},
+      which was the rollout candidate two releases prior to {product_version}. We
+      have not yet confirmed whether the regression bisects to the upgrade window
+      or to a separate configuration drift on {primary_host} itself; the host has
+      not been rebooted within the impact window and is therefore a candidate for
+      an isolation pull.
+
+
+      We should treat the deployment as a versioned environment with one obvious comparison
+      point and one obvious suspect. The known-good release {last_known_good_version}
+      gives us a baseline for behavioral comparison, while {product_version} is the
+      current state under stress. The host {primary_host} is the best immediate containment
+      target because it has preserved state, has not been rebooted, and appears to
+      be associated with the observed failures. If the issue sits on the host, pulling
+      it from service may stop the bleed without requiring a broader fleet action.
+
+
+      LOGS AND OBSERVABILITY: from {incident_start} forward, the {primary_host} request
+      log shows a steady-state mix of 200 OK responses interleaved with windows of
+      {error_code} that recur every approximately seven to nine seconds and that correlate
+      with garbage collection pauses in the {product_version} runtime. Tracing data
+      from {customer_company}''s side shows that all {error_code} responses originate
+      from a single internal service whose service mesh identity resolves back to
+      a sidecar on {primary_host}; this matches our hypothesis that the failure is
+      host-local rather than fleet-wide.
+
+
+      The observability picture is unusually consistent. The request log does not
+      show a total service collapse; instead, it alternates between successful responses
+      and short bursts of the same failure code. That pattern, especially when it
+      repeats every seven to nine seconds, suggests a cyclic trigger rather than random
+      turbulence. The GC pause correlation is a meaningful clue because runtime pauses
+      can create enough delay or contention to make a sidecar or dependency misbehave
+      in a predictable rhythm. The service mesh identity tying the failure to a sidecar
+      on {primary_host} sharply reduces the search space and supports a host-local
+      hypothesis.
+
+
+      It is worth noting that the customer-side tracing points to a single internal
+      service rather than a spread of unrelated components. That distinction matters
+      because it implies the issue is not being generated uniformly across the fleet,
+      but is instead concentrated in a particular execution path. If the sidecar on
+      {primary_host} is involved, the team should inspect restart history, configuration
+      drift, proxy state, and resource pressure at the same cadence as the failure
+      windows. The goal is to determine whether the sidecar is directly failing, relaying
+      a failure from the runtime, or simply exposing the first visible symptom of
+      another host-level problem.
+
+
+      BUSINESS IMPACT: {customer_contact} reports that {customer_company} is currently
+      experiencing a revenue impact estimated at {business_impact} per hour while
+      the {error_code} condition persists. Their executive sponsor has formally requested
+      a remediation plan with a committed resolution by {resolution_deadline}, after
+      which {customer_company} will consider invoking the contractual SLA credit and
+      escalation clause.
+
+
+      The customer has assigned a monetary value to the outage because the failure
+      is affecting live commercial throughput. That makes the timeline and response
+      cadence especially important. They are looking for both a near-term containment
+      strategy and a credible recovery estimate, not just a diagnosis. The mention
+      of the SLA credit and escalation clause means the incident has already crossed
+      into executive awareness and may become a contractual issue if the deadline
+      passes without a satisfactory fix or plan.
+
+
+      PAGER AND ON-CALL: the on-call rotation for the {environment} cluster is currently
+      held by {on_call_engineer}, who can be paged directly at {on_call_phone} or
+      via the PagerDuty handle {pager_handle}. {support_engineer} will hold the customer-facing
+      comms thread and is the canonical relay for any updates to {customer_contact}.
+
+
+      The paging instruction should be treated as a live operational directive. The
+      engineer on call needs to receive the ticket number, the environment, the observed
+      signature, and the host name so triage begins in the right place. {support_engineer}
+      should remain on the comms side to keep the customer informed without forcing
+      the engineer to narrate progress in two directions. If the current on-call does
+      not respond, escalation should follow the ownership chain for the {environment}
+      rotation and then use {pager_handle} for repeat notification.
+
+
+      NEXT STEPS REQUESTED: please confirm an ETA for isolation pull of {primary_host},
+      a fleet-wide audit for any other sidecars exhibiting the same {error_code} signature,
+      and a written postmortem within five business days of resolution.
+
+
+      The desired sequence is: isolate first, compare the rest of the fleet second,
+      and write up the incident after service has been restored. If the pull of {primary_host}
+      resolves the issue, please record the exact moment the {error_code} pattern
+      stops and whether the customer’s dashboards and traces recover in tandem. End
+      of report.'
+  - role: assistant
+    text: Got the full report. I've structured it into the on-call thread with the
+      contact block, environment fingerprint, timeline, impact, and pager assignments
+      split for fast handoff. Want me to push the page to {on_call_engineer} now?
+  - role: user
+    text: Yes — page {on_call_engineer} at {on_call_phone}, and copy {support_engineer_email}
+      on the page so {support_engineer} sees the same signal. Reference {ticket_id}
+      and {error_code} in the page body. If {on_call_engineer} doesn't ack within
+      fifteen minutes, escalate to whoever owns the {environment} rotation after them
+      and re-page through {pager_handle}.
+- id: long_tech_ticket_v1_p04
+  turns:
+  - role: user
+    text: Opening a P0 escalation. Ticket {ticket_id}, customer {customer_company},
+      primary contact is {customer_contact}. I need to attach the full incident write-up
+      — can you take it and structure it for the on-call thread?
+  - role: assistant
+    text: Yes, paste the write-up. I'll preserve the contact block, the environment
+      details, the timeline, the financial impact, and the paging instructions verbatim,
+      then surface the entity references our support team will need for handoff.
+  - role: user
+    text: 'INCIDENT REPORT — {ticket_id} — {customer_company}
+
+
+      This note is drafted as an incident-control artifact rather than a narrative
+      summary. The goal is to make the operational facts available to the on-call
+      engineer in a form that can be actioned immediately, while still retaining the
+      account, contact, and escalation details needed for customer follow-up and potential
+      post-incident review.
+
+
+      CUSTOMER CONTACT BLOCK: primary technical contact is {customer_contact} ({customer_email},
+      {customer_phone}); billing contact and shipping address of record for any hardware
+      RMAs is {customer_address}. ACCOUNT: {account_id} (enterprise tier, named account).
+      ASSIGNED SUPPORT: {support_engineer}, reachable directly at {support_engineer_email}.
+
+
+      The contact block should be copied intact into the live thread. The technical
+      contact is the best source for confirming the customer’s local observations
+      and mitigation attempts; the billing contact and shipping address are present
+      because the account is managed as a named enterprise relationship and any future
+      RMA, replacement, or formal service-credit workflow may need them. {support_engineer}
+      is the right person to keep aligned on outbound messaging so the customer receives
+      one consistent status stream instead of multiple overlapping updates.
+
+
+      SUMMARY: at {incident_start}, {customer_contact} reported that a sustained majority
+      of API traffic into their {environment} deployment was returning {error_code}
+      responses with no error body and no structured client-side trace. Customer-side
+      dashboards confirm that the impact began at {incident_start} and that customer
+      mitigations (regional failover, CDN-level cache warming, retry backoff tuning)
+      had no measurable effect on the {error_code} rate. Initial pageout from our
+      side fired at {detection_time} after the synthetic probe for that region crossed
+      the pre-configured threshold.
+
+
+      The pattern suggests a persistent failure in the request path rather than an
+      edge-cache or ingress misconfiguration. The customer’s internal team already
+      attempted the usual containment steps: shifting load between regions, warming
+      cache state at the CDN, and tuning retry backoff to reduce the rate of repeated
+      attempts. Because those actions did not change the symptom, the event should
+      be treated as a deeper application or node-level problem. Our own detection
+      time, {detection_time}, is important because it marks the point at which the
+      platform’s synthetic monitoring independently confirmed the same issue.
+
+
+      ENVIRONMENT: {customer_company} is pinned to {product_version}, deployed across
+      the {environment} cluster fronted by host {primary_host}. The last version confirmed
+      healthy under {customer_company}''s production load is {last_known_good_version},
+      which was the rollout candidate two releases prior to {product_version}. We
+      have not yet confirmed whether the regression bisects to the upgrade window
+      or to a separate configuration drift on {primary_host} itself; the host has
+      not been rebooted within the impact window and is therefore a candidate for
+      an isolation pull.
+
+
+      The important environmental fact is that the customer is on a pinned release,
+      so the current behavior can be compared against a fixed known-good baseline.
+      That makes version bisecting feasible if there is a strong relationship between
+      the observed problem and the release transition. However, because the same host
+      has been continuously running through the window, a host-specific state issue
+      remains equally plausible. A reboot would destroy diagnostic value at this stage,
+      so the preferred action is to isolate {primary_host} from service while preserving
+      enough evidence to determine whether the node itself or the software delta is
+      responsible.
+
+
+      LOGS AND OBSERVABILITY: from {incident_start} forward, the {primary_host} request
+      log shows a steady-state mix of 200 OK responses interleaved with windows of
+      {error_code} that recur every approximately seven to nine seconds and that correlate
+      with garbage collection pauses in the {product_version} runtime. Tracing data
+      from {customer_company}''s side shows that all {error_code} responses originate
+      from a single internal service whose service mesh identity resolves back to
+      a sidecar on {primary_host}; this matches our hypothesis that the failure is
+      host-local rather than fleet-wide.
+
+
+      The repeated interval deserves emphasis because it is not consistent with a
+      random burst or generic external dependency outage. Cycles that recur every
+      seven to nine seconds usually point to an internal timer, resource reclaim event,
+      watchdog, or service-mesh behavior that is being triggered under load. The fact
+      that the host continues returning 200 OK responses in the same span indicates
+      there is still functional capacity present, just not uniformly across all paths.
+      The sidecar identity mapping narrows the failure to a very specific execution
+      lane on {primary_host}, which is why the current theory is host-local rather
+      than fleet-wide.
+
+
+      For the engineers reviewing the thread, this means the first checks should include
+      whether the sidecar is restating, flapping, or emitting failures that line up
+      with the GC pause windows. It may also be useful to inspect whether the runtime
+      is accumulating memory pressure, whether any local collector or proxy task is
+      competing for CPU, and whether the service mesh is reacting to health signals
+      in a way that creates the repeating gap. The objective is to identify a durable
+      root cause, not just to suppress the symptom temporarily.
+
+
+      BUSINESS IMPACT: {customer_contact} reports that {customer_company} is currently
+      experiencing a revenue impact estimated at {business_impact} per hour while
+      the {error_code} condition persists. Their executive sponsor has formally requested
+      a remediation plan with a committed resolution by {resolution_deadline}, after
+      which {customer_company} will consider invoking the contractual SLA credit and
+      escalation clause.
+
+
+      The business language here should remain unchanged in the live thread because
+      it frames the urgency for both support and engineering. The customer is quantifying
+      the outage in hourly revenue loss, which tells us the failure is affecting live
+      production flows rather than an isolated internal workflow. The request for
+      a committed resolution by {resolution_deadline} also means leadership on their
+      side is tracking whether we can provide a credible remediation plan in addition
+      to the technical fix. If we miss the date, they have already signaled that the
+      next step may be contractual escalation.
+
+
+      PAGER AND ON-CALL: the on-call rotation for the {environment} cluster is currently
+      held by {on_call_engineer}, who can be paged directly at {on_call_phone} or
+      via the PagerDuty handle {pager_handle}. {support_engineer} will hold the customer-facing
+      comms thread and is the canonical relay for any updates to {customer_contact}.
+
+
+      When the page goes out, include the ticket number, the environment, the host,
+      and the failure code so the recipient can immediately orient. Because {support_engineer}
+      is the customer-facing relay, the engineering side should not try to manage
+      outbound status updates directly unless the incident commander asks for it.
+      If the first page does not receive an acknowledgment, the escalation path should
+      move to the next owner of the {environment} rotation and then continue through
+      {pager_handle}.
+
+
+      NEXT STEPS REQUESTED: please confirm an ETA for isolation pull of {primary_host},
+      a fleet-wide audit for any other sidecars exhibiting the same {error_code} signature,
+      and a written postmortem within five business days of resolution.
+
+
+      The desired response is operationally simple: remove the suspect host from the
+      active path, compare the fleet for the same sidecar signature, and prepare the
+      postmortem once the incident is resolved. Please note any recovery timing carefully,
+      especially if the error rate falls immediately after isolation or only after
+      a delay, since that will help determine whether the sidecar, runtime, or configuration
+      drift is the proximate cause. End of report.'
+  - role: assistant
+    text: Got the full report. I've structured it into the on-call thread with the
+      contact block, environment fingerprint, timeline, impact, and pager assignments
+      split for fast handoff. Want me to push the page to {on_call_engineer} now?
+  - role: user
+    text: Yes — page {on_call_engineer} at {on_call_phone}, and copy {support_engineer_email}
+      on the page so {support_engineer} sees the same signal. Reference {ticket_id}
+      and {error_code} in the page body. If {on_call_engineer} doesn't ack within
+      fifteen minutes, escalate to whoever owns the {environment} rotation after them
+      and re-page through {pager_handle}.

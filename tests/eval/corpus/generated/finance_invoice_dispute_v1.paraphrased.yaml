@@ -1,0 +1,126 @@
+template_id: finance_invoice_dispute_v1
+variants:
+- id: finance_invoice_dispute_v1_p00
+  turns:
+  - role: user
+    text: Hi, I'm calling about a charge I don't recognize on an invoice from {vendor}.
+      I'm {customer}, account {account_id}, and it's invoice {invoice_id}.
+  - role: assistant
+    text: Thanks, {customer}. To make sure I open the correct record, what are the
+      invoice date, due date, and total?
+  - role: user
+    text: Sure — the invoice is dated {invoice_date}, due {due_date}, and the total
+      shows {total_amount}, with {tax_amount} in tax.
+  - role: assistant
+    text: 'I found it. The {disputed_amount} entry is listed as "{disputed_service}."
+      Before I proceed, please confirm the account holder contact details: your email
+      and billing address.'
+  - role: user
+    text: Use {email}; billing address is {address}. Also, the card on file ends in
+      {card_last4}.
+  - role: assistant
+    text: Understood. I'll submit the dispute and place the renewal on hold while
+      it's reviewed. Is there anything else you'd like noted?
+  - role: user
+    text: Yes. My next invoice is {next_invoice_id}, due {next_due_date}. Please make
+      sure autopay does not run on the card ending {card_last4} until this is resolved,
+      and you can contact me at {phone}.
+- id: finance_invoice_dispute_v1_p01
+  turns:
+  - role: user
+    text: Hello — {customer} here. I need help with {vendor} invoice {invoice_id}.
+      There's a suspicious charge of {disputed_amount} on my account {account_id}.
+  - role: assistant
+    text: I can help. First, give me the invoice date, due date, and full amount so
+      I can verify I'm viewing the right invoice.
+  - role: user
+    text: It shows {invoice_date} as the invoice date, {due_date} as the due date,
+      and {total_amount} total with {tax_amount} tax included.
+  - role: assistant
+    text: That matches. The {disputed_amount} charge is attached to "{disputed_service}."
+      For verification, what email and billing address do you have on file?
+  - role: user
+    text: The email is {email}, the billing address is {address}, and the payment
+      method that would have been used is the card ending in {card_last4}.
+  - role: assistant
+    text: Perfect. I'll open the billing dispute and suspend the renewal until the
+      review is complete. Anything more I should add to the case?
+  - role: user
+    text: Please add that invoice {next_invoice_id} is coming due on {next_due_date},
+      and I do not want any autopay attempt made to the card ending {card_last4} before
+      this is settled. Call me back at {phone}.
+- id: finance_invoice_dispute_v1_p02
+  turns:
+  - role: user
+    text: Hi. This is {customer}. I have account {account_id} with {vendor}, and invoice
+      {invoice_id} has a {disputed_amount} charge I don't recognize.
+  - role: assistant
+    text: I can check that, but I want to be certain it's the right invoice. Can you
+      confirm the issue date, due date, and total amount?
+  - role: user
+    text: 'Yes: issued {invoice_date}, due {due_date}, total {total_amount}. That
+      total includes {tax_amount} tax.'
+  - role: assistant
+    text: Thanks, I have the record now. The item for {disputed_amount} is labeled
+      "{disputed_service}." To verify the account holder, I'll need your email address
+      and billing address.
+  - role: user
+    text: Okay — email {email}, billing address {address}. The stored card that may
+      have been billed ends in {card_last4}.
+  - role: assistant
+    text: Thank you. I'll file the dispute and put a hold on renewal billing during
+      the review. Do you want me to include any additional instructions?
+  - role: user
+    text: Please do. My next invoice, {next_invoice_id}, is due on {next_due_date}.
+      Do not charge the card ending {card_last4} automatically until everything is
+      cleared up. If needed, reach me at {phone}.
+- id: finance_invoice_dispute_v1_p03
+  turns:
+  - role: user
+    text: Good afternoon. I'm {customer}, calling about {vendor} invoice {invoice_id}.
+      The account number is {account_id}, and there's a line item for {disputed_amount}
+      that I don't recognize.
+  - role: assistant
+    text: Certainly. Before I access the file, please confirm the invoice date, the
+      payment due date, and the total billed amount.
+  - role: user
+    text: The invoice date is {invoice_date}, the due date is {due_date}, and the
+      total billed is {total_amount}, which includes {tax_amount} in tax.
+  - role: assistant
+    text: Thank you. I've located it. The {disputed_amount} amount appears under "{disputed_service}."
+      For security, please provide the email and billing address on the account.
+  - role: user
+    text: The email on file is {email}, the billing address is {address}, and the
+      card associated with the account ends in {card_last4}.
+  - role: assistant
+    text: All right. I'll open a dispute for that line and pause renewal processing
+      while the review is pending. Is there anything further you want documented?
+  - role: user
+    text: Yes. Please note that invoice {next_invoice_id} is due {next_due_date},
+      and no automatic payment should be attempted on the card ending {card_last4}
+      until the dispute is resolved. If you need to follow up, call {phone}.
+- id: finance_invoice_dispute_v1_p04
+  turns:
+  - role: user
+    text: Hi, {customer} speaking. On my {vendor} account {account_id}, invoice {invoice_id}
+      includes a {disputed_amount} charge that doesn't look familiar.
+  - role: assistant
+    text: Happy to look into it. Can you verify the invoice details for me — specifically
+      the date on it, the due date, and the total?
+  - role: user
+    text: Right, it's dated {invoice_date}; payment is due {due_date}; the total is
+      {total_amount}, including {tax_amount} tax.
+  - role: assistant
+    text: I see the invoice now. That {disputed_amount} line is described as "{disputed_service}."
+      I just need to confirm the account holder information. What's the email and
+      billing address?
+  - role: user
+    text: It's {email}, and the billing address is {address}. The card that should
+      be blocked from any charge ends in {card_last4}.
+  - role: assistant
+    text: Thanks, that's enough to proceed. I'll open the dispute and stop the renewal
+      from processing until the case is reviewed. Anything else to attach to the request?
+  - role: user
+    text: 'One more thing: the next bill is {next_invoice_id}, due {next_due_date}.
+      Please do not run autopay on the card ending {card_last4} while this remains
+      open. If someone needs to reach me, use {phone}.'

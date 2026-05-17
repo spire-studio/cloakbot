@@ -1,0 +1,180 @@
+id: long_tech_ticket_v1
+domain: tech_support
+density: long_document
+language: en
+description: >
+  P0 escalation ticket opened by an enterprise customer's primary
+  technical contact, then expanded into a full incident-report body
+  posted into the ticket comment thread. Combines customer identity
+  and contact, account/billing IDs, server hostnames and regions, log
+  fragments with timestamps and version strings, on-call paging
+  details, and a financial impact estimate. Long enough after
+  paraphrase to span multiple chunker windows; follow-up turn
+  re-references the on-call engineer, support engineer, error code,
+  and ticket id for alias consistency.
+
+slots:
+  ticket_id:
+    type: ID
+    faker: bothify
+    args: {text: "TICK-#######"}
+  customer_contact:
+    type: PERSON
+    faker: name
+  customer_email:
+    type: EMAIL
+    faker: email
+  customer_phone:
+    type: PHONE
+    faker: phone_number
+  customer_company:
+    type: ORG
+    faker: company
+  customer_address:
+    type: ADDRESS
+    faker: address
+  account_id:
+    type: ID
+    faker: bothify
+    args: {text: "ACCT-########"}
+  support_engineer:
+    type: PERSON
+    faker: name
+  support_engineer_email:
+    type: EMAIL
+    faker: company_email
+  product_version:
+    type: ID
+    faker: bothify
+    args: {text: "v##.##.###"}
+  last_known_good_version:
+    type: ID
+    faker: bothify
+    args: {text: "v##.##.###"}
+  environment:
+    type: GEO
+    choices:
+      - "prod-us-east-1"
+      - "prod-eu-west-2"
+      - "prod-ap-southeast-1"
+      - "staging-us-west-2"
+      - "prod-us-east-2"
+  primary_host:
+    type: ID
+    faker: bothify
+    args: {text: "ip-###-###-###-###"}
+  incident_start:
+    type: DATE
+    faker: date_this_month
+    format: "%Y-%m-%d %H:%M UTC"
+  detection_time:
+    type: DATE
+    faker: date_this_month
+    format: "%Y-%m-%d %H:%M UTC"
+  error_code:
+    type: ID
+    faker: bothify
+    args: {text: "ERR-####"}
+  business_impact:
+    type: FINANCE
+    choices:
+      - "$240,000"
+      - "$95,000"
+      - "$1,200,000"
+      - "$435,000"
+      - "$72,500"
+  resolution_deadline:
+    type: DATE
+    faker: date_this_month
+    format: "%Y-%m-%d %H:%M UTC"
+  on_call_engineer:
+    type: PERSON
+    faker: name
+  on_call_phone:
+    type: PHONE
+    faker: phone_number
+  pager_handle:
+    type: URL
+    faker: user_name
+
+turns:
+  - role: user
+    text: >-
+      Opening a P0 escalation. Ticket {ticket_id}, customer
+      {customer_company}, primary contact is {customer_contact}. I need
+      to attach the full incident write-up — can you take it and
+      structure it for the on-call thread?
+  - role: assistant
+    text: >-
+      Yes, paste the write-up. I'll preserve the contact block, the
+      environment details, the timeline, the financial impact, and the
+      paging instructions verbatim, then surface the entity references
+      our support team will need for handoff.
+  - role: user
+    text: >-
+      INCIDENT REPORT — {ticket_id} — {customer_company}. CUSTOMER
+      CONTACT BLOCK: primary technical contact is {customer_contact}
+      ({customer_email}, {customer_phone}); billing contact and
+      shipping address of record for any hardware RMAs is
+      {customer_address}. ACCOUNT: {account_id} (enterprise tier, named
+      account). ASSIGNED SUPPORT: {support_engineer}, reachable
+      directly at {support_engineer_email}. SUMMARY: at
+      {incident_start}, {customer_contact} reported that a sustained
+      majority of API traffic into their {environment} deployment was
+      returning {error_code} responses with no error body and no
+      structured client-side trace. Customer-side dashboards confirm
+      that the impact began at {incident_start} and that customer
+      mitigations (regional failover, CDN-level cache warming, retry
+      backoff tuning) had no measurable effect on the {error_code}
+      rate. Initial pageout from our side fired at {detection_time}
+      after the synthetic probe for that region crossed the
+      pre-configured threshold. ENVIRONMENT: {customer_company} is
+      pinned to {product_version}, deployed across the {environment}
+      cluster fronted by host {primary_host}. The last version
+      confirmed healthy under {customer_company}'s production load is
+      {last_known_good_version}, which was the rollout candidate two
+      releases prior to {product_version}. We have not yet confirmed
+      whether the regression bisects to the upgrade window or to a
+      separate configuration drift on {primary_host} itself; the host
+      has not been rebooted within the impact window and is therefore
+      a candidate for an isolation pull. LOGS AND OBSERVABILITY: from
+      {incident_start} forward, the {primary_host} request log shows a
+      steady-state mix of 200 OK responses interleaved with windows of
+      {error_code} that recur every approximately seven to nine
+      seconds and that correlate with garbage collection pauses in the
+      {product_version} runtime. Tracing data from {customer_company}'s
+      side shows that all {error_code} responses originate from a
+      single internal service whose service mesh identity resolves
+      back to a sidecar on {primary_host}; this matches our hypothesis
+      that the failure is host-local rather than fleet-wide. BUSINESS
+      IMPACT: {customer_contact} reports that {customer_company} is
+      currently experiencing a revenue impact estimated at
+      {business_impact} per hour while the {error_code} condition
+      persists. Their executive sponsor has formally requested a
+      remediation plan with a committed resolution by
+      {resolution_deadline}, after which {customer_company} will
+      consider invoking the contractual SLA credit and escalation
+      clause. PAGER AND ON-CALL: the on-call rotation for the
+      {environment} cluster is currently held by {on_call_engineer},
+      who can be paged directly at {on_call_phone} or via the
+      PagerDuty handle {pager_handle}. {support_engineer} will hold
+      the customer-facing comms thread and is the canonical relay for
+      any updates to {customer_contact}. NEXT STEPS REQUESTED: please
+      confirm an ETA for isolation pull of {primary_host}, a fleet-
+      wide audit for any other sidecars exhibiting the same
+      {error_code} signature, and a written postmortem within five
+      business days of resolution. End of report.
+  - role: assistant
+    text: >-
+      Got the full report. I've structured it into the on-call thread
+      with the contact block, environment fingerprint, timeline,
+      impact, and pager assignments split for fast handoff. Want me
+      to push the page to {on_call_engineer} now?
+  - role: user
+    text: >-
+      Yes — page {on_call_engineer} at {on_call_phone}, and copy
+      {support_engineer_email} on the page so {support_engineer} sees
+      the same signal. Reference {ticket_id} and {error_code} in the
+      page body. If {on_call_engineer} doesn't ack within fifteen
+      minutes, escalate to whoever owns the {environment} rotation
+      after them and re-page through {pager_handle}.

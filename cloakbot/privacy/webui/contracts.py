@@ -7,7 +7,11 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from cloakbot.privacy.core.math.math_executor import LocalComputationRecord
 from cloakbot.privacy.core.sanitization.restorer import RestoredTokenAnnotation
+from cloakbot.privacy.core.types import DetectedEntity
+from cloakbot.privacy.tool_models import ToolApprovalStatus
 from cloakbot.privacy.transparency.report import SessionPrivacySnapshot
+from cloakbot.privacy.visual_redaction import VisualPrivacyRedaction
+from cloakbot.tool_privacy import ToolPrivacyClass
 
 WEBUI_PRIVACY_METADATA_KEY = "webuiPrivacy"
 
@@ -16,8 +20,27 @@ class WebUIModel(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
 
+class WebUIAttachment(WebUIModel):
+    """One image attachment sent inline with a user message.
+
+    ``data_url`` is the full ``data:<mime>;base64,<payload>`` form so the
+    visual privacy pipeline can decode it without filesystem access.
+    Frontend keeps the original copy locally — the same data URL is not
+    echoed back from the server, which prevents an accidental round-trip
+    that would defeat the redaction.
+    """
+
+    mime_type: str = Field(alias="mimeType")
+    data_url: str = Field(alias="dataUrl")
+    name: str | None = None
+
+
 class WebUIUserMessage(WebUIModel):
-    content: str
+    type: Literal["message", "tool_approval"] = "message"
+    content: str = ""
+    attachments: list[WebUIAttachment] = Field(default_factory=list)
+    approval_id: str | None = Field(default=None, alias="approvalId")
+    approved: bool = True
 
 
 class WebUIStatusData(BaseModel):
@@ -27,11 +50,85 @@ class WebUIStatusData(BaseModel):
     frontend_built: bool = Field(alias="frontendBuilt")
 
 
+class WebUIToolResult(WebUIModel):
+    tool_call_id: str = Field(alias="toolCallId")
+    tool_name: str = Field(alias="toolName")
+    remote_arguments: dict[str, Any] = Field(alias="remoteArguments")
+    sanitized_output: str = Field(alias="sanitizedOutput")
+    was_sanitized: bool = Field(alias="wasSanitized")
+    visual_redactions: list[VisualPrivacyRedaction] = Field(default_factory=list, alias="visualRedactions")
+
+
+class WebUIToolApproval(WebUIModel):
+    model_config = ConfigDict(extra="ignore", populate_by_name=True)
+
+    approval_id: str = Field(alias="approvalId")
+    tool_call_id: str = Field(alias="toolCallId")
+    tool_name: str = Field(alias="toolName")
+    privacy_class: ToolPrivacyClass = Field(alias="privacyClass")
+    remote_arguments: dict[str, Any] = Field(alias="remoteArguments")
+    restored_arguments: dict[str, Any] = Field(alias="restoredArguments")
+    detected_entities: list[DetectedEntity] = Field(default_factory=list, alias="detectedEntities")
+    status: ToolApprovalStatus
+
+
+class WebUIUserAttachment(WebUIModel):
+    """Per-attachment record returned to the frontend after redaction.
+
+    Both the original and the redacted artifact are echoed back as
+    base64-encoded data URLs. The originals normally live only in the
+    uploading browser tab's memory, but a page reload would otherwise
+    lose the local-vs-remote diff entirely — the vault stores both so
+    the diff stays reconstructible across reloads while honoring
+    CloakBot's "data never leaves localhost" boundary (the vault is
+    local-only).
+
+    ``original_data_url`` and ``redacted_data_url`` are both ``None``
+    when the visual pipeline omitted the image (fail-closed); callers
+    render a placeholder in that case.
+    """
+
+    status: Literal["redacted", "omitted"]
+    original_data_url: str | None = Field(default=None, alias="originalDataUrl")
+    redacted_data_url: str | None = Field(default=None, alias="redactedDataUrl")
+    redaction: VisualPrivacyRedaction | None = None
+    reason: str | None = None
+
+
+class WebUIUserDocument(WebUIModel):
+    """One user-uploaded text document, after chunked PII redaction.
+
+    Text-side sibling of :class:`WebUIUserAttachment`. The original
+    text is echoed back so the WebUI's Local view can show the user
+    exactly what they uploaded, and ``sanitized_text`` is what the
+    LLM actually received. ``chunks_total`` is informational — the
+    WebUI badges the document with the count so a viewer can tell at
+    a glance whether a long upload actually activated the chunker
+    (vs. landed on the single-shot path because it was short).
+    """
+
+    document_name: str | None = Field(default=None, alias="documentName")
+    mime_type: str = Field(alias="mimeType")
+    original_sha256: str = Field(alias="originalSha256")
+    char_count: int = Field(alias="charCount")
+    original_text: str | None = Field(default=None, alias="originalText")
+    sanitized_text: str = Field(alias="sanitizedText")
+    sanitized_preview: str = Field(alias="sanitizedPreview")
+    chunks_total: int = Field(alias="chunksTotal")
+    chunks_failed: bool = Field(alias="chunksFailed")
+    was_sanitized: bool = Field(alias="wasSanitized")
+    entity_types: list[str] = Field(default_factory=list, alias="entityTypes")
+
+
 class WebUIPrivacyTurn(WebUIModel):
     turn_id: str = Field(alias="turnId")
-    intent: Literal["chat", "math", "doc"]
+    intent: Literal["chat", "math"]
     remote_prompt: str = Field(alias="remotePrompt")
     local_computations: list[LocalComputationRecord] = Field(alias="localComputations")
+    tool_results: list[WebUIToolResult] = Field(default_factory=list, alias="toolResults")
+    tool_approvals: list[WebUIToolApproval] = Field(default_factory=list, alias="toolApprovals")
+    user_attachments: list[WebUIUserAttachment] = Field(default_factory=list, alias="userAttachments")
+    user_documents: list[WebUIUserDocument] = Field(default_factory=list, alias="userDocuments")
 
 
 class WebUIPrivacyTimelineEvent(WebUIModel):
@@ -89,6 +186,7 @@ class WebUIAssistantMessageEvent(WebUIModel):
     privacy_annotations: list[RestoredTokenAnnotation] | None = Field(default=None, alias="privacyAnnotations")
     privacy_turn: WebUIPrivacyTurn | None = Field(default=None, alias="privacyTurn")
     privacy_timeline: WebUIPrivacyTimeline | None = Field(default=None, alias="privacyTimeline")
+    tool_approval: WebUIToolApproval | None = Field(default=None, alias="toolApproval")
 
 
 class WebUIAssistantDeltaEvent(WebUIModel):

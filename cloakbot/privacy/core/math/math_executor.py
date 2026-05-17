@@ -51,33 +51,61 @@ def build_math_execution_instruction(sanitized_text: str, session_key: str | Non
 
     lines = [
         "### PRIVACY MODE ENABLED ###",
-        "You are working in a privacy-preserving environment. Follow these rules:",
-        "1. RESTORATION: Tokens like <<FINANCE_1>> will be restored to their original values automatically. Treat them as opaque labels.",
-        "2. COMPUTATION: If you need to show a calculated numeric result, emit a Python snippet block in this exact pattern:",
-        "   '<python_snippet_N>result = FINANCE_1 * 0.1</python_snippet_N>'",
-        "   Replace N with a positive integer such as 1, 2, 3, ...",
-        "3. MULTIPLE CALCULATIONS: If your answer contains multiple independent calculations, emit multiple snippet blocks with increasing indices:",
-        "   '<python_snippet_1>result = ...</python_snippet_1>'",
-        "   '<python_snippet_2>result = ...</python_snippet_2>'",
-        "4. OUTPUT BEHAVIOR: Each snippet block will be executed locally and replaced by its numeric result in the final output.",
-        "5. For any numeric result derived from token values, do not compute or state the number directly in normal prose; emit a python_snippet block instead.",
-        "6. If no calculation is needed, do not emit any python_snippet block.",
-        "7. Token families have different semantics: FINANCE_* are money values, PERCENTAGE_* are percent/share values, AMOUNT_* are counts or non-percentage ratios.",
+        "### MATH CONTRACT ###",
         "",
-        "Rules for python snippets:",
-        "- Use only numeric token variables listed below.",
-        "- ONLY remove angle brackets before using a token as a variable in python snippet: <<FINANCE_1>> -> FINANCE_1.",
-        "- Each snippet must assign the final value to a variable named result.",
-        "- Keep snippets minimal and arithmetic-only.",
-        "- Do not include explanations, markdown, or extra text inside a snippet.",
-        "- Do not nest snippets.",
-        "- If you want to reuse the result of an already generated python snippet, use its CALC_* variable.",
-        "- Do not repeat prior executed snippets unless the user asks to recompute them.",
+        "Tokens like <<FINANCE_1>>, <<PERCENTAGE_1>> are opaque variable names — they will be",
+        "restored to real values locally. Do not try to guess what they represent.",
+        "",
+        "To produce a number from these tokens, EMBED a snippet INLINE in your prose,",
+        "exactly where the number should appear. The snippet executes locally; its formatted",
+        "result replaces the entire tag in the answer the user sees:",
+        "",
+        "    Her new balance is <python_snippet_1>result = FINANCE_1 * (1 + PERCENTAGE_1)</python_snippet_1>.",
+        "",
+        "RULES:",
+        "1. EXACTLY ONE assignment per snippet: `result = <expression>`. No other statements.",
+        "2. Inside the expression, use token names WITHOUT brackets: FINANCE_1, not <<FINANCE_1>>.",
+        "3. To reuse an earlier snippet's result, reference it as CALC_N (N = prior index).",
+        "4. Allowed: + - * / // % ** and functions abs, round, min, max, pow. Nothing else.",
+        "5. PERCENTAGE_* (percent/share) is ALREADY a decimal fraction (0.04 for 4%). Use it",
+        "   as a multiplier directly; do NOT divide by 100.",
+        "6. NEVER write a computed number as bare text in your prose. EVERY numeric value the",
+        "   user sees must come from a snippet — even simple echoes of an earlier CALC.",
+        "7. NEVER stack snippets at the top of the response. Each snippet appears INLINE at",
+        "   the exact position its result is needed in the prose.",
+        "",
+        "EXAMPLE (multi-step, inline):",
+        "  User: What's my new portfolio value, and 4% of it for annual income?",
+        "  You:  Your new portfolio is",
+        "        <python_snippet_1>result = FINANCE_1 * (1 + PERCENTAGE_1)</python_snippet_1>.",
+        "        At a 4% withdrawal rate, that's",
+        "        <python_snippet_2>result = CALC_1 * PERCENTAGE_2</python_snippet_2> per year.",
+        "",
+        "ANTI-PATTERN (the exact failure this contract prevents — DO NOT do this):",
+        "    <python_snippet_1>result = FINANCE_1 * (1 + PERCENTAGE_1)</python_snippet_1>",
+        "    <python_snippet_2>result = CALC_1 * PERCENTAGE_2</python_snippet_2>",
+        "    Her new balance is 909440. At a 4% rate, that's 36377.6 per year.",
+        "  Snippets stacked at the top, then hardcoded numbers in prose. The 909440 and",
+        "  36377.6 in the prose are dead literals — they leak verbatim to the user. EMBED",
+        "  the snippets INLINE inside the prose instead.",
+        "",
+        "TOKEN SEMANTICS:",
+        "  FINANCE_*    monetary amount",
+        "  PERCENTAGE_* percent/share — decimal fraction, use as a multiplier",
+        "  AMOUNT_*     count or non-percentage ratio",
+        "  VALUE_*      generic numeric value (ages, counts, measurements)",
+        "  METRIC_*     measurement (length, weight, etc.)",
+        "  DATE_*       date/time — do NOT use in arithmetic",
+        "  CALC_*       result of a prior snippet in this response",
     ]
 
     if token_names:
-        lines.append("\nAvailable numeric token variables:")
+        lines.append("")
+        lines.append("AVAILABLE TOKENS FOR THIS TURN:")
         lines.extend(_describe_numeric_token(name) for name in token_names)
+
+    lines.append("")
+    lines.append("If no calculation is needed, do not emit any snippet block.")
 
     return "\n".join(lines)
 
@@ -121,7 +149,7 @@ async def apply_privacy_math_for_turn(
         marker_end = marker[1] if marker is not None else match.end()
 
         display_parts.append(response[cursor:match.start()])
-        history_parts.append(response[cursor:match.end()])
+        history_parts.append(response[cursor:match.start()])
 
         try:
             computation, record, is_new = _resolve_or_execute_snippet(
@@ -135,15 +163,22 @@ async def apply_privacy_math_for_turn(
             records.append(record)
             modified_vault = modified_vault or is_new
             display_parts.append(computation.formatted_value)
-            if marker is None or marker_placeholder != computation.placeholder:
-                history_parts.append(_format_calc_marker(snippet_index, computation.placeholder))
-            else:
-                history_parts.append(response[match.end():marker_end])
+            history_parts.append(computation.placeholder)
+            # Propagate the new CALC binding to the local `values` dict so a
+            # later snippet in the SAME response can reference it (e.g. a
+            # snippet that does `result = ... CALC_1 ...` immediately after
+            # the snippet that produced CALC_1). Without this, the AST
+            # validator below would reject CALC_1 as an unknown variable
+            # because the smap update is not visible to the validator's
+            # `allowed_names = set(values.keys())` snapshot taken per snippet.
+            if computation.placeholder:
+                placeholder_match = _PLACEHOLDER_RE.fullmatch(computation.placeholder)
+                if placeholder_match is not None:
+                    values[placeholder_match.group(1)] = float(computation.value)
         except Exception as exc:
             logger.warning("math-executer: snippet {} failed: {}", snippet_index, exc)
             display_parts.append(snippet_content)
-            if marker is not None:
-                history_parts.append(response[match.end():marker_end])
+            history_parts.append(snippet_content)
 
         cursor = marker_end
 
@@ -276,14 +311,6 @@ def _read_existing_calc_marker(
     if match is None or int(match.group(1)) != snippet_index:
         return None
     return match.group(2), match.end()
-
-
-def _format_calc_marker(snippet_index: int, placeholder: str) -> str:
-    variable = placeholder[2:-2]
-    return (
-        f"\n\nLocal calculation result for python_snippet_{snippet_index}: {placeholder}. "
-        f"Use {variable} as the numeric variable for this prior local calculation in future python snippets."
-    )
 
 
 def _clean_output(text: str) -> str:

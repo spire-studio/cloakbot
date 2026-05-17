@@ -8,7 +8,12 @@ from unittest.mock import patch
 import pytest
 
 import cloakbot.privacy.core.state.vault as vault
-from cloakbot.privacy.core.state.vault import _SessionMap
+from cloakbot.privacy.core.state.vault import (
+    _SessionMap,
+    save_artifact_bytes,
+    save_artifact_text,
+    set_vault_workspace,
+)
 
 
 @pytest.fixture()
@@ -158,3 +163,15 @@ def test_replace_known_originals_swaps_existing_aliases_without_new_counters(
     assert modified is True
     assert replaced == "<<PERSON_1>> sent a note to <<PERSON_1>>."
     assert smap.counters == {"PERSON": 1}
+
+
+def test_save_artifact_helpers_write_under_privacy_vault(tmp_path: Path) -> None:
+    set_vault_workspace(tmp_path)
+
+    text_path = save_artifact_text("session:1", "turn-1", "call-1", "sanitized_output.txt", "hello")
+    bytes_path = save_artifact_bytes("session:1", "turn-1", "call-1", "redacted_image.png", b"\x89PNG")
+
+    assert text_path.read_text(encoding="utf-8") == "hello"
+    assert bytes_path.read_bytes() == b"\x89PNG"
+    assert "privacy_vault/artifacts" in text_path.as_posix()
+    assert text_path.parent == bytes_path.parent

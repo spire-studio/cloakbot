@@ -69,7 +69,8 @@
 
   --chat-code-bg: rgba(201, 100, 66, 0.08);
   --chat-code-text: #8f4128;
-  --chat-pre-text: #f5f4ed;
+  --chat-pre-bg: #ece9de;
+  --chat-pre-text: #24231f;
   --chat-user-bubble: color-mix(in oklab, var(--card) 94%, Canvas 6%);
 }
 
@@ -132,6 +133,7 @@
 
   --chat-code-bg: rgba(217, 119, 87, 0.12);
   --chat-code-text: #f1b49f;
+  --chat-pre-bg: #20201f;
   --chat-pre-text: #f5f4ed;
   --chat-user-bubble: color-mix(in oklab, var(--card) 78%, var(--background) 22%);
 }
@@ -179,6 +181,7 @@
   --color-surface-subtle-hover: var(--surface-subtle-hover);
   --color-chat-code-bg: var(--chat-code-bg);
   --color-chat-code-text: var(--chat-code-text);
+  --color-chat-pre-bg: var(--chat-pre-bg);
   --color-chat-pre-text: var(--chat-pre-text);
   --color-chat-user-bubble: var(--chat-user-bubble);
 }
@@ -285,8 +288,7 @@ input[type='reset']:not(:disabled) {
 
 /* Custom Markdown styles for Chat */
 .prose pre {
-  @apply my-4 overflow-x-auto rounded-lg p-4 text-chat-pre-text;
-  background: var(--card);
+  @apply my-4 overflow-x-auto rounded-lg bg-chat-pre-bg p-4 text-chat-pre-text;
 }
 .prose code {
   @apply rounded-sm bg-chat-code-bg px-1.5 py-0.5 text-sm font-mono text-chat-code-text;

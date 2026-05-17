@@ -1,0 +1,100 @@
+id: hr_candidate_intake_v1
+domain: hr
+density: dense
+language: en
+description: >
+  Job candidate calling an HR recruiter to confirm and update application
+  details for a senior engineering role. Five user turns. Tests recall on
+  PERSON (candidate + former colleague + recruiter), ORG (current/prev
+  employer), FINANCE (current salary + expected salary), DATE (employment
+  history), EMAIL, PHONE, ADDRESS, ID (SSN last-4), URL (LinkedIn handle).
+
+slots:
+  candidate:
+    type: PERSON
+    faker: name
+  recruiter:
+    type: PERSON
+    faker: name
+  current_employer:
+    type: ORG
+    faker: company
+  prev_employer:
+    type: ORG
+    faker: company
+  reference_colleague:
+    type: PERSON
+    faker: name
+  phone:
+    type: PHONE
+    faker: phone_number
+  email:
+    type: EMAIL
+    faker: email
+  address:
+    type: ADDRESS
+    faker: address
+  current_salary:
+    type: FINANCE
+    choices:
+      - "$162,000"
+      - "$185,500"
+      - "$210,000"
+      - "$148,750"
+      - "$199,000"
+  expected_salary:
+    type: FINANCE
+    choices:
+      - "$210,000"
+      - "$235,000"
+      - "$260,000"
+      - "$195,000"
+      - "$245,000"
+  start_date:
+    type: DATE
+    faker: date_this_decade
+    format: "%B %Y"
+  prev_end_date:
+    type: DATE
+    faker: date_this_decade
+    format: "%B %Y"
+  ssn_last4:
+    type: ID
+    faker: bothify
+    args: {text: "####"}
+  linkedin:
+    type: URL
+    faker: user_name
+
+turns:
+  - role: user
+    text: >-
+      Hi, this is {candidate} calling about the senior engineering role. I
+      applied last week — phone number is {phone}, email {email}. I think I
+      spoke to {recruiter} originally.
+  - role: assistant
+    text: >-
+      Hi {candidate}, I have your file open. Before we go further can I
+      confirm a couple of things about your current situation?
+  - role: user
+    text: >-
+      Sure. I'm currently at {current_employer}, started there {start_date},
+      and my base is {current_salary}. For this move I'm targeting around
+      {expected_salary}, plus equity.
+  - role: assistant
+    text: >-
+      Thanks for being upfront on the comp. And before {current_employer},
+      where were you?
+  - role: user
+    text: >-
+      I was at {prev_employer} until {prev_end_date}. {reference_colleague}
+      from that team has agreed to be a reference — you can find them on
+      LinkedIn at linkedin.com/in/{linkedin}.
+  - role: assistant
+    text: >-
+      Perfect. The last thing I need is your current address for offer
+      paperwork, and the last four of your SSN to seed the background check.
+  - role: user
+    text: >-
+      Address is {address}. SSN last four is {ssn_last4}. Anything else needed
+      to move me to the next round?

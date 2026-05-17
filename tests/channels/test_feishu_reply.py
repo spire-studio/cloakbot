@@ -1,5 +1,4 @@
 """Tests for Feishu message reply (quote) feature."""
-import asyncio
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -20,7 +19,6 @@ if not FEISHU_AVAILABLE:
 from cloakbot.bus.events import OutboundMessage
 from cloakbot.bus.queue import MessageBus
 from cloakbot.channels.feishu import FeishuChannel, FeishuConfig
-
 
 # ---------------------------------------------------------------------------
 # Helpers

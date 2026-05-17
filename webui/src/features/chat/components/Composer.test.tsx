@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { Composer } from './Composer'
@@ -44,6 +44,68 @@ describe('Composer', () => {
 
     expect(textarea.rows).toBe(1)
     expect(Number.parseFloat(textarea.style.height)).toBeCloseTo(56, 2)
+  })
+
+  it('sends on Enter when not composing text', () => {
+    const onSend = vi.fn()
+
+    render(
+      <Composer
+        input="hello"
+        onInputChange={() => {}}
+        onSend={onSend}
+        isAwaitingAssistant={false}
+      />,
+    )
+
+    fireEvent.keyDown(screen.getByPlaceholderText('Ask Cloakbot anything...'), {
+      key: 'Enter',
+      code: 'Enter',
+    })
+
+    expect(onSend).toHaveBeenCalledOnce()
+  })
+
+  it('does not send on Enter while IME composition is active', () => {
+    const onSend = vi.fn()
+
+    render(
+      <Composer
+        input="ni"
+        onInputChange={() => {}}
+        onSend={onSend}
+        isAwaitingAssistant={false}
+      />,
+    )
+
+    fireEvent.keyDown(screen.getByPlaceholderText('Ask Cloakbot anything...'), {
+      key: 'Enter',
+      code: 'Enter',
+      isComposing: true,
+    })
+
+    expect(onSend).not.toHaveBeenCalled()
+  })
+
+  it('does not send on Enter for IME keyCode 229 events', () => {
+    const onSend = vi.fn()
+
+    render(
+      <Composer
+        input="ni"
+        onInputChange={() => {}}
+        onSend={onSend}
+        isAwaitingAssistant={false}
+      />,
+    )
+
+    fireEvent.keyDown(screen.getByPlaceholderText('Ask Cloakbot anything...'), {
+      key: 'Enter',
+      code: 'Enter',
+      keyCode: 229,
+    })
+
+    expect(onSend).not.toHaveBeenCalled()
   })
 })
 

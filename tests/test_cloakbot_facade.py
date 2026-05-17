@@ -126,8 +126,8 @@ def test_workspace_override(tmp_path):
 
 
 def test_sdk_make_provider_uses_github_copilot_backend():
-    from cloakbot.config.schema import Config
     from cloakbot.cloakbot import _make_provider
+    from cloakbot.config.schema import Config
 
     config = Config.model_validate(
         {
@@ -163,6 +163,7 @@ async def test_run_custom_session_key(tmp_path):
 
 
 def test_import_from_top_level():
-    from cloakbot import Cloakbot as N, RunResult as R
+    from cloakbot import Cloakbot as N
+    from cloakbot import RunResult as R
     assert N is Cloakbot
     assert R is RunResult

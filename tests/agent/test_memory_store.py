@@ -1,8 +1,7 @@
 """Tests for the restructured MemoryStore — pure file I/O layer."""
 
-from datetime import datetime
 import json
-from pathlib import Path
+from datetime import datetime
 
 import pytest
 
@@ -78,6 +77,24 @@ class TestHistoryWithCursor:
         store.append_history("event 2")
         entries = store.read_unprocessed_history(since_cursor=0)
         assert len(entries) == 2
+
+    def test_read_unprocessed_history_skips_non_int_cursor(self, store):
+        """A legacy/seed row with a string cursor must not crash the read."""
+        store.history_file.write_text(
+            '{"cursor": "session-abc", "timestamp": "2026-05-05T09:24Z", "content": "junk"}\n'
+            '{"cursor": 2, "timestamp": "2026-05-05 09:25", "content": "real"}\n',
+            encoding="utf-8",
+        )
+        entries = store.read_unprocessed_history(since_cursor=0)
+        assert [e["cursor"] for e in entries] == [2]
+
+    def test_next_cursor_recovers_when_last_entry_has_non_int_cursor(self, store):
+        """append_history must keep working when the only existing row is malformed."""
+        store.history_file.write_text(
+            '{"cursor": "session-abc", "timestamp": "2026-05-05T09:24Z", "content": "junk"}\n',
+            encoding="utf-8",
+        )
+        assert store.append_history("new event") == 1
 
     def test_compact_history_drops_oldest(self, tmp_path):
         store = MemoryStore(tmp_path, max_history_entries=2)
