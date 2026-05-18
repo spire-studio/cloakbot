@@ -123,11 +123,14 @@ The detector is split into `GeneralPrivacyDetector` (non-computable text spans) 
 |---|:---:|:---:|:---:|
 | Known formats — email, SSN, credit card | ✓ | ✓ | ✓ |
 | Disambiguate `"John"` as a placeholder vs a real customer | ✗ | ✗ | ✓ |
+| Instructional numbers — *"give me 3 bullet points about Q4 earnings"* | tokenizes `3` (breaks the request) | varies by tag set | ✓ kept as task structure |
 | Combination identifiers — *"67-year-old male diabetic in ZIP 90210"* | ✗ | ✗ | ✓ |
+| Cross-turn entity disambiguation — *"someone else surnamed Lin"* ≠ existing `<<PERSON_1>>` Lin Zhiyuan | n/a | n/a | ✓ emits `new`, not the existing placeholder |
+| Indirect identifiers — *"the patient I mentioned earlier"* | ✗ | ✗ | ✓ |
 | User-defined entities — *"also redact our project codename Falcon"* | edit regex | retrain | edit prompt |
 | Domain shift — chat logs vs the news corpora NER was trained on | n/a | recall drops 20–40% | resilient |
 | Multilingual (CN / JP / KR / EN) on one model | one regex set per locale | 600 MB+ per language | one 2B model |
-| Indirect identifiers — *"the patient I mentioned earlier"* | ✗ | ✗ | ✓ |
+| Computable normalization — `$1,200.50` → `1200.5`, `15%` → `0.15` (ready for local math) | string-only | string-only | ✓ typed numeric, executable in `<python_snippet>` |
 
 ### Why the failure modes matter
 
