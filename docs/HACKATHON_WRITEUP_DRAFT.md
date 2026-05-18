@@ -8,13 +8,7 @@
 
 Frontier LLM use is now load-bearing — but the data that crosses the wire is non-revocable. CloakBot moves enforcement **before the wire**: a **local privacy kernel** on Gemma 4 E2B that detects sensitive spans, assigns typed aliases, redacts images, chunks long documents, and restores outputs from a per-session vault. **The remote LLM is interchangeable** — Claude, GPT, and Gemini all accept the sanitised stream unchanged. **Gemma 4 is the trust layer.**
 
-Three end-to-end leak-eval layers — **2,872 entity-test instances** of receipts:
-
-- **A1 text** — 80 sessions × 4 domains × 902 pairs → **7.98% pair leak, 5.88% token leak, 97.14% alias consistency**.
-- **A2 visual** — 10 invoices × 180 PII spans → **1.11% span leak** after redact + re-OCR.
-- **A3 long-document** — 60 sessions × 1,790 pairs → **6.26% pair leak, 93.86% cross-path alias, 0/226 seam leaks** within the 300-char overlap band.
-
-Reproduces from one command.
+Backed by **2,872 entity-test receipts** across three end-to-end leak-eval layers — methodology, per-layer numbers, and self-caught harness bugs in §4 and §5. Reproduces from one command.
 
 ---
 
@@ -52,15 +46,18 @@ Sensitive spans become typed placeholders before the remote LLM sees the request
 
 ## §3 Why Gemma 4 — and not regex or BERT-NER
 
-CloakBot uses regex on the **fast path**: emails, invoice numbers, transaction IDs, local file paths — hand-rolled in `privacy/core/detection/` and `visual_redaction.py`. We keep that. What regex and BERT-NER (Presidio, spaCy) *cannot* do is the other 80% of real leakage in chat:
+CloakBot uses regex on the **fast path**: emails, invoice numbers, transaction IDs, file paths — hand-rolled in `privacy/core/detection/`. We keep that. What regex and BERT-NER *cannot* do is the other 80%:
 
 | Failure mode | Regex | BERT-NER | Gemma 4 E2B |
 |---|:---:|:---:|:---:|
 | Known formats (email, SSN, card) | ✓ | ✓ | ✓ |
 | Disambiguate "John" placeholder vs real customer | ✗ | ✗ | ✓ |
+| Instructional numbers (`give me 3 bullet points`) | tokenizes `3` | varies | kept as task structure |
 | Combination identifiers (ZIP + age + diagnosis) | ✗ | ✗ | ✓ |
+| Cross-turn dedupe (`someone else surnamed Lin` ≠ PERSON_1) | n/a | n/a | emits `new`, not the placeholder |
 | Add a new entity (`codename Falcon`) | edit regex | retrain | edit prompt |
 | Multilingual (CN/JP/KR) on one model | ✗ | 600 MB+/locale | ✓ |
+| Computable normalization (`$1,200.50` → `1200.5`, `15%` → `0.15`) | string-only | string-only | typed numeric, runs in `<python_snippet>` |
 
 A *PII proxy that catches the easy stuff* is **worse than no proxy**, because users trust it. Pre-wire enforcement reasons about context, not patterns. Gemma 4 E2B is the only redistributable model that fits on David's MacBook *and* answers *"should this token be redacted **in this conversation**?"* — ~5 GB, JSON-at-T=0, native vision, Gemma license.
 
