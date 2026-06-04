@@ -370,11 +370,37 @@ class _SessionMap(BaseModel):
 #                      because the ephemeral map starts empty (cross-scope
 #                      restore = no-op).
 #
-# NOTE (plan critique correction): ``spawn.py`` already constructs its OWN
-# ``session_key`` (``spawn_session_key`` ContextVar, defaulting ``cli:direct``),
-# so a spawned subagent does not flatly reuse the parent vault file. The real
-# bleed risks Cap B closes are the paths that key off the *parent* session_key:
-# ``/goal`` (long_task), ``dream``, ``cron``, and ``pairing``.
+# AT-REST COVERAGE (exactly which run paths get an ephemeral scope, verified
+# against the call sites — keep this list honest):
+#   * ``dream``     — ``cli/commands.py`` ``on_cron_job`` dispatches the dream
+#                     consolidation with ``process_direct(..., ephemeral=True)``;
+#                     no ``maps/dream*.json`` is written.
+#   * ``cron``      — the generic cron reminder dispatch
+#                     (``process_direct(session_key="cron:{job.id}",
+#                     ephemeral=True)``) runs in an ephemeral scope; no
+#                     ``maps/cron_<id>.json`` is written.
+#   * ``heartbeat`` — the heartbeat job (``session_key="heartbeat"``,
+#                     ``ephemeral=True``) runs in an ephemeral scope; no
+#                     ``maps/heartbeat.json`` is written. (Heartbeat is a
+#                     fork-era feature; the call is kept ephemeral, not removed.)
+#
+# Each of the above is plumbed through ``AgentLoop._process_message``: when
+# ``ephemeral=True`` it wraps the turn state machine in ``use_ephemeral_scope``.
+#
+# NOT routed through an ephemeral scope (by design, not a gap):
+#   * ``/goal`` (``long_task``) — runs inside the *parent* user turn against the
+#     shared vault; its persisted objective is placeholdered at rest by the Cap C
+#     ``goal_at_rest`` sanitizer rather than isolated to a throwaway scope.
+#   * ``spawn`` — constructs its OWN ``session_key`` (``spawn_session_key``
+#     ContextVar, defaulting ``cli:direct``), so a spawned subagent never flatly
+#     reuses the parent vault file.
+#   * ``pairing`` — ``pairing/store.py`` is a synchronous command handler; it
+#     never calls ``process_direct`` and never opens a session-key vault run, so
+#     there is no placeholder map to isolate.
+#
+# The fixed-key provider seams (image-gen ``"image_gen"``, compaction
+# ``"compaction"``) are *also* routed into the active ephemeral scope when the
+# parent run is ephemeral — see ``active_ephemeral_run_key`` below.
 # ---------------------------------------------------------------------------
 
 Isolation = Literal["shared", "ephemeral"]
@@ -451,6 +477,33 @@ def _routes() -> dict[str, VaultScope]:
     return table
 
 
+def _active_ephemeral_runs() -> list[VaultScope]:
+    """Stack of ephemeral *run* scopes active on this thread (innermost last).
+
+    Distinct from the per-key ``_routes`` table: this records that an autonomous
+    run (dream / cron / heartbeat) is in progress so the fixed-key provider seams
+    (image-gen / compaction) — which address a DIFFERENT key than the run's
+    ``root_session_key`` and so are not covered by the run's route — can opt into
+    the same ephemeral isolation instead of writing ``maps/image_gen.json`` /
+    ``maps/compaction.json`` to disk.
+    """
+    stack = getattr(_scope_routes, "ephemeral_runs", None)
+    if stack is None:
+        stack = []
+        _scope_routes.ephemeral_runs = stack
+    return stack
+
+
+def active_ephemeral_run_key() -> str | None:
+    """Return the innermost active ephemeral run's ``root_session_key``, if any.
+
+    ``None`` when the current thread is running a normal (persistent) turn. Used
+    by the fixed-key seams to decide whether to route through an ephemeral scope.
+    """
+    stack = _active_ephemeral_runs()
+    return stack[-1].root_session_key if stack else None
+
+
 def resolve_scope(session_key: str) -> VaultScope:
     """Return the active scope a bare ``session_key`` currently addresses."""
     return _routes().get(session_key, shared_scope(session_key))
@@ -500,12 +553,50 @@ def use_ephemeral_scope(
     routes = _routes()
     prior = routes.get(root_session_key)
     register_scope(scope)
+    runs = _active_ephemeral_runs()
+    runs.append(scope)
     try:
         yield scope
     finally:
+        if runs and runs[-1] is scope:
+            runs.pop()
+        else:  # defensive: remove by identity if nesting got out of order
+            with contextlib.suppress(ValueError):
+                runs.remove(scope)
         drop_scope(scope)
         if prior is not None:
             routes[root_session_key] = prior
+
+
+@contextlib.contextmanager
+def route_fixed_key_through_active_run(fixed_key: str) -> Iterator[VaultScope]:
+    """Route a fixed-key provider seam through the active ephemeral run, if any.
+
+    The image-gen (``"image_gen"``) and compaction (``"compaction"``) seams use a
+    stable shared key that is *not* the active run's ``root_session_key``, so an
+    ephemeral run's route does not cover them. Without this, an image generated
+    (or a compaction triggered) inside a dream/cron/heartbeat run would mint a
+    placeholder map at ``maps/{fixed_key}.json`` on disk — outside the run's
+    ephemeral scope (M3).
+
+    When an ephemeral run is active on this thread, this wraps *fixed_key* in its
+    own memory-only ephemeral scope (namespaced under the active run) for the
+    duration of the ``with`` block, so its mappings live only in memory and are
+    dropped at block exit. When no ephemeral run is active it is a no-op: the
+    fixed key keeps its normal shared (disk-backed) scope, preserving the exact
+    pre-Cap-B behavior for ordinary user turns.
+    """
+    run_key = active_ephemeral_run_key()
+    if run_key is None:
+        # Normal persistent turn: leave the fixed key on its shared scope.
+        yield resolve_scope(fixed_key)
+        return
+    with use_ephemeral_scope(
+        fixed_key,
+        scope_kind="run-fixed",
+        scope_id=run_key,
+    ) as scope:
+        yield scope
 
 
 def set_vault_workspace(workspace: str | Path) -> None:

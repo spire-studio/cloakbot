@@ -238,3 +238,111 @@ async def test_ephemeral_run_vault_never_lands_on_disk(tmp_path) -> None:
     on_disk = sorted(p.name for p in maps_dir.iterdir()) if maps_dir.exists() else []
     assert on_disk == [], f"ephemeral run leaked a vault file to disk: {on_disk}"
     assert vault._ephemeral_cache == {}, "ephemeral scope was not dropped at run end"
+
+
+@pytest.mark.asyncio
+async def test_cron_keyed_ephemeral_run_writes_no_cron_map(tmp_path) -> None:
+    """[Cap B / H1] A cron-keyed (``cron:{job.id}``) ephemeral run must NOT
+    persist a placeholder map to privacy_vault/maps/cron_<id>.json.
+
+    The cron reminder dispatch (cli/commands.py ``on_cron_job``) passes
+    ``ephemeral=True``; this proves the loop side of that contract: the
+    cron-keyed run mints placeholders in memory only and leaves no
+    ``cron_<id>.json`` on disk.
+    """
+    import cloakbot.privacy.core.state.vault as vault
+
+    captured_messages: list[list[dict]] = []
+
+    async def chat_with_retry(*, messages, **kwargs):
+        captured_messages.append(messages)
+        return LLMResponse(content="Reminder for <<PERSON_1>>.", tool_calls=[])
+
+    provider = MagicMock()
+    provider.get_default_model.return_value = "test-model"
+    provider.generation = SimpleNamespace(max_tokens=4096, temperature=0.1, reasoning_effort=None)
+    provider.estimate_prompt_tokens.return_value = (10_000, "test")
+    provider.chat_with_retry = chat_with_retry
+
+    loop = make_loop(tmp_path, provider=provider)
+    maps_dir = tmp_path / "privacy_vault" / "maps"
+
+    detection = DetectionResult(
+        original_prompt="remind Dana Scully",
+        entities=[GeneralEntity(text="Dana Scully", entity_type="person")],
+        llm_raw_output="",
+        latency_ms=1.0,
+    )
+
+    with patch(
+        "cloakbot.privacy.runtime.pipeline.sanitize_input_with_detection",
+        new=AsyncMock(
+            return_value=("remind <<PERSON_1>>", True, detection.sensitive_entities, detection)
+        ),
+    ), patch(
+        "cloakbot.privacy.runtime.pipeline.analyze_user_intent",
+        new=AsyncMock(return_value=Intent.CHAT),
+    ):
+        msg = InboundMessage(
+            channel="cli",
+            sender_id="cron",
+            chat_id="direct",
+            content="remind Dana Scully",
+        )
+        await loop._process_message(msg, session_key="cron:job-7", ephemeral=True)
+
+    payload = repr(captured_messages)
+    assert "Dana Scully" not in payload, "RAW PII reached the provider in a cron run"
+    assert "<<PERSON_1>>" in payload
+
+    on_disk = sorted(p.name for p in maps_dir.iterdir()) if maps_dir.exists() else []
+    assert "cron_job-7.json" not in on_disk, "cron run persisted a placeholder map to disk"
+    assert on_disk == [], f"cron ephemeral run leaked a vault file to disk: {on_disk}"
+    assert vault._ephemeral_cache == {}
+
+
+def test_cron_and_heartbeat_dispatch_pass_ephemeral_true() -> None:
+    """[Cap B / H1] Static guard: the cron reminder and heartbeat ``process_direct``
+    call sites in ``on_cron_job`` pass ``ephemeral=True``.
+
+    This is the exact gap the review found: without the flag, those autonomous
+    runs would persist placeholder->original maps to disk
+    (maps/cron_<id>.json / maps/heartbeat.json). Parsing the call AST makes the
+    contract regression-proof without standing up the whole gateway closure.
+    """
+    import ast
+    import inspect
+
+    from cloakbot.cli import commands
+
+    source = inspect.getsource(commands._run_gateway)
+    tree = ast.parse(source)
+
+    ephemeral_session_keys: set[str] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        if not (isinstance(func, ast.Attribute) and func.attr == "process_direct"):
+            continue
+        kwargs = {kw.arg: kw.value for kw in node.keywords if kw.arg}
+        session_key = kwargs.get("session_key")
+        ephemeral = kwargs.get("ephemeral")
+        is_ephemeral = isinstance(ephemeral, ast.Constant) and ephemeral.value is True
+        # Record the session_key shape for every process_direct that is ephemeral.
+        if is_ephemeral and session_key is not None:
+            if isinstance(session_key, ast.Constant):
+                ephemeral_session_keys.add(str(session_key.value))
+            elif isinstance(session_key, ast.JoinedStr):
+                # f-string like f"cron:{job.id}" -> record its literal prefix.
+                literal = "".join(
+                    part.value for part in session_key.values if isinstance(part, ast.Constant)
+                )
+                ephemeral_session_keys.add(literal)
+
+    assert "heartbeat" in ephemeral_session_keys, (
+        "heartbeat process_direct must pass ephemeral=True"
+    )
+    assert any(k.startswith("cron:") for k in ephemeral_session_keys), (
+        "cron reminder process_direct must pass ephemeral=True"
+    )

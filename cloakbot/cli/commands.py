@@ -1061,6 +1061,10 @@ def _run_gateway(
                     channel=channel,
                     chat_id=chat_id,
                     on_progress=_silent,
+                    # [Cap B] Autonomous run: memory-only ephemeral vault scope so
+                    # any minted placeholder map never lands on disk under
+                    # maps/heartbeat.json.
+                    ephemeral=True,
                 )
             finally:
                 if isinstance(message_tool, MessageTool) and suppress_token is not None:
@@ -1114,6 +1118,10 @@ def _run_gateway(
                 channel=job.payload.channel or "cli",
                 chat_id=job.payload.to or "direct",
                 on_progress=_silent,
+                # [Cap B] Cron-triggered autonomous run: the placeholder map for
+                # this reminder turn lives only in a memory-only ephemeral scope
+                # and is dropped at run end, never written to maps/cron_<id>.json.
+                ephemeral=True,
             )
         finally:
             if isinstance(cron_tool, CronTool) and cron_token is not None:
