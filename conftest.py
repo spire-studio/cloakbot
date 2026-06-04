@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 from unittest.mock import patch
@@ -9,6 +10,13 @@ import pytest
 ROOT = Path(__file__).resolve().parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+
+# Neutralize the developer's global git config (e.g. commit.gpgsign + an SSH
+# signing key driven by 1Password) so dulwich-backed GitStore tests don't try to
+# sign commits in the sandbox. Harmless in CI (no global config there).
+os.environ.setdefault("GIT_CONFIG_GLOBAL", os.devnull)
+os.environ.setdefault("GIT_CONFIG_SYSTEM", os.devnull)
+os.environ["GIT_CONFIG_NOSYSTEM"] = "1"
 
 
 @pytest.fixture(autouse=True)

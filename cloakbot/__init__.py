@@ -30,6 +30,7 @@ __logo__ = "🐈"
 
 _LAZY_EXPORTS = {
     "Nanobot": ".cloakbot",
+    "Cloakbot": ".cloakbot",
     "RunResult": ".cloakbot",
 }
 
@@ -45,4 +46,4 @@ def __getattr__(name: str):
     return val
 
 
-__all__ = ["Nanobot", "RunResult"]
+__all__ = ["Cloakbot", "Nanobot", "RunResult"]

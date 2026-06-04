@@ -102,3 +102,9 @@ class Nanobot:
         )
 
 
+# CloakBot fork name for the high-level facade; ``Nanobot`` kept as an alias for
+# upstream compatibility (the lazy export in ``cloakbot/__init__.py`` and the
+# upstream facade test both reference ``Nanobot``).
+Cloakbot = Nanobot
+
+
