@@ -8,13 +8,14 @@ import os
 from contextlib import suppress
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Protocol
 
 from loguru import logger
 
 from cloakbot.agent.hook import AgentHook, AgentHookContext
 from cloakbot.agent.tools.registry import ToolRegistry
 from cloakbot.providers.base import LLMProvider, LLMResponse, ToolCallRequest
+from cloakbot.privacy.tool_models import ToolApprovalRequiredError, ToolPrivacyClass
 from cloakbot.utils.file_edit_events import (
     StreamingFileEditTracker,
     build_file_edit_end_event,
@@ -78,6 +79,34 @@ _BACKFILL_CONTENT = "[Tool result unavailable — call was interrupted or lost]"
 prepare_file_edit_tracker = _prepare_file_edit_tracker
 
 
+class ToolPrivacyInterceptorProtocol(Protocol):
+    """Privacy seam: restore tool inputs locally, sanitize tool outputs.
+
+    Owned by ``cloakbot/privacy/runtime/tool_interceptor.py``; the runner only
+    sees this structural Protocol so core stays privacy-agnostic except here.
+    """
+
+    async def prepare_tool_call(
+        self,
+        tool_call: ToolCallRequest,
+        *,
+        privacy_class: ToolPrivacyClass,
+    ) -> ToolCallRequest:
+        ...
+
+    async def sanitize_tool_result(
+        self,
+        tool_call: ToolCallRequest,
+        result: Any,
+        *,
+        privacy_class: ToolPrivacyClass,
+    ) -> Any:
+        ...
+
+    def take_follow_up_messages(self, tool_call_id: str) -> list[dict[str, Any]]:
+        ...
+
+
 @dataclass(slots=True)
 class AgentRunSpec:
     """Configuration for a single agent execution."""
@@ -108,6 +137,7 @@ class AgentRunSpec:
     llm_timeout_s: float | None = None
     goal_active_predicate: Callable[[], bool] | None = None
     goal_continue_message: str | None = None
+    tool_privacy_interceptor: ToolPrivacyInterceptorProtocol | None = None
 
 
 @dataclass(slots=True)
@@ -835,6 +865,18 @@ class AgentRunner:
                 fatal_error = error
         return results, events, fatal_error
 
+    @staticmethod
+    def _tool_privacy_class(spec: AgentRunSpec, tool_name: str) -> ToolPrivacyClass:
+        get_tool = getattr(spec.tools, "get", None)
+        tool = get_tool(tool_name) if callable(get_tool) else None
+        privacy_class = getattr(tool, "privacy_class", ToolPrivacyClass.LOCAL)
+        if isinstance(privacy_class, ToolPrivacyClass):
+            return privacy_class
+        try:
+            return ToolPrivacyClass(str(privacy_class))
+        except ValueError:
+            return ToolPrivacyClass.LOCAL
+
     async def _run_tool(
         self,
         spec: AgentRunSpec,
@@ -843,6 +885,27 @@ class AgentRunner:
         workspace_violation_counts: dict[str, int],
     ) -> tuple[Any, dict[str, str], BaseException | None]:
         hint = "\n\n[Analyze the error above and try a different approach.]"
+        # --- [seam:5] privacy: restore tool arguments locally before execution ---
+        privacy_class = self._tool_privacy_class(spec, tool_call.name)
+        if spec.tool_privacy_interceptor is not None:
+            try:
+                tool_call = await spec.tool_privacy_interceptor.prepare_tool_call(
+                    tool_call,
+                    privacy_class=privacy_class,
+                )
+            except ToolApprovalRequiredError:
+                raise
+            except Exception as exc:
+                event = {
+                    "name": tool_call.name,
+                    "status": "error",
+                    "detail": "tool input privacy restoration failed",
+                }
+                error = f"Error: Tool input privacy restoration failed: {type(exc).__name__}"
+                if spec.fail_on_tool_error:
+                    return error, event, exc
+                return error + hint, event, None
+            privacy_class = self._tool_privacy_class(spec, tool_call.name)
         lookup_error = repeated_external_lookup_error(
             tool_call.name,
             tool_call.arguments,
@@ -941,6 +1004,25 @@ class AgentRunner:
             if spec.fail_on_tool_error:
                 return payload, event, exc
             return payload, event, None
+
+        # --- [seam:5] privacy: sanitize tool output before the model reuses it ---
+        if spec.tool_privacy_interceptor is not None:
+            try:
+                result = await spec.tool_privacy_interceptor.sanitize_tool_result(
+                    tool_call,
+                    result,
+                    privacy_class=privacy_class,
+                )
+            except Exception as exc:
+                event = {
+                    "name": tool_call.name,
+                    "status": "error",
+                    "detail": "tool output privacy sanitization failed",
+                }
+                error = f"Error: Tool output privacy sanitization failed: {type(exc).__name__}"
+                if spec.fail_on_tool_error:
+                    return error, event, exc
+                return error + hint, event, None
 
         if isinstance(result, str) and result.startswith("Error"):
             if file_edit_trackers and progress_callback is not None:
