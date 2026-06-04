@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Community scaffolding: Code of Conduct, pull request and issue templates,
   `CODEOWNERS`, and a tag-driven release workflow.
+- Label taxonomy as code (`.github/labels.yml`) with a sync workflow, plus
+  path-based auto-labeling of PRs (`area: *`) via `.github/labeler.yml`.
 
 ### Changed
 - CI: heavy optional-integration checks now run on a daily schedule and on manual

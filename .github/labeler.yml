@@ -1,0 +1,71 @@
+# Path-based auto-labeling for pull requests (actions/labeler v5 format).
+# Applied by .github/workflows/pr-labeler.yml.
+
+"area: privacy":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "cloakbot/privacy/**"
+          - "cloakbot/tool_privacy.py"
+          - "docs/domains/privacy.md"
+
+"area: security":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "cloakbot/security/**"
+          - "SECURITY.md"
+          - "docs/SECURITY.md"
+
+"area: channels":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "cloakbot/channels/**"
+
+"area: providers":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "cloakbot/providers/**"
+
+"area: agent":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "cloakbot/agent/**"
+          - "cloakbot/session/**"
+          - "cloakbot/bus/**"
+
+"area: cli":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "cloakbot/cli/**"
+          - "cloakbot/command/**"
+
+"area: api":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "cloakbot/api/**"
+
+"area: webui":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "webui/**"
+
+"area: bridge":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "bridge/**"
+
+"area: docs":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "docs/**"
+          - "**/*.md"
+
+"area: build":
+  - changed-files:
+      - any-glob-to-any-file:
+          - ".github/**"
+          - "Dockerfile"
+          - "docker-compose.yml"
+          - ".dockerignore"
+          - "entrypoint.sh"
+          - "pyproject.toml"
+          - "scripts/**"
