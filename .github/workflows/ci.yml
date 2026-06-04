@@ -5,9 +5,13 @@ env:
 
 on:
   push:
-    branches: [ main, nightly ]
+    branches: [ main ]
   pull_request:
-    branches: [ main, nightly ]
+    branches: [ main ]
+  schedule:
+    # Heavy optional-integration checks run once a day on the default branch,
+    # not on every PR. See the optional-integrations job below.
+    - cron: '0 3 * * *'
   workflow_dispatch:
 
 jobs:
@@ -40,7 +44,9 @@ jobs:
         run: uv run pytest -m "not integration" tests/
 
   optional-integrations:
-    if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/nightly' || github.base_ref == 'nightly'
+    # Slow/heavy extras (matrix E2E, full vLLM stack). Runs on the daily schedule
+    # and on manual dispatch only — never blocks a regular PR.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
 
     steps:

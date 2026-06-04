@@ -1,0 +1,24 @@
+name: Label sync
+
+# Keep repository labels in sync with .github/labels.yml.
+# Runs when the label file changes on main, or on manual dispatch.
+
+on:
+  push:
+    branches: [ main ]
+    paths: [ '.github/labels.yml' ]
+  workflow_dispatch:
+
+permissions:
+  issues: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: EndBug/label-sync@v2
+        with:
+          config-file: .github/labels.yml
+          # NEVER delete labels missing from the config file.
+          delete-other-labels: false

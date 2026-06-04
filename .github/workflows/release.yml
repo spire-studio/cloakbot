@@ -1,0 +1,57 @@
+name: Release
+
+# Cut a release by pushing a SemVer tag from main:
+#   git tag v0.2.0 && git push origin v0.2.0
+# The tag should match the version in pyproject.toml.
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Verify tag matches pyproject version
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          PROJECT="$(uv version --short 2>/dev/null || grep -m1 '^version' pyproject.toml | sed -E 's/.*"([^"]+)".*/\1/')"
+          echo "tag=$TAG project=$PROJECT"
+          if [ "$TAG" != "$PROJECT" ]; then
+            echo "::error::Tag v$TAG does not match pyproject.toml version $PROJECT"
+            exit 1
+          fi
+
+      - name: Build sdist and wheel
+        run: uv build
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: dist/*
+
+  # Optional: publish to PyPI via Trusted Publishing (no API token needed).
+  # Enable after configuring the trusted publisher at https://pypi.org/manage/account/publishing/
+  # and creating a "pypi" environment in repo settings.
+  #
+  # publish-pypi:
+  #   needs: build-and-release
+  #   runs-on: ubuntu-latest
+  #   environment: pypi
+  #   permissions:
+  #     id-token: write
+  #   steps:
+  #     - uses: actions/checkout@v5
+  #     - uses: astral-sh/setup-uv@v7
+  #     - run: uv build
+  #     - run: uv publish

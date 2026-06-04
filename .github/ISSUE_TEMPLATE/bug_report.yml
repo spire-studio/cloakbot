@@ -1,0 +1,63 @@
+name: Bug report
+description: Report something that is broken or behaving unexpectedly
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug.
+
+        ⚠️ **Do not report security vulnerabilities here.** See
+        [SECURITY.md](https://github.com/spire-studio/cloakbot/blob/main/SECURITY.md)
+        and use a private advisory instead.
+
+        ⚠️ **Do not paste real secrets, API keys, or sensitive personal data.**
+        Redact logs before posting.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of the bug and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Configure '...'
+        2. Run '...'
+        3. See error
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs / output
+      description: Paste any relevant log output (redacted).
+      render: shell
+  - type: input
+    id: version
+    attributes:
+      label: Cloakbot version
+      description: Output of `cloakbot --version`, or the git commit you are on.
+    validations:
+      required: true
+  - type: dropdown
+    id: provider
+    attributes:
+      label: Inference backend
+      options:
+        - Ollama (local)
+        - vLLM (local)
+        - Remote provider (OpenAI / Anthropic / etc.)
+        - Not relevant
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: OS / environment
+      placeholder: "e.g. macOS 15.5, Ubuntu 24.04, Docker"
+    validations:
+      required: true
