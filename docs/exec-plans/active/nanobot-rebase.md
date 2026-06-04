@@ -11,18 +11,23 @@ egress, webui side-channel) so the previously-gated features become safe to ship
 
 ## Status
 
-- Created: 2026-06-04. State: **W0 in progress** on branch `rebase/v0.2.1`
+- Created: 2026-06-04. State: **W0 done; W1 in progress** on branch `rebase/v0.2.1`
   (`main` untouched; snapshot tag `pre-rebase-snapshot`; `upstream` remote added).
-  - Done: tree lay-down committed `58dba2b` — upstream `nanobot@87bd564` laid down
-    (renamed `nanobot`→`cloakbot`, attribution URLs preserved), Workbench `webui/`
-    adopted, upstream core tests overlaid, privacy package (48 modules) +
-    `tool_privacy.py` + `providers/vllm.py` restored, `tests/{privacy,eval,sanitizer}`
-    kept. Package is syntactically valid (`compileall`). 204 `cloakbot/*.py`.
-  - Next (W0 exit gate): merge `pyproject.toml` deps (upstream runtime deps + our
-    privacy deps + cloakbot metadata), `uv sync`, runtime `import cloakbot`, apply the
-    S-cost seams (1,4,6,8,10,11,12), green non-integration suite at parity.
-  - Then W1: the High-risk seam re-architecture (PrivacyHook over upstream's
-    `_state_*` state machine + tool-IO interceptor over `_run_tool`).
+  - W0 done: tree lay-down `58dba2b` (upstream `nanobot@87bd564`, renamed, attribution
+    URLs preserved, Workbench `webui/` adopted, privacy package restored). Deps merged
+    `39cb6e8` (upstream runtime deps + our privacy deps + cloakbot metadata); `uv sync`
+    clean. **`import cloakbot` + CLI + new subsystems (`apps`/`pairing`/`autocompact`/
+    `fallback_provider`/`signal`) all green at upstream parity.**
+  - W1a done `f994da6`: privacy package imports clean on the rebased core — only 1 of 4
+    core helpers was missing (`get_privacy_vault_dir`, re-homed into `vault.py`;
+    `ToolCallRequest`/`detect_image_mime`/`stringify_text_blocks` already exist upstream).
+    **103 privacy-core + sanitizer tests pass** (detection/sanitization/vault/math intact).
+  - Next — W1b (the structural seams, High-risk): the privacy package works in isolation
+    but is NOT yet wired into the live path. Register `PrivacyHook` over upstream's
+    `agent/loop.py` `_state_*` machine (sanitize user turn pre-build, restore post-LLM);
+    bracket `agent/runner.py` `_run_tool` with the tool-IO interceptor; `set_vault_workspace`
+    bind; then Cap B scoped vaults + Cap C egress policy. Gate: `tests/privacy/runtime` +
+    `tests/agent` + A1 leak-eval at/below baseline. **Privacy enforcement is OFF until W1b lands.**
 - Upstream baseline: nanobot `v0.2.1` (2026-06-01), tracked at `main`.
 - Fork point: nanobot `v0.1.x`. Drift ≈ one minor release + ongoing fixes.
 - Companion analysis (not checked in): two design workflows produced the seam map,
