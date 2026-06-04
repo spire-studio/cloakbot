@@ -1,7 +1,7 @@
 # Harness Engineering Reference
 
 Source: OpenAI, "Harness engineering: leveraging Codex in an agent-first world",
-published February 11, 2026.
+by Ryan Lopopolo (Member of the Technical Staff), published May 27, 2026.
 
 URL: https://openai.com/index/harness-engineering/
 
@@ -24,8 +24,9 @@ URL: https://openai.com/index/harness-engineering/
 - Root `AGENTS.md` now points to `docs/` instead of carrying all guidance inline.
 - Privacy domain knowledge is split into `docs/domains/privacy.md`.
 - Execution plans and debt tracking live under `docs/exec-plans/`.
-- Quality, reliability, and security expectations are separate, discoverable
-  documents.
+- Security expectations are captured in a discoverable document
+  (`docs/SECURITY.md`). Quality and reliability expectations are not yet split
+  into their own documents.
 
 ## Not Adopted Yet
 

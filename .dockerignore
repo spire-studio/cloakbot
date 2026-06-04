@@ -1,13 +1,19 @@
+# .dockerignore — paths excluded from the Docker build context.
+# Mirrors .gitignore for image builds; keep it lean so builds stay fast.
+
+# ── Python artifacts ────────────────────────────────────────────────────────
 __pycache__
-*.pyc
-*.pyo
-*.pyd
+*.py[cod]
 *.egg-info
 dist/
 build/
+
+# ── VCS, secrets & local scratch ────────────────────────────────────────────
 .git
 .env
 .assets
+workspace/
+
+# ── Node (WhatsApp bridge) ──────────────────────────────────────────────────
 node_modules/
 bridge/dist/
-workspace/

@@ -1,0 +1,3 @@
+# In-progress execution plans live here (see ../README.md).
+# Tracked so the layout documented in AGENTS.md and exec-plans/README.md resolves
+# even when no plan is active. Delete this file once a real plan is committed.
