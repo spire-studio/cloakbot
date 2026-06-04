@@ -193,7 +193,7 @@ loop `TurnContext`; carry it as hook-private state.
 | **C** | Explicit EgressPolicy + provider egress gate + at-rest `goal_state` sanitizer | `_tool_privacy_class` fall-through; wrap `FallbackProvider`; goal metadata | unregistered network-shaped tool → safe default + approval; non-allow-listed fallback never sees raw value; `/goal` objective persists placeholdered |
 | **D** | **DONE** — Placeholder-stable compaction (`validate_placeholders`) | additive `CompactionGuardedProvider` around the consolidator provider (no fork of `memory.py`/`autocompact.py`) | stubbed summarizer that drops/renumbers/emits-raw → rejected/repaired; counters never rewound |
 | **E** | **DONE** — Multimodal egress gate for image-gen (`visual_egress_gate.py`) | thin wrapper at provider-factory time (`ImageGenerationTool._provider_client`) | reference image redacted + prompt placeholdered before bytes leave; fail-closed omits image |
-| **F** | Privacy event side-channel (webui) + **localhost gate** | `_agent_ui.privacy` blob + `privacy_trace` event + additive `ws_http` route | round-trip re-validates; upstream client ignores privacy frames; **non-localhost client receives zero raw values** (blocking invariant) |
+| **F** | **DONE** — Privacy event side-channel (webui) + **localhost gate** (`webui/side_channel.py` + `channels/websocket_privacy.py` + `webui/privacy_routes.py`) | `_agent_ui.privacy` blob + `privacy_snapshot`/`privacy_trace`/`tool_approval` frames + additive `ws_http` route | round-trip re-validates; upstream client ignores privacy frames; **non-localhost client receives zero raw values** (blocking invariant) |
 
 ## WebUI Plan (summary)
 
@@ -293,19 +293,46 @@ package imports clean.
 
 ### W2 — WebUI parity + privacy side-channel — `[BLOCKED-until W1 / Cap B]`
 
-1. Seam 7 / Cap F backend: re-home onto `channels/websocket.py`
-   (`_agent_ui.privacy` + `privacy_trace`) + `webui/ws_http.py` additive routes +
-   inbound `tool_approval` envelope; discard `channels/webui.py` → verify: round-trip
-   + additive-ignore + rehydration + approval-inbound tests.
-2. **Blocking invariant:** localhost gate + redacted projection for non-localhost
-   connections (snapshot, HTTP route, approval) → verify: *non-localhost client
-   receives zero raw values* test.
-3. Move outbound token restoration into upstream outbound path (restore-local-only).
-4. Cap F frontend: adopt Workbench; build the 5 overlay attach points → verify:
-   `cd webui && npm run lint && npm run test && npm run build`.
+1. **Cap F backend DONE** [seam:7] — re-homed onto `channels/websocket.py` via
+   `PrivacyWebSocketChannel(WebSocketChannel)` in
+   `cloakbot/channels/websocket_privacy.py`: at send time it reads
+   `metadata[WEBUI_PRIVACY_METADATA_KEY]` and (a) folds the gated payload under
+   `metadata["_agent_ui"]["privacy"]` (upstream `agent_ui` passthrough forwards it
+   inside `message`, zero channel fork) and (b) fires standalone
+   `privacy_snapshot`/`privacy_trace`/`tool_approval` frames. The transform logic
+   is the transport-free `cloakbot/privacy/webui/side_channel.py`; the additive
+   `GET /api/sessions/{key}/privacy` route is `cloakbot/webui/privacy_routes.py`
+   dispatched from the connection-aware misc router in `webui/ws_http.py`. The
+   privacy subclass is swapped in for the base channel at construction time in
+   `channels/manager.py` (`discover_enabled()` stays upstream-pure). The bespoke
+   `channels/webui.py` stays discarded. The loop's `_state_respond` attaches the
+   `build_webui_privacy_payload` output to the outbound metadata for webui turns
+   (`metadata["webui"] is True`) and persists it for rehydration
+   (`include_report=False` — the report rides the side-channel now).
+2. **Blocking invariant DONE** — single chokepoint
+   `project_payload_for_egress(payload, is_localhost=…)`: localhost gets the full
+   payload; non-localhost gets the redacted projection (placeholders + entity
+   types/severities/counts only; every raw value/original image/original
+   document/restored argument stripped). Applied **per connection** in all three
+   paths (WS frame splits subscribers localhost-vs-remote, HTTP route gates on the
+   request peer, standalone `tool_approval` frame). Verified by the blocking test
+   *non-localhost client receives zero raw values* in
+   `tests/channels/test_websocket_privacy_channel.py` +
+   `tests/webui/test_privacy_routes.py` +
+   `tests/privacy/webui/test_side_channel.py`, plus loop-seam attach/persist tests
+   in `tests/agent/test_loop_privacy_seam.py`.
+3. **DONE (partial)** — outbound token restoration already lives in the upstream
+   outbound path (`_state_respond` → `post_llm_hook`, restore-local-only); the
+   report is now off the content and on the side-channel.
+4. **TODO (W2 frontend)** — Cap F frontend: adopt Workbench; build the 5 overlay
+   attach points → verify: `cd webui && npm run lint && npm run test && npm run
+   build`. Inbound `tool_approval` *envelope* handling (the client → server
+   approve/deny reply) is still W2-frontend-adjacent; the backend emits the
+   approval prompts and gates them, but the inbound approval reply wiring is not
+   yet re-homed onto the websocket envelope dispatcher.
 
 **Exit gate:** Workbench renders without privacy code; overlay augments additively;
-localhost-gate test green; webui lint/test/build green.
+localhost-gate test green (**DONE**); webui lint/test/build green (TODO).
 
 ### W3 — Streaming + filesystem tools — `[BLOCKED-until Cap A + W1]`
 

@@ -112,8 +112,16 @@ class ChannelManager:
                 kwargs: dict[str, Any] = {}
                 if cls.name == "websocket":
                     from cloakbot.channels.websocket import WebSocketConfig
+                    from cloakbot.channels.websocket_privacy import (
+                        PrivacyWebSocketChannel,
+                    )
                     from cloakbot.webui.gateway_services import build_gateway_services
 
+                    # Privacy adaptation: serve the WebUI side-channel + localhost
+                    # gate by swapping in the privacy subclass at construction
+                    # time. discover_enabled() stays upstream-pure (it returns the
+                    # base class for the "websocket" module).
+                    cls = PrivacyWebSocketChannel
                     parsed = WebSocketConfig.model_validate(section)
                     static_path = _default_webui_dist() if self._webui_static_dist else None
                     workspace = Path(self.config.workspace_path)

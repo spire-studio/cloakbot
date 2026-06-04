@@ -398,6 +398,20 @@ class GatewayHTTPHandler:
     def _dispatch_misc_routes(
         self, connection: Any, request: WsRequest, got: str
     ) -> Response | None:
+        # Additive privacy-overlay history route (localhost-gated). Placed in the
+        # connection-aware misc dispatcher so the egress gate can read the peer.
+        from cloakbot.webui.privacy_routes import handle_privacy_route
+
+        privacy_response = handle_privacy_route(
+            connection=connection,
+            got=got,
+            workspace=self.media.workspace_path,
+            decode_key=_decode_api_key,
+            is_websocket_session_key=_is_websocket_channel_session_key,
+            check_api_token=lambda: self.check_api_token(request),
+        )
+        if privacy_response is not None:
+            return privacy_response
         if got == "/api/sessions":
             return self._handle_sessions_list(request)
         if got == "/api/commands":

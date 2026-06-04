@@ -76,6 +76,110 @@ async def test_raw_user_input_never_reaches_provider(tmp_path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_webui_turn_attaches_privacy_side_channel_payload(tmp_path) -> None:
+    """[Cap F / W2] A webui turn rides the privacy report on the side-channel.
+
+    The transparency report no longer rides the message content (include_report
+    is False); instead `_state_respond` attaches the WebUIPrivacyPayload under
+    OutboundMessage.metadata[WEBUI_PRIVACY_METADATA_KEY] so the privacy channel
+    can fold the localhost-gated blob into _agent_ui.privacy + fire the standalone
+    frames, and persists it for the GET /api/sessions/{key}/privacy route.
+    """
+    from cloakbot.privacy.webui.contracts import WEBUI_PRIVACY_METADATA_KEY
+    from cloakbot.privacy.webui.history import load_webui_privacy_payloads
+
+    async def chat_with_retry(*, messages, **kwargs):
+        return LLMResponse(content="Noted, <<PERSON_1>>.", tool_calls=[])
+
+    provider = MagicMock()
+    provider.get_default_model.return_value = "test-model"
+    provider.generation = SimpleNamespace(max_tokens=4096, temperature=0.1, reasoning_effort=None)
+    provider.estimate_prompt_tokens.return_value = (10_000, "test")
+    provider.chat_with_retry = chat_with_retry
+
+    loop = make_loop(tmp_path, provider=provider)
+
+    detection = DetectionResult(
+        original_prompt="My name is Alice",
+        entities=[GeneralEntity(text="Alice", entity_type="person")],
+        llm_raw_output="",
+        latency_ms=1.0,
+    )
+
+    with patch(
+        "cloakbot.privacy.runtime.pipeline.sanitize_input_with_detection",
+        new=AsyncMock(
+            return_value=("My name is <<PERSON_1>>", True, detection.sensitive_entities, detection)
+        ),
+    ), patch(
+        "cloakbot.privacy.runtime.pipeline.analyze_user_intent",
+        new=AsyncMock(return_value=Intent.CHAT),
+    ):
+        msg = InboundMessage(
+            channel="websocket",
+            sender_id="user",
+            chat_id="webuichat",
+            content="My name is Alice",
+            metadata={"webui": True},
+        )
+        outbound = await loop._process_message(msg, session_key="websocket:webuichat")
+
+    assert outbound is not None, "no outbound produced for the webui turn"
+    payload = outbound.metadata.get(WEBUI_PRIVACY_METADATA_KEY)
+    assert payload is not None, "privacy side-channel payload not attached to webui outbound"
+    assert payload.privacy_turn.turn_id  # well-formed payload
+    assert payload.privacy_turn.remote_prompt == "My name is <<PERSON_1>>"
+
+    # And it was persisted for HTTP rehydration.
+    persisted = load_webui_privacy_payloads(tmp_path, "websocket:webuichat")
+    assert persisted, "privacy payload not persisted for the rehydration route"
+
+
+@pytest.mark.asyncio
+async def test_non_webui_turn_has_no_side_channel_payload(tmp_path) -> None:
+    """A non-webui channel turn carries no privacy overlay metadata (additive)."""
+    from cloakbot.privacy.webui.contracts import WEBUI_PRIVACY_METADATA_KEY
+
+    async def chat_with_retry(*, messages, **kwargs):
+        return LLMResponse(content="Noted, <<PERSON_1>>.", tool_calls=[])
+
+    provider = MagicMock()
+    provider.get_default_model.return_value = "test-model"
+    provider.generation = SimpleNamespace(max_tokens=4096, temperature=0.1, reasoning_effort=None)
+    provider.estimate_prompt_tokens.return_value = (10_000, "test")
+    provider.chat_with_retry = chat_with_retry
+
+    loop = make_loop(tmp_path, provider=provider)
+
+    detection = DetectionResult(
+        original_prompt="My name is Alice",
+        entities=[GeneralEntity(text="Alice", entity_type="person")],
+        llm_raw_output="",
+        latency_ms=1.0,
+    )
+
+    with patch(
+        "cloakbot.privacy.runtime.pipeline.sanitize_input_with_detection",
+        new=AsyncMock(
+            return_value=("My name is <<PERSON_1>>", True, detection.sensitive_entities, detection)
+        ),
+    ), patch(
+        "cloakbot.privacy.runtime.pipeline.analyze_user_intent",
+        new=AsyncMock(return_value=Intent.CHAT),
+    ):
+        msg = InboundMessage(
+            channel="cli",
+            sender_id="user",
+            chat_id="cliplain",
+            content="My name is Alice",
+        )
+        outbound = await loop._process_message(msg, session_key="cli:cliplain")
+
+    assert outbound is not None
+    assert WEBUI_PRIVACY_METADATA_KEY not in outbound.metadata
+
+
+@pytest.mark.asyncio
 async def test_ephemeral_run_vault_never_lands_on_disk(tmp_path) -> None:
     """[Cap B] An ephemeral run (dream / cron / heartbeat / autonomous turn) is
     keyed to a memory-only child vault scope: privacy is still ON for the run

@@ -427,6 +427,61 @@ on-but-inert no-op for both). Verified by `tests/privacy/test_visual_egress_gate
 (redacted reference + placeholdered prompt forwarded; fail-closed omission;
 undecodable-path omission; idempotent install; tool wires the gate).
 
+## WebUI Privacy Side-Channel + Localhost Gate (Cap F)
+
+The Privacy Inspector overlay shows the user the placeholder ↔ real-value diff,
+so the per-turn `WebUIPrivacyPayload` (`cloakbot/privacy/webui/builders.py`) ships
+**raw** sensitive values by design: `SessionEntityData.{value,canonical,aliases}`,
+`WebUIToolApproval.restoredArguments`, `WebUIUserAttachment.originalDataUrl`,
+`WebUIUserDocument.originalText`, and `RestoredTokenAnnotation.{text,value,
+canonical,formula}`. Upstream's WebSocket gateway (`channels/websocket.py`)
+supports remote, token-authed connections (`host=0.0.0.0`), so forwarding that
+payload to any authenticated client unmodified would egress the cleartext vault —
+strictly worse than the remote-LLM boundary this project protects.
+
+Three pieces re-home the bespoke `channels/webui.py` privacy emission onto the
+upstream gateway **additively**:
+
+- `cloakbot/privacy/webui/side_channel.py` — pure transformation. It folds the
+  payload under `metadata["_agent_ui"]["privacy"]` (`merge_privacy_into_agent_ui`,
+  forwarded by upstream's existing `agent_ui` passthrough inside `message` /
+  `assistant_done`, zero channel fork) and builds the standalone
+  `privacy_snapshot` / `privacy_trace` / `tool_approval` frames.
+- `cloakbot/channels/websocket_privacy.py` — `PrivacyWebSocketChannel(
+  WebSocketChannel)`. At send time it reads
+  `metadata[WEBUI_PRIVACY_METADATA_KEY]`; with no payload it delegates straight to
+  the parent (byte-identical to upstream). It is swapped in for the base channel
+  at construction time in `channels/manager.py` (`discover_enabled()` stays
+  upstream-pure).
+- `cloakbot/webui/privacy_routes.py` — additive `GET /api/sessions/{key}/privacy`
+  history rehydration, dispatched from the connection-aware misc router in
+  `webui/ws_http.py`.
+
+**Blocking localhost gate (the #1 rebase risk).** All raw-value egress funnels
+through one chokepoint, `project_payload_for_egress(payload, is_localhost=…)`:
+localhost connections get the payload verbatim; any non-localhost connection gets
+a **redacted projection** — placeholders + entity types/severities/counts only,
+with every raw value, original image, original document and restored argument
+stripped (replaced by a `[redacted: localhost-only]` sentinel or dropped). The
+gate is applied **per connection** in all three paths: the WS frame (the channel
+splits subscribers into a localhost group and a remote group and renders a
+group-appropriate blob for each), the HTTP route (gated on the request peer), and
+the standalone `tool_approval` frame. The already-placeholdered fields
+(`remotePrompt`, tool `sanitizedOutput`) are preserved for non-localhost because
+they are the point of the overlay and carry no cleartext.
+
+The transparency report no longer rides the message content (the loop calls
+`post_llm_hook(..., include_report=False)`); `_state_respond` attaches the payload
+to the outbound metadata only for webui turns (`metadata["webui"] is True`) and
+persists it for rehydration. Verified by `tests/privacy/webui/test_side_channel.py`
+(redaction projection for every raw field + round-trip),
+`tests/channels/test_websocket_privacy_channel.py` (per-connection gate;
+**blocking test: a non-localhost client receives zero raw values**; additive-ignore),
+`tests/webui/test_privacy_routes.py` (localhost rehydration vs redacted projection;
+fail-closed when no remote address), and
+`tests/agent/test_loop_privacy_seam.py` (webui turn attaches + persists the
+payload; non-webui turn does not).
+
 ## PDF Text-Layer Fast Path
 
 `cloakbot/agent/tools/filesystem.py:read_file` now tries the PDF's embedded

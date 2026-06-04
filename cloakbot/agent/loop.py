@@ -1569,7 +1569,44 @@ class AgentLoop:
         )
         if ctx.ephemeral and ctx.outbound is not None:
             ctx.outbound.metadata["_stop_reason"] = ctx.stop_reason
+        # --- [Cap F / W2] WebUI privacy side-channel: the transparency report no
+        # longer rides the message content (include_report=False above); it rides
+        # the side-channel instead. Attach the per-turn WebUIPrivacyPayload to the
+        # outbound metadata so PrivacyWebSocketChannel can fold the (localhost-
+        # gated) blob into _agent_ui.privacy and fire the standalone frames. Also
+        # persist it for the GET /api/sessions/{key}/privacy rehydration route.
+        # webui-only: non-webui channels carry no privacy overlay.
+        if (
+            ctx.privacy_ctx is not None
+            and ctx.outbound is not None
+            and ctx.msg.metadata.get("webui") is True
+        ):
+            self._emit_webui_privacy_side_channel(ctx)
         return "ok"
+
+    def _emit_webui_privacy_side_channel(self, ctx: TurnContext) -> None:
+        """Build + attach the WebUI privacy payload for a webui turn.
+
+        Best-effort: a builder/persistence failure must never break the user's
+        reply, so it is logged and swallowed.
+        """
+        from cloakbot.privacy.webui import (
+            WEBUI_PRIVACY_METADATA_KEY,
+            build_webui_privacy_payload,
+        )
+        from cloakbot.privacy.webui.history import append_webui_privacy_payload
+
+        assert ctx.privacy_ctx is not None and ctx.outbound is not None
+        try:
+            payload = build_webui_privacy_payload(ctx.session_key, ctx.privacy_ctx)
+        except Exception as exc:
+            logger.warning("webui privacy payload build failed: {}", exc)
+            return
+        ctx.outbound.metadata[WEBUI_PRIVACY_METADATA_KEY] = payload
+        try:
+            append_webui_privacy_payload(self.workspace, ctx.session_key, payload)
+        except Exception as exc:
+            logger.warning("webui privacy payload persist failed: {}", exc)
 
     def _sanitize_persisted_blocks(
         self,
