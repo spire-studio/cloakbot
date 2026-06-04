@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="logo+cloakbot-readme.png" alt="CloakBot" width="420" />
+  <img src=".github/assets/cloakbot-logo.png" alt="CloakBot" width="420" />
 </p>
 
 <h1 align="center">CloakBot — A Local Privacy Kernel for Frontier LLMs</h1>
@@ -9,8 +9,6 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Privacy-Pre--wire%20Enforcement-0F172A?style=flat-square" alt="Pre-wire Enforcement" />
   <img src="https://img.shields.io/badge/Gemma%204-Local%20Trust%20Layer-0F9D58?style=flat-square" alt="Gemma 4 Trust Layer" />
-  <img src="https://img.shields.io/badge/vLLM%20%2F%20Ollama-OpenAI%20Compatible-1F6FEB?style=flat-square" alt="vLLM / Ollama OpenAI Compatible" />
-  <img src="https://img.shields.io/badge/Multi--Agent-6%20local%20components-7C3AED?style=flat-square" alt="Multi-Agent 6 local components" />
   <img src="https://img.shields.io/badge/Remote%20LLM-Claude%20%7C%20GPT%20%7C%20Gemini-8B5CF6?style=flat-square" alt="Remote LLM Claude GPT Gemini" />
   <img src="https://img.shields.io/badge/Python-3.11%2B-3776AB?style=flat-square" alt="Python 3.11+" />
   <img src="https://img.shields.io/badge/License-MIT-16A34A?style=flat-square" alt="MIT License" />
@@ -22,7 +20,7 @@
 
 ---
 
-## TL;DR
+## 📋 TL;DR
 
 Frontier LLM use is now load-bearing — but the data that crosses the wire is non-revocable. CloakBot moves enforcement **before the wire**: a local privacy kernel on **Gemma 4 E2B** that detects sensitive spans, assigns stable typed placeholders, redacts images, chunks long documents, and restores outputs locally from a per-session vault. The remote LLM is interchangeable — Claude, GPT, and Gemini all accept the sanitised stream unchanged.
 
@@ -30,38 +28,7 @@ Frontier LLM use is now load-bearing — but the data that crosses the wire is n
 
 ---
 
-## Try it in 60 seconds
-
-```bash
-# One-time:  curl -fsSL https://ollama.com/install.sh | sh
-# One-time:  Node ≥24 for the WebUI frontend  (nvm install 24  or  brew install node@24)
-# One-time:  uv sync && cd webui && npm install && cd ..
-
-bash scripts/quickstart_demo.sh
-```
-
-Starts Ollama with `gemma4:e2b`, bootstraps `.env`, launches the WebUI (gateway `:8000`, frontend `:5173`), and opens your browser. Drag [`docs/demo/demo_onboarding_memo.md`](docs/demo/demo_onboarding_memo.md) into the Composer to see 20 PII entities replaced with typed placeholders end-to-end, and click **Diff** on any bubble for the Local↔Remote view.
-
-For a fuller setup (vLLM on a GPU machine, model download, custom config), see [§ Setup](#setup) below.
-
----
-
-## Table of Contents
-
-- [How it works](#how-it-works)
-- [What gets detected](#what-gets-detected)
-- [Why a small LLM, not regex or BERT-NER?](#why-a-small-llm-not-regex-or-bert-ner)
-- [Multi-agent architecture](#multi-agent-architecture)
-- [Evals — trust by measurement](#evals--trust-by-measurement)
-- [Setup](#setup)
-- [Roadmap](#roadmap)
-- [Design decisions](#design-decisions)
-- [Hackathon tracks](#hackathon-tracks)
-- [Credits & license](#credits--license)
-
----
-
-## How it works
+## 🔍 How it works
 
 ```
 User message (text + optional images / documents)
@@ -95,29 +62,13 @@ Streaming output is buffered until restoration completes — the user never sees
 | Medical & narrative | PHI, treatments, diagnoses, code names | High |
 | Numeric & temporal | Money, dates, percentages, counts, measurements, coordinates | High |
 
-The detector is split into `GeneralPrivacyDetector` (non-computable text spans) and `DigitPrivacyDetector` (numeric/temporal values normalised for later local math).
-
-### Token schema
-
-`<<ENTITY_TYPE_INDEX>>` — indexed per type so the remote LLM can still track relationships (e.g. `PERSON_1` and `PERSON_2` are different people) without knowing who they are.
-
-| Raw | Token |
-|---|---|
-| `Alice Chen` | `<<PERSON_1>>` |
-| `alice@acme.com` | `<<EMAIL_1>>` |
-| `555-123-4567` | `<<PHONE_1>>` |
-| `123-45-6789` | `<<ID_1>>` |
-| `$142,500` | `<<FINANCE_1>>` |
-| `December 15, 2026` | `<<DATE_1>>` |
-| `Metformin 500mg` | `<<MEDICAL_1>>` |
+Detection is split into `GeneralPrivacyDetector` (non-computable text spans) and `DigitPrivacyDetector` (numeric/temporal values normalised for later local math). Each span becomes an indexed token — `<<ENTITY_TYPE_INDEX>>` — so the remote LLM can still track relationships (`PERSON_1` ≠ `PERSON_2`) without knowing who they are: e.g. `Alice Chen → <<PERSON_1>>`, `555-123-4567 → <<PHONE_1>>`, `$142,500 → <<FINANCE_1>>`, `Metformin 500mg → <<MEDICAL_1>>`.
 
 ---
 
 ## Why a small LLM, not regex or BERT-NER?
 
-**TL;DR — regex catches the easy 20%; the other 80% needs context.** CloakBot uses both: regex on the fast path (emails, invoice numbers, transaction IDs, file paths — hand-rolled in [`privacy/core/detection/`](cloakbot/privacy/core/detection/) and [`visual_redaction.py`](cloakbot/privacy/visual_redaction.py)), and Gemma 4 E2B for everything regex and BERT-NER cannot do.
-
-### What regex and BERT-NER cannot do
+**TL;DR — regex catches the easy 20%; the other 80% needs context.** CloakBot uses both: regex on the fast path (emails, invoice numbers, transaction IDs, file paths — in [`privacy/core/detection/`](cloakbot/privacy/core/detection/)), and Gemma 4 E2B for everything regex and BERT-NER cannot do.
 
 | Failure mode | Regex | BERT-NER (Presidio, spaCy) | **Gemma 4 E2B** |
 |---|:---:|:---:|:---:|
@@ -125,32 +76,14 @@ The detector is split into `GeneralPrivacyDetector` (non-computable text spans) 
 | Disambiguate `"John"` as a placeholder vs a real customer | ✗ | ✗ | ✓ |
 | Instructional numbers — *"give me 3 bullet points about Q4 earnings"* | tokenizes `3` (breaks the request) | varies by tag set | ✓ kept as task structure |
 | Combination identifiers — *"67-year-old male diabetic in ZIP 90210"* | ✗ | ✗ | ✓ |
-| Cross-turn entity disambiguation — *"someone else surnamed Lin"* ≠ existing `<<PERSON_1>>` Lin Zhiyuan | n/a | n/a | ✓ emits `new`, not the existing placeholder |
+| Cross-turn entity disambiguation — *"someone else surnamed Lin"* ≠ existing `<<PERSON_1>>` Lin Zhiyuan | n/a | n/a | ✓ emits `new` |
 | Indirect identifiers — *"the patient I mentioned earlier"* | ✗ | ✗ | ✓ |
-| User-defined entities — *"also redact our project codename Falcon"* | edit regex | retrain | edit prompt |
-| Domain shift — chat logs vs the news corpora NER was trained on | n/a | recall drops 20–40% | resilient |
+| User-defined entities — *"also redact our codename Falcon"* | edit regex | retrain | edit prompt |
+| Domain shift — chat logs vs news-trained NER | n/a | recall drops 20–40% | resilient |
 | Multilingual (CN / JP / KR / EN) on one model | one regex set per locale | 600 MB+ per language | one 2B model |
-| Computable normalization — `$1,200.50` → `1200.5`, `15%` → `0.15` (ready for local math) | string-only | string-only | ✓ typed numeric, executable in `<python_snippet>` |
+| Computable normalization — `$1,200.50` → `1200.5` (ready for local math) | string-only | string-only | ✓ typed numeric |
 
-### Why the failure modes matter
-
-A Presidio-style stack ships a *PII proxy that catches the easy stuff* — and that is **strictly worse than no proxy**, because users trust it. The bar for moving enforcement *before* the wire isn't pattern-matching; it's reasoning about whether a token should be redacted **in this specific conversation**. That's a generative-LLM-shaped problem.
-
-### Why Gemma 4 E2B specifically
-
-Gemma 4 E2B is the only commercially-redistributable model that simultaneously:
-
-1. **Fits on consumer hardware** — 2B parameters, ~5 GB quantised, runs on a MacBook through Ollama.
-2. **Returns parseable JSON at T=0** — span-level entity extraction without a fine-tune.
-3. **Multimodal in one weight set** — same model handles OCR-extracted text and direct image reasoning.
-4. **Speaks the languages CloakBot's users do** — Gemma 4 is multilingual out of the box; no per-locale model swap.
-5. **Has a commercial license** — clinics, banks, and law firms can deploy it without a per-seat fee.
-
-> **This is also a Gemma 4 hackathon.** A Presidio + BERT pipeline that uses Gemma as a chat rewriter would not be a meaningful demonstration of what Gemma can do. CloakBot puts Gemma where the trust decision actually happens — **the trust layer is the model**.
-
-### The honest trade-off
-
-Gemma is ~50–200 ms per detector call (measured on an RTX 5090 via vLLM) vs. regex's <1 ms. CloakBot mitigates this by (a) running general + digit detectors concurrently, (b) keeping regex on the fast path for known formats, (c) per-chunk concurrency for long documents. End result: HR p95 ~0.9 s, medical p95 ~6 s on entity-dense turns (see [Evals](#evals--trust-by-measurement)). The MacBook (Ollama) deployment path runs end-to-end but slower. Streaming + per-turn batching is the next milestone.
+A PII proxy that only catches the easy stuff is **strictly worse than no proxy** — users trust it. The real bar is reasoning about whether a token should be redacted *in this specific conversation*, a generative-LLM-shaped problem. Gemma 4 E2B is the one commercially-redistributable model that fits consumer hardware (~5 GB quantised, runs on a MacBook via Ollama), returns parseable JSON at T=0, and is multimodal and multilingual in one weight set — **the trust layer is the model**, not a chat rewriter bolted onto Presidio. The honest cost: ~50–200 ms per detector call vs regex's <1 ms, mitigated by concurrent general+digit detectors, regex on the fast path, and per-chunk concurrency. Full rationale, latency, and methodology in the [hackathon writeup](docs/HACKATHON_WRITEUP.md).
 
 ---
 
@@ -183,26 +116,20 @@ Gemma is ~50–200 ms per detector call (measured on an RTX 5090 via vLLM) vs. r
                          [ post_llm_hook ]  →  restore + per-turn report  →  User
 ```
 
-### Components
-
 | Component | Role | Backend |
 |---|---|---|
 | `PrivacyRuntime` | Per-turn coordinator: sanitise, route, restore, audit | Python |
 | `PiiDetector` | General + digit + intent detectors run concurrently, then deduplicated | Gemma 4 E2B |
-| `IntentAnalyzer` | Classifies turns as `chat` or `math` | Gemma 4 E2B |
-| `ToolPrivacyInterceptor` | Tool I/O restoration; severity-gated approval; output sanitisation (incl. `read_file` / web_fetch / MCP) | Rule-based + detector |
-| `ToolPrivacyDetector` + `chunking/` | Long-document path: content-aware chunkers (plaintext / JSON / HTML / Markdown), per-chunk concurrency + timeout, cross-chunk vault coalesce, fail-closed | Gemma 4 E2B |
-| `VisualPrivacyPipeline` | OCR + bbox redaction + placeholder text rendered *inside* each black bar + cross-modal recall bridge (text-side entities forwarded as visual needles) | Gemma 4 E2B + Pillow + Tesseract |
-| `process_user_document` | WebUI document upload (text/plain, text/markdown ≤ 64 KB) routed through the same chunker-backed sanitizer | Gemma 4 E2B |
-| `Session Vault` | Audit-traceable placeholder ↔ raw mapping with cross-turn alias reuse (PERSON + ORG substring, NFKC-normalised) | JSON on disk |
+| `ToolPrivacyInterceptor` (+ `chunking/`) | Tool I/O restoration, severity-gated approval, output sanitisation; long-document content-aware chunkers with cross-chunk vault coalesce | Gemma 4 E2B + rules |
+| `VisualPrivacyPipeline` | OCR + bbox redaction + placeholder overlay + cross-modal recall bridge | Gemma 4 E2B + Pillow + Tesseract |
+| `Session Vault` | Audit-traceable placeholder ↔ raw mapping with cross-turn alias reuse | JSON on disk |
 | `Math Executor` | Local execution of remote-generated `<python_snippet_N>` blocks; AST-validated, arithmetic-only | Python AST sandbox |
-| `Transparency Report` | Per-turn markdown summary of masked entities | Rule-based |
 
-For the full file tree see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+Full component list and file tree in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ---
 
-## Evals — trust by measurement
+## 📊 Evals — trust by measurement
 
 We refused to ship trust-by-assertion. Three end-to-end leak eval layers run against the **production pipeline** and answer one question per run: *did any ground-truth identifying token reach the upstream payload?*
 
@@ -214,86 +141,66 @@ We refused to ship trust-by-assertion. Three end-to-end leak eval layers run aga
 
 - **100% pair recall** cross-domain on `EMAIL · PHONE · FINANCE · IP · URL`
 - **MEDICAL recall: 20% → 95%** via type-driven prompt iteration (rules → adjacent examples)
-- **0 of 226** A3 seam leaks fall within the 300-char chunker overlap band — the boundary heuristic has perfect coverage; every long-doc leak is an intra-chunk detector miss
+- **0 of 226** A3 seam leaks fall within the 300-char chunker overlap band — every long-doc leak is an intra-chunk detector miss, not a boundary failure
 
 Full per-template breakdown, methodology, and self-caught eval bugs in [`docs/HACKATHON_WRITEUP.md`](docs/HACKATHON_WRITEUP.md). Reproducibility: one command per layer in `tests/eval/runners/`.
 
-> *All p95 latency numbers measured with Gemma 4 E2B served via vLLM on an RTX 5090. The MacBook (Ollama) deployment path is functionally end-to-end but slower — MacBook is the target hardware, not the measurement rig.*
+> *All p95 latency numbers measured with Gemma 4 E2B served via vLLM on an RTX 5090. The MacBook (Ollama) path is functionally end-to-end but slower — MacBook is the target hardware, not the measurement rig.*
 
 ---
 
-## Setup
+## 🛠️ Setup
 
-### 1. Clone & install
+### Fastest path — one command
+
+```bash
+# One-time: install Ollama + Node ≥24 + deps
+curl -fsSL https://ollama.com/install.sh | sh
+uv sync && cd webui && npm install && cd ..
+
+bash scripts/quickstart_demo.sh
+```
+
+Starts Ollama with `gemma4:e2b`, bootstraps `.env`, launches the WebUI (gateway `:8000`, frontend `:5173`), and opens your browser. Drag [`docs/demo/demo_onboarding_memo.md`](docs/demo/demo_onboarding_memo.md) into the Composer to watch 20 PII entities masked end-to-end — click **Diff** on any bubble for the Local↔Remote view.
+
+### Manual setup
 
 ```bash
 git clone https://github.com/spire-studio/cloakbot.git && cd cloakbot
 uv sync
-# WebUI frontend requires Node ≥24 — `nvm install 24` or `brew install node@24`
-cd webui && npm install && cd ..
+cd webui && npm install && cd ..        # WebUI frontend needs Node ≥24
+cp .env.example .env                     # two profiles inside — pick ONE
 ```
 
-### 2. Configure
+Configure the remote LLM (Claude / GPT / Gemini) with `uv run python -m cloakbot onboard` (or edit `~/.cloakbot/config.json`), then start the local Gemma 4 backend — **pick one**:
 
-```bash
-cp .env.example .env
-# Two profiles live in .env.example — pick ONE:
-#   Profile A — vLLM on a GPU machine
-#   Profile B — Ollama (no GPU required)
-```
-
-Set up the remote LLM (Claude, GPT, Gemini, etc.) in `~/.cloakbot/config.json` or run:
-
-```bash
-uv run python -m cloakbot onboard
-```
-
-### 3. Start the local Gemma 4 backend — pick ONE
-
-CloakBot uses one OpenAI-compatible client for both backends, so the same three `GEMMA_*` variables in `.env` (`GEMMA_BASE_URL` / `GEMMA_API_KEY` / `GEMMA_MODEL`) work for either profile.
-
-#### Option A: vLLM (Ubuntu / GPU machine) — fast, reproducible
+**Option A — vLLM (GPU machine):** fast, reproducible; the path behind the A1/A2/A3 evals.
 
 ```bash
 uv sync --extra vllm
-uv run huggingface-cli login          # accept Gemma license at hf.co/google/gemma-4-E2B-it
-bash scripts/start_vllm.sh             # reads GEMMA_API_KEY / GEMMA_MODEL from .env
+uv run huggingface-cli login            # accept the Gemma license at hf.co/google/gemma-4-E2B-it
+bash scripts/start_vllm.sh
 ```
 
-This is the path we use to produce the A1 / A2 / A3 eval reports.
-
-#### Option B: Ollama (macOS / Linux / WSL) — no GPU required
+**Option B — Ollama (macOS / Linux / WSL):** no GPU; the recommended real-world path.
 
 ```bash
-# One-time: curl -fsSL https://ollama.com/install.sh | sh
-bash scripts/start_ollama.sh
+bash scripts/start_ollama.sh            # pulls gemma4:e2b (~5 GB), warms the model
+# then in .env:
+#   GEMMA_BASE_URL=http://127.0.0.1:11434/v1
+#   GEMMA_API_KEY=ollama        # Ollama doesn't enforce auth; any value works
+#   GEMMA_MODEL=gemma4:e2b
 ```
 
-Pulls `gemma4:e2b` (~5 GB), starts the daemon, warms the model. Then in `.env`:
-
-```
-GEMMA_BASE_URL=http://127.0.0.1:11434/v1
-GEMMA_API_KEY=ollama        # Ollama doesn't enforce auth; any value works
-GEMMA_MODEL=gemma4:e2b
-```
-
-This is the path we recommend for real-world adoption — the privacy kernel runs on a MacBook.
-
-> Either backend exposes the same OpenAI-compatible surface. CloakBot's sanitiser uses it exclusively for PII detection — the remote LLM call (Claude / GPT / Gemini) is completely separate.
-
-### 4. Start the WebUI
+Both backends expose the same OpenAI-compatible surface, used **only** for local PII detection — the remote LLM call is entirely separate. Then launch the WebUI:
 
 ```bash
-uv run python -m cloakbot webui
-# Gateway   http://127.0.0.1:8000
-# Frontend  http://127.0.0.1:5173
+uv run python -m cloakbot webui        # gateway :8000 · frontend :5173
 ```
-
-Or use `bash scripts/quickstart_demo.sh` to do everything in one step.
 
 ---
 
-## Roadmap
+## 🗺️ Roadmap
 
 ### ✅ Shipped (April – May 2026)
 
@@ -319,41 +226,39 @@ Or use `bash scripts/quickstart_demo.sh` to do everything in one step.
 
 ### 🚀 Future
 
-- **Domain-specific LoRA adapters** — fine-tune Gemma 4 E2B on vertical corpora (healthcare, legal, finance) to lift recall on domain-specific phrases (e.g. `stage 2 chronic kidney disease`, short ORG names like `Turner Ltd`) and unlock policy-aware vertical deployments. The same kernel, three adapters: pick by tenant.
+- **Domain-specific LoRA adapters** — fine-tune Gemma 4 E2B on vertical corpora (healthcare, legal, finance) to lift recall on domain-specific phrases. The same kernel, three adapters: pick by tenant.
 - **ORG short / hyphenated name recall** (71.67% → 90% target) — the largest remaining A1 gap, addressable with the LoRA path above
 - **Bilingual coverage** — Chinese-language eval templates + zh-CN detector prompt iteration
-- **Streaming + per-turn batching** — Medical p95 6.2 s → < 2 s target by overlapping detector concurrency with token streaming
+- **Streaming + per-turn batching** — Medical p95 6.2 s → < 2 s target
 - **Encrypted Vault persistence** option for shared-machine deployments
 - **Policy-driven severity tiers** beyond the current registry defaults (all `high` today)
 - **Dataset / table-specific structured chunker** (CSV / Parquet) for analytics tool outputs
 
 ---
 
-## Design decisions
+## Hackathon tracks
 
-**Redact + Tokenize, not Pseudonymize** — `<<PERSON_1>>` is simpler and safer than replacing names with fake-but-realistic names. The remote LLM can still track relationships between `PERSON_1` and `PERSON_2` without learning who they are.
-
-**Two local detectors, one Vault** — CloakBot separates non-computable spans from numeric or temporal spans so it can both preserve task structure and keep enough normalised data locally for later math execution.
-
-**Remote LLM as reasoning engine only for math** — math turns ask the remote model for structure in `<python_snippet_N>` blocks; the final numeric answer is computed locally against Vault values.
-
-**Hook-based integration** — the privacy layer is largely isolated under `cloakbot/privacy/` and integrates into the main runtime through `pre_llm_hook` and `post_llm_hook`, so the upstream nanobot loop remains untouched.
-
-**Documents are tool-sourced privacy data** — there is no separate document worker; the same chunker-backed sanitiser path serves `read_file`, `web_fetch`, MCP tool results, and WebUI document uploads. One trust boundary, one Vault.
+- **Main Track — Gemma 4 Good (Safety & Trust direction)** — Gemma 4 E2B as a local privacy kernel that enforces a pre-wire boundary before any byte reaches the remote LLM. Backed by 2,872 entity-test instances across A1 (text), A2 (visual), and A3 (long-document) leak evals — see [`docs/HACKATHON_WRITEUP.md`](docs/HACKATHON_WRITEUP.md).
+- **Ollama Special Technology** — `bash scripts/start_ollama.sh` ships the model + the OpenAI-compatible endpoint in one tool. **Gemma 4 is the trust layer; Ollama is the deployment layer.** Try it: `bash scripts/quickstart_demo.sh`.
 
 ---
 
-## Hackathon tracks
+## ⭐ Star History
 
-- **Main Track — Gemma 4 Good (Safety & Trust direction)** — Gemma 4 E2B as a local privacy kernel that enforces a pre-wire boundary before any byte reaches the remote LLM. Backed by 2,872 entity-test instances of receipts across A1 (text), A2 (visual), and A3 (long-document) leak evals — see [`docs/HACKATHON_WRITEUP.md`](docs/HACKATHON_WRITEUP.md).
-- **Ollama Special Technology** — `bash scripts/start_ollama.sh` ships the model + the OpenAI-compatible endpoint in one tool — no GGUF wrangling, no per-OS Metal/CUDA forks. **Gemma 4 is the trust layer; Ollama is the deployment layer.** Try it: `bash scripts/quickstart_demo.sh`.
+<a href="https://www.star-history.com/?repos=spire-studio%2Fcloakbot&type=date&logscale=&legend=top-left">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=spire-studio/cloakbot&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=spire-studio/cloakbot&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=spire-studio/cloakbot&type=date&legend=top-left" />
+ </picture>
+</a>
 
 ---
 
 ## Credits & license
 
-CloakBot is built on [nanobot](https://github.com/HKUDS/nanobot) (MIT License) by HKUDS. The channel integrations, session management, memory system, and CLI come from the upstream framework. CloakBot's privacy-specific work in this repo lives primarily under [`cloakbot/privacy/`](cloakbot/privacy/), [`cloakbot/providers/vllm.py`](cloakbot/providers/vllm.py), and the hook integration points in [`cloakbot/agent/loop.py`](cloakbot/agent/loop.py).
+CloakBot is built on [nanobot](https://github.com/HKUDS/nanobot) (MIT License) by HKUDS. The channel integrations, session management, memory system, and CLI come from the upstream framework. CloakBot's privacy-specific work lives primarily under [`cloakbot/privacy/`](cloakbot/privacy/), [`cloakbot/providers/vllm.py`](cloakbot/providers/vllm.py), and the hook integration points in [`cloakbot/agent/loop.py`](cloakbot/agent/loop.py).
 
-Agent-oriented architecture, reliability, security, and privacy-domain notes live under [`docs/`](docs/) — start with [`AGENTS.md`](AGENTS.md).
+Architecture, reliability, security, privacy-domain notes, and [design decisions](docs/design-docs/design-decisions.md) live under [`docs/`](docs/) — start with [`AGENTS.md`](AGENTS.md).
 
 MIT License — see [`LICENSE`](LICENSE).

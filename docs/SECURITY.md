@@ -1,6 +1,6 @@
 # Security And Privacy Invariants
 
-Root `SECURITY.md` remains the public reporting and operator security guide.
+The public `.github/SECURITY.md` remains the reporting and operator security guide.
 This file is the agent-facing engineering checklist.
 
 ## Do Not Leak
@@ -20,7 +20,7 @@ This file is the agent-facing engineering checklist.
 The Vault persists token mappings and normalized values under the configured
 privacy vault directory. It is intentionally local and plaintext today. Any
 change to persistence, export, sync, deletion, or retention is security-sensitive
-and should update root `SECURITY.md`.
+and should update `.github/SECURITY.md`.
 
 ## Tool Boundary
 

@@ -12,7 +12,7 @@
   - changed-files:
       - any-glob-to-any-file:
           - "cloakbot/security/**"
-          - "SECURITY.md"
+          - ".github/SECURITY.md"
           - "docs/SECURITY.md"
 
 "area: channels":
