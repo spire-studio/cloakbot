@@ -221,6 +221,62 @@ async def test_interceptor_routes_streaming_tool_through_carry_over_window() -> 
 
 
 @pytest.mark.asyncio
+async def test_interceptor_exec_to_write_stdin_boundary_does_not_split_entity() -> None:
+    """M1: an entity straddling the exec-poll -> first-write_stdin boundary is
+    NOT split.
+
+    The initiating ``exec`` call has no ``session_id`` argument — the id is
+    minted server-side and only printed in the result ("Process running.
+    session_id: S1"). The continuation ``write_stdin`` carries ``session_id=S1``
+    in its args. Before the fix the exec poll keyed on its call id
+    (``exec:c1``) while write_stdin keyed on ``write_stdin:S1`` — two separate
+    StreamingSanitizers — so an entity split across that boundary leaked raw.
+    Now both converge on ``exec_session:S1`` and share the held tail.
+    """
+    from unittest.mock import patch
+
+    ctx = TurnContext(session_key="cli:test", turn_id="turn-1", raw_input="run it")
+    interceptor = ToolPrivacyInterceptor(ctx)
+
+    half = len(ENTITY) // 2
+    # exec poll: process still running, output ends mid-entity; the session_id
+    # only appears in the trailer (the exec call args have none).
+    exec_poll = (
+        ("log line\n" * 600)
+        + ENTITY[:half]
+        + "\nProcess running. session_id: S1\nElapsed: 1.0s"
+    )
+    # write_stdin continuation: output begins with the rest of the entity.
+    write_poll = ENTITY[half:] + " done\nExit code: 0\nElapsed: 2.0s"
+
+    exec_call = ToolCallRequest(id="c1", name="exec", arguments={"command": "run"})
+    write_call = ToolCallRequest(id="c2", name="write_stdin", arguments={"session_id": "S1"})
+
+    with patch(
+        "cloakbot.privacy.runtime.streaming_sanitizer.sanitize_tool_output",
+        new=_stub_sanitize_fn(),
+    ):
+        out_exec = await interceptor.sanitize_tool_result(
+            exec_call, exec_poll, privacy_class=ToolPrivacyClass.SIDE_EFFECT
+        )
+        out_write = await interceptor.sanitize_tool_result(
+            write_call, write_poll, privacy_class=ToolPrivacyClass.SIDE_EFFECT
+        )
+
+    combined = out_exec + out_write
+    # No raw half of the entity leaks from either poll, nor across the seam.
+    assert ENTITY not in out_exec
+    assert ENTITY[:half] not in out_exec  # the half-entity tail was HELD, not emitted raw
+    assert ENTITY not in out_write
+    assert ENTITY not in combined
+    # The straddling entity is tokenized exactly once, whole.
+    assert PLACEHOLDER in combined
+    assert combined.count(PLACEHOLDER) == 1
+    # The exec poll's status trailer is still present (re-appended verbatim).
+    assert "Process running. session_id: S1" in out_exec
+
+
+@pytest.mark.asyncio
 async def test_interceptor_streaming_without_session_id_falls_back_safely() -> None:
     """A streaming tool call with no stable stream key still never leaks raw."""
     from unittest.mock import patch
@@ -242,29 +298,48 @@ async def test_interceptor_streaming_without_session_id_falls_back_safely() -> N
 
 
 @pytest.mark.asyncio
-async def test_interceptor_exec_running_poll_flushes_tail_per_call() -> None:
-    """An ``exec`` poll that prints "Process running" still flushes its full
-    output on the same call — its continuation arrives as a separate
-    ``write_stdin`` stream, so nothing is withheld indefinitely."""
+async def test_interceptor_exec_running_poll_holds_tail_for_continuation() -> None:
+    """[M1] An ``exec`` poll that prints "Process running" HOLDS its carry-over
+    tail for the continuation, which now arrives under the SAME canonical
+    ``exec_session:{id}`` stream key as a ``write_stdin`` poll.
+
+    Previously the live exec poll flushed per-call (its continuation was a
+    separately-keyed ``write_stdin`` stream), which is exactly what let an entity
+    straddling the boundary split. Now the exec tail is withheld and inherited by
+    the first ``write_stdin`` continuation; the held output never leaks raw and
+    flushes on the next same-session poll. The status trailer is always emitted."""
     from unittest.mock import patch
 
     ctx = TurnContext(session_key="cli:test", turn_id="turn-1", raw_input="run")
     interceptor = ToolPrivacyInterceptor(ctx)
-    call = ToolCallRequest(id="c1", name="exec", arguments={"command": "tail -f log"})
-    # exec started a yielding session; trailer says Process running.
-    result = f"started {ENTITY} ok\nProcess running. session_id: S1\nElapsed: 1.0s"
+    exec_call = ToolCallRequest(id="c1", name="exec", arguments={"command": "tail -f log"})
+    # exec started a yielding session; trailer says Process running. The short
+    # output sits inside the carry-over window, so it is HELD for the continuation.
+    exec_result = f"started {ENTITY} ok\nProcess running. session_id: S1\nElapsed: 1.0s"
+    # The continuation poll completes the session and flushes the held output.
+    write_call = ToolCallRequest(id="c2", name="write_stdin", arguments={"session_id": "S1"})
+    write_result = "tail done\nExit code: 0\nElapsed: 2.0s"
 
     with patch(
         "cloakbot.privacy.runtime.streaming_sanitizer.sanitize_tool_output",
         new=_stub_sanitize_fn(),
     ):
-        out = await interceptor.sanitize_tool_result(
-            call, result, privacy_class=ToolPrivacyClass.SIDE_EFFECT
+        out_exec = await interceptor.sanitize_tool_result(
+            exec_call, exec_result, privacy_class=ToolPrivacyClass.SIDE_EFFECT
+        )
+        out_write = await interceptor.sanitize_tool_result(
+            write_call, write_result, privacy_class=ToolPrivacyClass.SIDE_EFFECT
         )
 
-    assert ENTITY not in out
-    # The whole output region was flushed (not withheld), with the trailer kept.
-    assert out == f"started {PLACEHOLDER} ok\nProcess running. session_id: S1\nElapsed: 1.0s"
+    # The live exec poll withheld its output (held tail) but always emits the
+    # status trailer so the model knows the process is still running.
+    assert ENTITY not in out_exec
+    assert "Process running. session_id: S1" in out_exec
+    # The continuation flushes the held output, tokenized exactly once.
+    combined = out_exec + out_write
+    assert ENTITY not in combined
+    assert combined.count(PLACEHOLDER) == 1
+    assert "Exit code: 0" in out_write
 
 
 @pytest.mark.asyncio
