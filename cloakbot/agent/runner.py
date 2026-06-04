@@ -14,6 +14,7 @@ from loguru import logger
 
 from cloakbot.agent.hook import AgentHook, AgentHookContext
 from cloakbot.agent.tools.registry import ToolRegistry
+from cloakbot.privacy.egress_policy import default_egress_policy
 from cloakbot.privacy.tool_models import ToolApprovalRequiredError, ToolPrivacyClass
 from cloakbot.providers.base import LLMProvider, LLMResponse, ToolCallRequest
 from cloakbot.utils.file_edit_events import (
@@ -878,13 +879,21 @@ class AgentRunner:
     def _tool_privacy_class(spec: AgentRunSpec, tool_name: str) -> ToolPrivacyClass:
         get_tool = getattr(spec.tools, "get", None)
         tool = get_tool(tool_name) if callable(get_tool) else None
-        privacy_class = getattr(tool, "privacy_class", ToolPrivacyClass.LOCAL)
+        # [Cap C / seam:9] An explicit per-tool ``privacy_class`` tag still wins;
+        # when absent (or unparseable), fall through to the EgressPolicy registry
+        # keyed on the authoritative ``tool_name`` instead of the old ``LOCAL``
+        # default, so a NEW upstream tool (apply_patch, run_cli_app, exec_session,
+        # self, image_generation, loader) or an MCP/network-shaped name can never
+        # silently mis-classify as safe-to-feed-raw.
+        privacy_class = getattr(tool, "privacy_class", None)
         if isinstance(privacy_class, ToolPrivacyClass):
             return privacy_class
-        try:
-            return ToolPrivacyClass(str(privacy_class))
-        except ValueError:
-            return ToolPrivacyClass.LOCAL
+        if isinstance(privacy_class, str):
+            try:
+                return ToolPrivacyClass(privacy_class)
+            except ValueError:
+                pass
+        return default_egress_policy().classify(tool_name)
 
     async def _run_tool(
         self,

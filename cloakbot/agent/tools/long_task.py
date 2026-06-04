@@ -161,9 +161,17 @@ class LongTaskTool(Tool, _GoalToolsMixin):
             )
 
         summary = (ui_summary or "").strip()[:120]
+        # [Cap C] at-rest goal sanitizer: tools receive restored (raw) arguments,
+        # so persist the objective placeholdered using the session's known vault
+        # mappings — the per-turn pipeline already saw these values upstream.
+        from cloakbot.privacy.goal_at_rest import sanitize_goal_objective
+
+        request_ctx = self._request_ctx.get()
+        session_key = request_ctx.session_key if request_ctx is not None else None
+        objective = sanitize_goal_objective(session_key, goal.strip())
         blob = {
             "status": "active",
-            "objective": goal.strip(),
+            "objective": objective,
             "ui_summary": summary,
             "started_at": _iso_now(),
         }

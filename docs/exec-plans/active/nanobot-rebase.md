@@ -252,8 +252,24 @@ package imports clean.
 2. Seam 3/5: `tool_privacy_interceptor` spec field + `_run_tool` prepare/sanitize
    bracket → verify: `tests/privacy/runtime/test_tool_interceptor.py`, runner tests.
 3. Cap B scoped/keyed Vaults → verify: ephemeral-no-bleed test.
-4. Cap C EgressPolicy registry + tool classification fall-through → verify:
-   unregistered-tool-safe-default test.
+4. **Cap C DONE** [seam:9] — additive `cloakbot/privacy/egress_policy.py`
+   `EgressPolicy` registry classifies tools by name/pattern (MCP/network-shaped →
+   `EXTERNAL`+approval, fs-shaped → `LOCAL`, side-effecting locals →
+   `SIDE_EFFECT`, unknown → fail-closed `EXTERNAL`+approval). Wired as the
+   fall-through in `runner._tool_privacy_class` keyed on the authoritative
+   `tool_name` (explicit per-tool `privacy_class` tag still wins). Provider egress
+   gate `cloakbot/privacy/provider_egress_gate.py`
+   (`EgressGatedFallbackProvider`) drops non-allow-listed fallbacks for any
+   HIGH-severity-placeholder prompt; allow-list source =
+   `agents.defaults.egress_fallback_allowlist`; installed in `providers/factory.py`.
+   At-rest goal sanitizer `cloakbot/privacy/goal_at_rest.py` placeholders the
+   persisted `/goal` objective via `replace_known_originals` (wired in
+   `long_task.execute`). CLI-Anything (`run_cli_app`) defaults
+   `EXTERNAL`+approval+per-app allow-list (D1); egress logged. Verified by
+   `tests/privacy/runtime/test_egress_policy.py` (34 tests). One pre-existing
+   interceptor test updated: its fictional `fetch_data` tool now correctly
+   classifies `EXTERNAL`, so it uses the LOCAL `grep` tool to exercise the
+   large-output sanitize path.
 
 **Exit gate:** privacy regression suite green; **A1 text leak-eval at/below baseline.**
 

@@ -7,7 +7,6 @@ from pathlib import Path
 
 from cloakbot.config.schema import Config, InlineFallbackConfig, ModelPresetConfig
 from cloakbot.providers.base import LLMProvider
-from cloakbot.providers.fallback_provider import FallbackProvider
 from cloakbot.providers.registry import find_by_name
 
 
@@ -152,12 +151,17 @@ def make_provider(
     fallback_presets = _resolve_fallback_presets(config, resolved)
 
     if fallback_presets:
-        provider = FallbackProvider(
+        # Cap C: gate fallbacks for HIGH-entity sanitized prompts so a
+        # placeholder-bearing turn never routes to a non-allow-listed endpoint.
+        from cloakbot.privacy.provider_egress_gate import EgressGatedFallbackProvider
+
+        provider = EgressGatedFallbackProvider(
             primary=provider,
             fallback_presets=fallback_presets,
             provider_factory=lambda fb: _make_provider_core(
                 config, preset_name=preset_name, preset=fb
             ),
+            allowlist=config.agents.defaults.egress_fallback_allowlist,
         )
 
     return provider

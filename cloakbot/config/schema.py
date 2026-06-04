@@ -121,6 +121,14 @@ class AgentDefaults(Base):
     context_block_limit: int | None = None
     temperature: float = 0.1
     fallback_models: list[FallbackCandidate] = Field(default_factory=list)
+    # Cap C provider egress gate: fallback model/provider names that remain
+    # eligible when a sanitized prompt carries a HIGH-severity placeholder. Empty
+    # means a HIGH-entity turn may only use the primary endpoint.
+    egress_fallback_allowlist: list[str] = Field(
+        default_factory=list,
+        validation_alias=AliasChoices("egressFallbackAllowlist", "egress_fallback_allowlist"),
+        serialization_alias="egressFallbackAllowlist",
+    )
     max_tool_iterations: int = 200
     max_concurrent_subagents: int = Field(default=1, ge=1)
     max_tool_result_chars: int = 16_000

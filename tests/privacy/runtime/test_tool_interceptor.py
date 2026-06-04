@@ -472,8 +472,9 @@ async def test_runner_sanitizes_large_tool_output_before_persisting(tmp_path) ->
             return LLMResponse(
                 content="reading",
                 # read_file is offload-exempt upstream (binds its own output); use a
-                # generic tool name so the large-output offload+sanitize path runs.
-                tool_calls=[ToolCallRequest(id="call_big", name="fetch_data", arguments={"path": "x"})],
+                # different LOCAL filesystem tool (grep) so the large-output
+                # offload+sanitize path runs without triggering EXTERNAL approval.
+                tool_calls=[ToolCallRequest(id="call_big", name="grep", arguments={"path": "x"})],
             )
         return LLMResponse(content="done", tool_calls=[])
 
