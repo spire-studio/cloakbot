@@ -11,9 +11,11 @@ egress, webui side-channel) so the previously-gated features become safe to ship
 
 ## Status
 
-- Created: 2026-06-04. State: **W0 + W1b done; non-integration suite GREEN** on branch
-  `rebase/v0.2.1` (`main` untouched; snapshot tag `pre-rebase-snapshot`; `upstream` remote).
-  Suite: **4077 passed, 17 xfailed (documented), 0 unexpected failures** (`-m "not integration"`).
+- Created: 2026-06-04. State: **W0–W2 + all privacy capabilities (Cap A–F) DONE; non-integration
+  suite GREEN** on branch `rebase/v0.2.1` (`main` untouched; snapshot `pre-rebase-snapshot`; `upstream` remote).
+  Suite: **4210 passed, 17 xfailed (documented), 0 unexpected failures**; e2e leak test passes; webui builds.
+  Adversarial privacy review: 0 critical, all HIGH/MED/LOW gaps fixed. Only A1/A2/A3 leak-evals (need local
+  vLLM) remain. See "Capabilities landed" below.
   - W0 done: tree lay-down `58dba2b` (upstream `nanobot@87bd564`, renamed, attribution
     URLs preserved, Workbench `webui/` adopted, privacy package restored). Deps merged
     `39cb6e8` (upstream runtime deps + our privacy deps + cloakbot metadata); `uv sync`
@@ -51,11 +53,16 @@ egress, webui side-channel) so the previously-gated features become safe to ship
     xfailed/ignored with reasons: 12 stale fork tests (pre-rebase runner/facade internals),
     2 W3 (pdf/visual), 3 sandbox-env (network/socket), 2 removed modules (heartbeat fork
     feature dropped; webui channel → W2).
-  - Next: W1 finish (Cap B scoped vaults, Cap C egress policy) → W2 (adopt Workbench webui +
-    privacy overlay + side-channel + **localhost gate** + re-home webui channel) → W3 (streaming
-    sanitizer + visual read_file + exec_session/apply_patch) → W4–W7. Also: restore the
-    `heartbeat` fork feature if wanted; re-apply visual `read_file` (un-xfail pdf tests).
-  - A1/A2/A3 leak-evals (need local vLLM) not yet run — schedule once W1 finishes.
+  - **Capabilities landed (Cap A–F + W2, all green + adversarial-reviewed):** Cap C egress policy `04888fe`,
+    Cap B scoped vaults `6be1e0d`, Cap A streaming sanitizer `af4ff9d`, Cap D stable compaction `c86e79e`,
+    Cap E image-gen egress gate `e9d4515`, Cap F webui side-channel + **localhost gate** `158ea73`, Cap F
+    frontend overlay `b38c897`. Adversarial privacy review (0 critical) found 3 HIGH/3 MED/2 LOW posture gaps,
+    ALL fixed: `6c39b63` (H1 cron ephemeral), `4e46397` (H2 /goal at-rest fail-closed), `4dcaf73` (H3/M2
+    image-gen fail-closed), `ceb5fce` (M1 exec→write_stdin shared carry-over), `25fcfe3` (M3 fixed-key scopes),
+    `22221b0` (L1 transcript blob). The privacy capabilities added ~133 new tests (4077→4210).
+  - Remaining (post-this-effort): A1/A2/A3 leak-evals (need local vLLM); re-apply visual `read_file`
+    (un-xfail the 2 pdf tests, W3); finish the inbound tool-approval envelope round-trip — W2 frontend left
+    PendingToolApprovals unmounted + a backend WS-dispatcher TODO (a UX gap, not a leak).
 - Upstream baseline: nanobot `v0.2.1` (2026-06-01), tracked at `main`.
 - Fork point: nanobot `v0.1.x`. Drift ≈ one minor release + ongoing fixes.
 - Companion analysis (not checked in): two design workflows produced the seam map,
