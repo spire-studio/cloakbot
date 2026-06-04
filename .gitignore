@@ -4,7 +4,6 @@
 .env
 .web
 .claude
-CLAUDE.md
 .vscode/
 bridge/node_modules/
 *.pyc
