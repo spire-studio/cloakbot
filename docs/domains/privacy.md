@@ -388,6 +388,45 @@ accepts the user's attached images alongside the text input. When `media` is non
   them with `[visual content omitted; visual privacy pipeline unavailable:
   <ExceptionType>]`, then the turn proceeds with text only.
 
+## Outbound Visual Egress for Image-Gen (Cap E)
+
+The user-prompt media path above protects *inbound* images. The
+`generate_image` tool is the *outbound* counterpart: it sends a prompt and
+optional reference images to a remote image-generation endpoint
+(OpenRouter / AIHubMix / Gemini / …). Cap C already classifies `generate_image`
+`EXTERNAL` in the `EgressPolicy`, so the tool call is approval-gated, but
+classification alone does not scrub the bytes that leave.
+
+`cloakbot/privacy/visual_egress_gate.py` is the outbound-bytes half. It is a
+privacy-owned wrapper around an `ImageGenerationProvider` —
+`VisualEgressGatedImageProvider` — that transparently delegates every attribute
+to the wrapped provider (Cap D pattern) except `generate`, which it brackets:
+
+- **Reference images** are routed through the same
+  `process_visual_blocks` pipeline (detection + local OCR redaction,
+  fail-closed). Each reference is decoded to an `image_url` block, redacted
+  locally, and only the *redacted* PNG (written to the per-session vault) is
+  forwarded. An image the pipeline cannot confidently redact becomes a text
+  placeholder block with no forwardable image, so it is **omitted entirely** —
+  never shipped raw. An undecodable / non-image reference path is dropped
+  before redaction even runs.
+- **The prompt** is routed through `sanitize_input_with_detection` so a raw
+  entity the user typed is replaced by its vault placeholder. The prompt uses
+  `fail_open=True` (matching the user-input pre-hook contract — best-effort
+  placeholdering that degrades to pass-through on detector outage); the *hard*
+  fail-closed surface is the reference image, which the user cannot inspect
+  byte-for-byte.
+
+The gate is installed at **provider-factory time** in
+`ImageGenerationTool._provider_client()` via
+`wrap_image_provider_with_visual_egress_gate(...)` (idempotent; mirrors the
+Cap C `providers/factory.py` egress-gate install). `providers/image_generation.py`
+is **not** edited. Both pipeline entry points are imported into the gate's own
+module namespace so tests can patch them per-namespace (`conftest.py` adds the
+on-but-inert no-op for both). Verified by `tests/privacy/test_visual_egress_gate.py`
+(redacted reference + placeholdered prompt forwarded; fail-closed omission;
+undecodable-path omission; idempotent install; tool wires the gate).
+
 ## PDF Text-Layer Fast Path
 
 `cloakbot/agent/tools/filesystem.py:read_file` now tries the PDF's embedded

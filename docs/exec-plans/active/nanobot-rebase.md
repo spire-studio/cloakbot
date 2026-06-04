@@ -192,7 +192,7 @@ loop `TurnContext`; carry it as hook-private state.
 | **B** | **DONE** — Scoped/keyed Vaults (`shared` / `ephemeral` child) via `VaultScope`; `use_ephemeral_scope` wraps the turn state machine for `ephemeral=True` runs | replace flat `_cache` in `core/state/vault.py`; scope routed at run-key addressing | ephemeral `/goal`/`dream` map never written to parent `maps/{user}.json`; cross-scope restore is a no-op |
 | **C** | Explicit EgressPolicy + provider egress gate + at-rest `goal_state` sanitizer | `_tool_privacy_class` fall-through; wrap `FallbackProvider`; goal metadata | unregistered network-shaped tool → safe default + approval; non-allow-listed fallback never sees raw value; `/goal` objective persists placeholdered |
 | **D** | **DONE** — Placeholder-stable compaction (`validate_placeholders`) | additive `CompactionGuardedProvider` around the consolidator provider (no fork of `memory.py`/`autocompact.py`) | stubbed summarizer that drops/renumbers/emits-raw → rejected/repaired; counters never rewound |
-| **E** | Multimodal egress gate for image-gen | thin wrapper at provider-factory time | reference image redacted + prompt placeholdered before bytes leave; fail-closed omits image |
+| **E** | **DONE** — Multimodal egress gate for image-gen (`visual_egress_gate.py`) | thin wrapper at provider-factory time (`ImageGenerationTool._provider_client`) | reference image redacted + prompt placeholdered before bytes leave; fail-closed omits image |
 | **F** | Privacy event side-channel (webui) + **localhost gate** | `_agent_ui.privacy` blob + `privacy_trace` event + additive `ws_http` route | round-trip re-validates; upstream client ignores privacy frames; **non-localhost client receives zero raw values** (blocking invariant) |
 
 ## WebUI Plan (summary)
@@ -356,7 +356,13 @@ localhost-gate test green; webui lint/test/build green.
 1. `fallback_provider` + factory + `model_presets` (model/provider immutable at
    runtime invariant defined here).
 2. `bedrock` (gated behind explicit config + SECURITY note on env-driven egress).
-3. `image_generation` (**also needs Cap E**); local backend first, remote behind gate.
+3. `image_generation` (Cap E **DONE** — `cloakbot/privacy/visual_egress_gate.py`
+   `VisualEgressGatedImageProvider` wraps the image-gen provider at
+   provider-factory time in `ImageGenerationTool._provider_client`; reference
+   images routed through `process_visual_blocks` (fail-closed omits the image),
+   prompt placeholdered via `sanitize_input_with_detection`; no edit to
+   `providers/image_generation.py`; `tests/privacy/test_visual_egress_gate.py`).
+   Local backend first, remote behind gate.
 
 **Exit gate:** Cap C provider-gate test; Cap E redaction/fail-closed; **A2 visual
 leak-eval at/below baseline.**

@@ -57,6 +57,18 @@ def _transparent_local_detector():
     async def _chat_intent(*args, **kwargs):
         return Intent.CHAT
 
+    async def _noop_visual_blocks(blocks, *args, **kwargs):
+        # Cap E: transparent pass-through of the visual egress pipeline so the
+        # image-gen gate is on-but-inert by default (no vLLM/OCR in unit tests).
+        # Redaction tests patch this namespace themselves.
+        from cloakbot.privacy.visual_redaction import VisualBlocksResult
+
+        return VisualBlocksResult(
+            redacted_blocks=list(blocks),
+            sanitized_text="",
+            modified=False,
+        )
+
     with (
         patch("cloakbot.privacy.runtime.pipeline.sanitize_input_with_detection", new=_noop_input),
         patch("cloakbot.privacy.runtime.pipeline.analyze_user_intent", new=_chat_intent),
@@ -76,6 +88,18 @@ def _transparent_local_detector():
         # re-tokenize; same transparent-but-available no-op so compaction is
         # on-but-inert by default (redaction tests patch it themselves).
         patch("cloakbot.privacy.compaction.sanitize_tool_output", new=_noop_tool),
+        # Cap E: the image-gen visual egress gate placeholders the prompt and
+        # routes reference images through process_visual_blocks (vLLM + OCR).
+        # Patch both namespaces it uses so the gate is on-but-inert by default;
+        # redaction/fail-closed tests patch these in the test body.
+        patch(
+            "cloakbot.privacy.visual_egress_gate.sanitize_input_with_detection",
+            new=_noop_input,
+        ),
+        patch(
+            "cloakbot.privacy.visual_egress_gate.process_visual_blocks",
+            new=_noop_visual_blocks,
+        ),
     ):
         yield
 

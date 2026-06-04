@@ -130,7 +130,16 @@ class ImageGenerationTool(Tool):
             "extra_headers": provider.extra_headers if provider else None,
             "extra_body": provider.extra_body if provider else None,
         }
-        return cls(**kwargs)
+        client = cls(**kwargs)
+        # Cap E: gate outbound visual egress. Reference images are routed through
+        # local OCR redaction (fail-closed) and the prompt is placeholdered before
+        # any bytes reach the remote image-gen endpoint. Additive wrapper installed
+        # at provider-factory time; no edit to providers/image_generation.py.
+        from cloakbot.privacy.visual_egress_gate import (
+            wrap_image_provider_with_visual_egress_gate,
+        )
+
+        return wrap_image_provider_with_visual_egress_gate(client)
 
     def _resolve_reference_image(self, value: str) -> str:
         access = current_tool_workspace(self.workspace, restrict_to_workspace=True)
