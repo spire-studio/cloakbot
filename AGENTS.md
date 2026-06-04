@@ -21,11 +21,13 @@ lives in `docs/`, and code behavior is the final source of truth when docs drift
 Start here:
 
 - `docs/README.md` - knowledge base map and update rules.
+- `docs/design-docs/core-beliefs.md` - operating principles for agent-readable
+  development (agent legibility, short entrypoints, continuous cleanup).
 - `docs/ARCHITECTURE.md` - runnable surfaces, module boundaries, dependency map.
 - `docs/domains/privacy.md` - privacy pipeline, trust boundary, current feature
   boundaries. Read this before changing anything under `cloakbot/privacy/`.
 - `docs/SECURITY.md` - security invariants and privacy-sensitive handling.
-- `docs/HACKATHON_WRITEUP_DRAFT.md` - hackathon submission narrative and the
+- `docs/HACKATHON_WRITEUP.md` - hackathon submission narrative and the
   evidence stack (A1/A2/A3 leak evals); useful context for the privacy layer.
 - `docs/exec-plans/README.md` - when to create an execution plan.
 - `docs/exec-plans/tech-debt-tracker.md` - known gaps; update when you create or

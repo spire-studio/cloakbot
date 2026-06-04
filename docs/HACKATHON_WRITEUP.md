@@ -2,6 +2,8 @@
 
 *Gemma 4 E2B privacy kernel · Safety & Trust · Main Track + Ollama Special Tech · 2,872 entity-test receipts.*
 
+*Published at the [Gemma 4 Good Hackathon on Kaggle](https://www.kaggle.com/competitions/gemma-4-good-hackathon/writeups/cloakbot-a-local-privacy-kernel-for-frontier-llms).*
+
 ---
 
 ## TL;DR
@@ -30,7 +32,7 @@ Not a personal failure — a *structural* one. Deletion, opt-outs, audit logs al
 David's screen                              Remote LLM sees
 ──────────────                              ──────────────
 "Draft a summary for Marilyn Carter,        "Draft a summary for <<PERSON_1>>,
- age 64, account 4471-08-2934, with          age <<NUMBER_1>>, account <<ID_1>>,
+ age 64, account 4471-08-2934, with          age <<VALUE_1>>, account <<ID_1>>,
  unrealised gains of $58,420 …"              with unrealised gains of <<FINANCE_1>> …"
 
          ▲                                          ▲
@@ -61,7 +63,7 @@ CloakBot uses regex on the **fast path**: emails, invoice numbers, transaction I
 
 A *PII proxy that catches the easy stuff* is **worse than no proxy**, because users trust it. Pre-wire enforcement reasons about context, not patterns. Gemma 4 E2B is the only redistributable model that fits on David's MacBook *and* answers *"should this token be redacted **in this conversation**?"* — ~5 GB, JSON-at-T=0, native vision, Gemma license.
 
-**vLLM for reproducible evals; Ollama for adoption.** `ollama pull gemma:e2b` ships the model + OpenAI-compatible endpoint in one tool. **Gemma 4 is the trust layer; Ollama is the deployment layer.**
+**vLLM for reproducible evals; Ollama for adoption.** `ollama pull gemma4:e2b` ships the model + OpenAI-compatible endpoint in one tool. **Gemma 4 is the trust layer; Ollama is the deployment layer.**
 
 ---
 

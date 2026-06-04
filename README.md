@@ -216,7 +216,7 @@ We refused to ship trust-by-assertion. Three end-to-end leak eval layers run aga
 - **MEDICAL recall: 20% → 95%** via type-driven prompt iteration (rules → adjacent examples)
 - **0 of 226** A3 seam leaks fall within the 300-char chunker overlap band — the boundary heuristic has perfect coverage; every long-doc leak is an intra-chunk detector miss
 
-Full per-template breakdown, methodology, and self-caught eval bugs in [`docs/HACKATHON_WRITEUP_DRAFT.md`](docs/HACKATHON_WRITEUP_DRAFT.md). Reproducibility: one command per layer in `tests/eval/runners/`.
+Full per-template breakdown, methodology, and self-caught eval bugs in [`docs/HACKATHON_WRITEUP.md`](docs/HACKATHON_WRITEUP.md). Reproducibility: one command per layer in `tests/eval/runners/`.
 
 > *All p95 latency numbers measured with Gemma 4 E2B served via vLLM on an RTX 5090. The MacBook (Ollama) deployment path is functionally end-to-end but slower — MacBook is the target hardware, not the measurement rig.*
 
@@ -345,7 +345,7 @@ Or use `bash scripts/quickstart_demo.sh` to do everything in one step.
 
 ## Hackathon tracks
 
-- **Main Track — Gemma 4 Good (Safety & Trust direction)** — Gemma 4 E2B as a local privacy kernel that enforces a pre-wire boundary before any byte reaches the remote LLM. Backed by 2,872 entity-test instances of receipts across A1 (text), A2 (visual), and A3 (long-document) leak evals — see [`docs/HACKATHON_WRITEUP_DRAFT.md`](docs/HACKATHON_WRITEUP_DRAFT.md).
+- **Main Track — Gemma 4 Good (Safety & Trust direction)** — Gemma 4 E2B as a local privacy kernel that enforces a pre-wire boundary before any byte reaches the remote LLM. Backed by 2,872 entity-test instances of receipts across A1 (text), A2 (visual), and A3 (long-document) leak evals — see [`docs/HACKATHON_WRITEUP.md`](docs/HACKATHON_WRITEUP.md).
 - **Ollama Special Technology** — `bash scripts/start_ollama.sh` ships the model + the OpenAI-compatible endpoint in one tool — no GGUF wrangling, no per-OS Metal/CUDA forks. **Gemma 4 is the trust layer; Ollama is the deployment layer.** Try it: `bash scripts/quickstart_demo.sh`.
 
 ---

@@ -7,7 +7,8 @@ answers the task, then inspect the code paths it names.
 ## Map
 
 - `ARCHITECTURE.md` - system layout, runtime surfaces, and dependency boundaries.
-- `HACKATHON_WRITEUP_DRAFT.md` - the Gemma 4 Good Hackathon submission (May 2026).
+- `HACKATHON_WRITEUP.md` - the Gemma 4 Good Hackathon submission (May 2026);
+  [published writeup on Kaggle](https://www.kaggle.com/competitions/gemma-4-good-hackathon/writeups/cloakbot-a-local-privacy-kernel-for-frontier-llms).
 - `domains/privacy.md` - the privacy domain contract and current implementation.
 - `design-docs/` - durable design principles and decisions.
 - `product-specs/` - user-facing product behavior by area.
