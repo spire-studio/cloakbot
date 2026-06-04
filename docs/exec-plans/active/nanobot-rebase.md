@@ -22,12 +22,22 @@ egress, webui side-channel) so the previously-gated features become safe to ship
     core helpers was missing (`get_privacy_vault_dir`, re-homed into `vault.py`;
     `ToolCallRequest`/`detect_image_mime`/`stringify_text_blocks` already exist upstream).
     **103 privacy-core + sanitizer tests pass** (detection/sanitization/vault/math intact).
-  - Next — W1b (the structural seams, High-risk): the privacy package works in isolation
-    but is NOT yet wired into the live path. Register `PrivacyHook` over upstream's
-    `agent/loop.py` `_state_*` machine (sanitize user turn pre-build, restore post-LLM);
-    bracket `agent/runner.py` `_run_tool` with the tool-IO interceptor; `set_vault_workspace`
-    bind; then Cap B scoped vaults + Cap C egress policy. Gate: `tests/privacy/runtime` +
-    `tests/agent` + A1 leak-eval at/below baseline. **Privacy enforcement is OFF until W1b lands.**
+  - W1b runner seam done `04d8509` [seam:4+5]: `ToolPrivacyInterceptorProtocol` +
+    `AgentRunSpec.tool_privacy_interceptor` + `_tool_privacy_class` + `_run_tool` brackets
+    (restore tool args locally before exec; sanitize tool output before model reuse).
+    Verified neutral — `tests/agent/test_runner.py` identical 10-fail/15-pass with & without
+    the seam.
+  - W1b loop seam NEXT (the crux, High-risk — input sanitization before egress):
+    integration points located in upstream `agent/loop.py` (1764 lines): `__init__:178`
+    (`set_vault_workspace`), `AgentRunSpec(...):790` (pass `ToolPrivacyInterceptor(turn_ctx)`),
+    `_state_build:1380` (sanitize user turn via `pre_llm_hook`), `_state_respond:1497`
+    (restore via `post_llm_hook`/`finalize_content`), `_process_message:1183`. Rename privacy
+    `TurnContext`→`PrivacyTurnContext` (collides with upstream loop `TurnContext`). Gate:
+    `tests/privacy/runtime` + A1 leak-eval at/below baseline. **Privacy enforcement is OFF
+    on the live path until the loop seam lands — do not run real sessions on this branch.**
+  - W0-tail (separate from privacy): 10 `tests/agent/test_runner.py` failures are
+    pre-existing upstream-test vs our-kept-`conftest.py` mismatches (e.g. `SubagentManager`
+    `status` arg) — reconcile test infra for the "green suite at parity" gate.
 - Upstream baseline: nanobot `v0.2.1` (2026-06-01), tracked at `main`.
 - Fork point: nanobot `v0.1.x`. Drift ≈ one minor release + ongoing fixes.
 - Companion analysis (not checked in): two design workflows produced the seam map,
