@@ -1,1 +1,0 @@
-"""Cloakbot WebUI package."""

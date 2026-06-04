@@ -23,6 +23,7 @@ def _make_config(**overrides) -> EmailConfig:
         smtp_username="bot@example.com",
         smtp_password="secret",
         mark_seen=True,
+        allow_from=["*"],
         # Disable auth verification by default so existing tests are unaffected
         verify_dkim=False,
         verify_spf=False,
@@ -89,6 +90,109 @@ def test_fetch_new_messages_parses_unseen_and_marks_seen(monkeypatch) -> None:
     # Same UID should be deduped in-process.
     items_again = channel._fetch_new_messages()
     assert items_again == []
+
+
+def test_fetch_new_messages_skips_self_sent_email_and_marks_seen(monkeypatch) -> None:
+    raw = _make_raw_email(from_addr="Nanobot <bot@example.com>", subject="Loop test")
+
+    class FakeIMAP:
+        def __init__(self) -> None:
+            self.store_calls: list[tuple[bytes, str, str]] = []
+
+        def login(self, _user: str, _pw: str):
+            return "OK", [b"logged in"]
+
+        def select(self, _mailbox: str):
+            return "OK", [b"1"]
+
+        def search(self, *_args):
+            return "OK", [b"1"]
+
+        def fetch(self, _imap_id: bytes, _parts: str):
+            return "OK", [(b"1 (UID 123 BODY[] {200})", raw), b")"]
+
+        def store(self, imap_id: bytes, op: str, flags: str):
+            self.store_calls.append((imap_id, op, flags))
+            return "OK", [b""]
+
+        def logout(self):
+            return "BYE", [b""]
+
+    fake = FakeIMAP()
+    monkeypatch.setattr("cloakbot.channels.email.imaplib.IMAP4_SSL", lambda _h, _p: fake)
+
+    channel = EmailChannel(_make_config(from_address="bot@example.com"), MessageBus())
+    items = channel._fetch_new_messages()
+
+    assert items == []
+    assert fake.store_calls == [(b"1", "+FLAGS", "\\Seen")]
+
+    # Same UID should still be deduped after being ignored.
+    items_again = channel._fetch_new_messages()
+    assert items_again == []
+
+
+@pytest.mark.parametrize(
+    "config_override,from_header",
+    [
+        # Only smtp_username matches — simulates an SMTP relay where
+        # outbound From gets rewritten to the SMTP login identity.
+        (
+            {"from_address": "", "smtp_username": "bot@example.com", "imap_username": "other@imap.com"},
+            "bot@example.com",
+        ),
+        # Only imap_username matches — simulates mailbox-based identity
+        # with no explicit from_address set.
+        (
+            {"from_address": "", "smtp_username": "other@smtp.com", "imap_username": "bot@example.com"},
+            "bot@example.com",
+        ),
+        # Case-insensitive: inbound From arrives upper-cased.
+        (
+            {"from_address": "bot@example.com", "smtp_username": "other@smtp.com", "imap_username": "other@imap.com"},
+            "BOT@EXAMPLE.COM",
+        ),
+    ],
+    ids=["smtp_username_only", "imap_username_only", "case_insensitive"],
+)
+def test_fetch_new_messages_skips_self_sent_across_identity_sources(
+    monkeypatch, config_override, from_header
+) -> None:
+    """Self-address detection must fire when any of from_address / smtp_username /
+    imap_username matches, and must be case-insensitive."""
+    raw = _make_raw_email(from_addr=from_header, subject="Loop test")
+
+    class FakeIMAP:
+        def __init__(self) -> None:
+            self.store_calls: list[tuple[bytes, str, str]] = []
+
+        def login(self, _user: str, _pw: str):
+            return "OK", [b"logged in"]
+
+        def select(self, _mailbox: str):
+            return "OK", [b"1"]
+
+        def search(self, *_args):
+            return "OK", [b"1"]
+
+        def fetch(self, _imap_id: bytes, _parts: str):
+            return "OK", [(b"1 (UID 123 BODY[] {200})", raw), b")"]
+
+        def store(self, imap_id: bytes, op: str, flags: str):
+            self.store_calls.append((imap_id, op, flags))
+            return "OK", [b""]
+
+        def logout(self):
+            return "BYE", [b""]
+
+    fake = FakeIMAP()
+    monkeypatch.setattr("cloakbot.channels.email.imaplib.IMAP4_SSL", lambda _h, _p: fake)
+
+    channel = EmailChannel(_make_config(**config_override), MessageBus())
+    items = channel._fetch_new_messages()
+
+    assert items == []
+    assert fake.store_calls == [(b"1", "+FLAGS", "\\Seen")]
 
 
 def test_fetch_new_messages_retries_once_when_imap_connection_goes_stale(monkeypatch) -> None:
@@ -289,6 +393,33 @@ async def test_send_uses_smtp_and_reply_subject(monkeypatch) -> None:
     assert sent["Subject"] == "Re: Invoice #42"
     assert sent["To"] == "alice@example.com"
     assert sent["In-Reply-To"] == "<m1@example.com>"
+
+
+@pytest.mark.asyncio
+async def test_send_skips_progress_messages_before_smtp(monkeypatch) -> None:
+    called = {"smtp": False}
+
+    def _smtp_factory(*_args, **_kwargs):
+        called["smtp"] = True
+        raise AssertionError("progress messages must not open an SMTP connection")
+
+    monkeypatch.setattr("cloakbot.channels.email.smtplib.SMTP", _smtp_factory)
+
+    channel = EmailChannel(_make_config(), MessageBus())
+
+    await channel.send(
+        OutboundMessage(
+            channel="email",
+            chat_id="alice@example.com",
+            content="",
+            metadata={
+                "_progress": True,
+                "_tool_events": [{"phase": "end", "name": "exec"}],
+            },
+        )
+    )
+
+    assert called["smtp"] is False
 
 
 @pytest.mark.asyncio
@@ -684,6 +815,32 @@ def _make_raw_email_with_attachment(
     return msg.as_bytes()
 
 
+def test_fetch_new_messages_ignores_unauthorized_sender_before_attachments(monkeypatch) -> None:
+    raw = _make_raw_email_with_attachment(from_addr="blocked@example.com")
+    fake = _make_fake_imap(raw)
+    monkeypatch.setattr("cloakbot.channels.email.imaplib.IMAP4_SSL", lambda _h, _p: fake)
+
+    called = {"attachments": False}
+
+    def _extract_attachments(*_args, **_kwargs):
+        called["attachments"] = True
+        return []
+
+    monkeypatch.setattr(EmailChannel, "_extract_attachments", _extract_attachments)
+
+    cfg = _make_config(
+        allow_from=["allowed@example.com"],
+        allowed_attachment_types=["application/pdf"],
+        verify_dkim=False,
+        verify_spf=False,
+    )
+    channel = EmailChannel(cfg, MessageBus())
+
+    assert channel._fetch_new_messages() == []
+    assert called["attachments"] is False
+    assert fake.store_calls == [(b"1", "+FLAGS", "\\Seen")]
+
+
 def test_extract_attachments_saves_pdf(tmp_path, monkeypatch) -> None:
     """PDF attachment is saved to media dir and path returned in media list."""
     monkeypatch.setattr("cloakbot.channels.email.get_media_dir", lambda ch: tmp_path)
@@ -871,3 +1028,388 @@ def test_extract_attachments_sanitizes_filename(tmp_path, monkeypatch) -> None:
     saved_path = Path(items[0]["media"][0])
     # File must be inside the media dir, not escaped via path traversal
     assert saved_path.parent == tmp_path
+
+
+# ---------------------------------------------------------------------------
+# Agent-initiated file attachment tests (send with media)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_send_with_single_file_attachment(tmp_path, monkeypatch) -> None:
+    """Agent sends an email with a single file attached."""
+    sent_messages: list[EmailMessage] = []
+
+    class FakeSMTP:
+        def __init__(self, _host: str, _port: int, timeout: int = 30) -> None:
+            self.timeout = timeout
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def starttls(self, context=None):
+            return None
+
+        def login(self, _user: str, _pw: str):
+            return None
+
+        def send_message(self, msg: EmailMessage):
+            sent_messages.append(msg)
+
+    monkeypatch.setattr("cloakbot.channels.email.smtplib.SMTP", lambda h, p, timeout=30: FakeSMTP(h, p, timeout=timeout))
+
+    # Create a real temp file to attach
+    attachment = tmp_path / "report.pdf"
+    attachment.write_bytes(b"%PDF-1.4 fake pdf content")
+
+    channel = EmailChannel(_make_config(), MessageBus())
+    await channel.send(
+        OutboundMessage(
+            channel="email",
+            chat_id="alice@example.com",
+            content="Please find the report attached.",
+            media=[str(attachment)],
+        )
+    )
+
+    assert len(sent_messages) == 1
+    sent = sent_messages[0]
+    assert sent["To"] == "alice@example.com"
+    assert sent.is_multipart(), "Email with attachment should be multipart"
+
+    # Walk parts to find the attachment
+    attachment_parts = []
+    for part in sent.walk():
+        if part.get_content_disposition() == "attachment":
+            attachment_parts.append(part)
+    assert len(attachment_parts) == 1
+    att = attachment_parts[0]
+    assert att.get_filename() == "report.pdf"
+    assert att.get_content_type() == "application/pdf"
+    assert att.get_payload(decode=True) == b"%PDF-1.4 fake pdf content"
+
+
+@pytest.mark.asyncio
+async def test_send_with_multiple_file_attachments(tmp_path, monkeypatch) -> None:
+    """Agent sends an email with multiple files attached."""
+    sent_messages: list[EmailMessage] = []
+
+    class FakeSMTP:
+        def __init__(self, _host: str, _port: int, timeout: int = 30) -> None:
+            self.timeout = timeout
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def starttls(self, context=None):
+            return None
+
+        def login(self, _user: str, _pw: str):
+            return None
+
+        def send_message(self, msg: EmailMessage):
+            sent_messages.append(msg)
+
+    monkeypatch.setattr("cloakbot.channels.email.smtplib.SMTP", lambda h, p, timeout=30: FakeSMTP(h, p, timeout=timeout))
+
+    file1 = tmp_path / "doc.pdf"
+    file1.write_bytes(b"%PDF-1.4 doc")
+    file2 = tmp_path / "image.png"
+    file2.write_bytes(b"\x89PNG fake image")
+    file3 = tmp_path / "notes.txt"
+    file3.write_bytes(b"Hello, this is a text note.")
+
+    channel = EmailChannel(_make_config(), MessageBus())
+    await channel.send(
+        OutboundMessage(
+            channel="email",
+            chat_id="bob@example.com",
+            content="Multiple files attached.",
+            media=[str(file1), str(file2), str(file3)],
+        )
+    )
+
+    assert len(sent_messages) == 1
+    sent = sent_messages[0]
+    assert sent.is_multipart()
+
+    attachment_parts = []
+    for part in sent.walk():
+        if part.get_content_disposition() == "attachment":
+            attachment_parts.append(part)
+    assert len(attachment_parts) == 3
+
+    filenames = {p.get_filename() for p in attachment_parts}
+    assert filenames == {"doc.pdf", "image.png", "notes.txt"}
+
+
+@pytest.mark.asyncio
+async def test_send_skips_missing_attachment_file(tmp_path, monkeypatch) -> None:
+    """Non-existent attachment file is skipped without breaking the send."""
+    sent_messages: list[EmailMessage] = []
+
+    class FakeSMTP:
+        def __init__(self, _host: str, _port: int, timeout: int = 30) -> None:
+            self.timeout = timeout
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def starttls(self, context=None):
+            return None
+
+        def login(self, _user: str, _pw: str):
+            return None
+
+        def send_message(self, msg: EmailMessage):
+            sent_messages.append(msg)
+
+    monkeypatch.setattr("cloakbot.channels.email.smtplib.SMTP", lambda h, p, timeout=30: FakeSMTP(h, p, timeout=timeout))
+
+    existing = tmp_path / "real.txt"
+    existing.write_text("I exist")
+
+    channel = EmailChannel(_make_config(), MessageBus())
+    await channel.send(
+        OutboundMessage(
+            channel="email",
+            chat_id="alice@example.com",
+            content="One attachment is missing.",
+            media=[
+                str(existing),
+                str(tmp_path / "nonexistent.pdf"),
+            ],
+        )
+    )
+
+    assert len(sent_messages) == 1
+    sent = sent_messages[0]
+    assert sent.is_multipart()
+
+    attachment_parts = []
+    for part in sent.walk():
+        if part.get_content_disposition() == "attachment":
+            attachment_parts.append(part)
+    # Only the existing file should be attached
+    assert len(attachment_parts) == 1
+    assert attachment_parts[0].get_filename() == "real.txt"
+    body = sent.get_body(preferencelist=("plain",))
+    assert body is not None
+    assert "[attachment: nonexistent.pdf - send failed]" in body.get_content()
+
+
+@pytest.mark.asyncio
+async def test_send_skips_oversized_attachment_file(tmp_path, monkeypatch) -> None:
+    """Attachment exceeding max_attachment_size is skipped with a visible note."""
+    sent_messages: list[EmailMessage] = []
+
+    class FakeSMTP:
+        def __init__(self, _host: str, _port: int, timeout: int = 30) -> None:
+            self.timeout = timeout
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def starttls(self, context=None):
+            return None
+
+        def login(self, _user: str, _pw: str):
+            return None
+
+        def send_message(self, msg: EmailMessage):
+            sent_messages.append(msg)
+
+    monkeypatch.setattr("cloakbot.channels.email.smtplib.SMTP", lambda h, p, timeout=30: FakeSMTP(h, p, timeout=timeout))
+
+    attachment = tmp_path / "too-large.bin"
+    attachment.write_bytes(b"1234")
+
+    channel = EmailChannel(_make_config(max_attachment_size=3), MessageBus())
+    await channel.send(
+        OutboundMessage(
+            channel="email",
+            chat_id="alice@example.com",
+            content="Attachment should be skipped.",
+            media=[str(attachment)],
+        )
+    )
+
+    assert len(sent_messages) == 1
+    sent = sent_messages[0]
+    assert not sent.is_multipart()
+    assert "[attachment: too-large.bin - too large]" in sent.get_content()
+
+
+@pytest.mark.asyncio
+async def test_send_limits_outbound_attachment_count(tmp_path, monkeypatch) -> None:
+    """Only max_attachments_per_email outbound attachments are included."""
+    sent_messages: list[EmailMessage] = []
+
+    class FakeSMTP:
+        def __init__(self, _host: str, _port: int, timeout: int = 30) -> None:
+            self.timeout = timeout
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def starttls(self, context=None):
+            return None
+
+        def login(self, _user: str, _pw: str):
+            return None
+
+        def send_message(self, msg: EmailMessage):
+            sent_messages.append(msg)
+
+    monkeypatch.setattr("cloakbot.channels.email.smtplib.SMTP", lambda h, p, timeout=30: FakeSMTP(h, p, timeout=timeout))
+
+    file1 = tmp_path / "first.txt"
+    file1.write_text("first")
+    file2 = tmp_path / "second.txt"
+    file2.write_text("second")
+
+    channel = EmailChannel(_make_config(max_attachments_per_email=1), MessageBus())
+    await channel.send(
+        OutboundMessage(
+            channel="email",
+            chat_id="alice@example.com",
+            content="Only one attachment should be sent.",
+            media=[str(file1), str(file2)],
+        )
+    )
+
+    assert len(sent_messages) == 1
+    sent = sent_messages[0]
+    attachment_parts = []
+    for part in sent.walk():
+        if part.get_content_disposition() == "attachment":
+            attachment_parts.append(part)
+    assert len(attachment_parts) == 1
+    assert attachment_parts[0].get_filename() == "first.txt"
+    body = sent.get_body(preferencelist=("plain",))
+    assert body is not None
+    assert "[attachment: second.txt - too many attachments]" in body.get_content()
+
+
+@pytest.mark.asyncio
+async def test_send_with_unknown_mime_type_attachment(tmp_path, monkeypatch) -> None:
+    """File with unknown extension gets application/octet-stream MIME type."""
+    sent_messages: list[EmailMessage] = []
+
+    class FakeSMTP:
+        def __init__(self, _host: str, _port: int, timeout: int = 30) -> None:
+            self.timeout = timeout
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def starttls(self, context=None):
+            return None
+
+        def login(self, _user: str, _pw: str):
+            return None
+
+        def send_message(self, msg: EmailMessage):
+            sent_messages.append(msg)
+
+    monkeypatch.setattr("cloakbot.channels.email.smtplib.SMTP", lambda h, p, timeout=30: FakeSMTP(h, p, timeout=timeout))
+
+    attachment = tmp_path / "data.unknown_ext_xyz"
+    attachment.write_bytes(b"some binary data")
+
+    channel = EmailChannel(_make_config(), MessageBus())
+    await channel.send(
+        OutboundMessage(
+            channel="email",
+            chat_id="alice@example.com",
+            content="Unknown MIME type.",
+            media=[str(attachment)],
+        )
+    )
+
+    assert len(sent_messages) == 1
+    sent = sent_messages[0]
+    assert sent.is_multipart()
+
+    attachment_parts = []
+    for part in sent.walk():
+        if part.get_content_disposition() == "attachment":
+            attachment_parts.append(part)
+    assert len(attachment_parts) == 1
+    att = attachment_parts[0]
+    assert att.get_content_type() == "application/octet-stream"
+    assert att.get_filename() == "data.unknown_ext_xyz"
+
+
+@pytest.mark.asyncio
+async def test_send_with_media_and_reply_subject_and_in_reply_to(tmp_path, monkeypatch) -> None:
+    """Attachments work together with reply subject and In-Reply-To headers."""
+    sent_messages: list[EmailMessage] = []
+
+    class FakeSMTP:
+        def __init__(self, _host: str, _port: int, timeout: int = 30) -> None:
+            self.timeout = timeout
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def starttls(self, context=None):
+            return None
+
+        def login(self, _user: str, _pw: str):
+            return None
+
+        def send_message(self, msg: EmailMessage):
+            sent_messages.append(msg)
+
+    monkeypatch.setattr("cloakbot.channels.email.smtplib.SMTP", lambda h, p, timeout=30: FakeSMTP(h, p, timeout=timeout))
+
+    attachment = tmp_path / "summary.pdf"
+    attachment.write_bytes(b"%PDF-1.4 summary")
+
+    channel = EmailChannel(_make_config(), MessageBus())
+    channel._last_subject_by_chat["alice@example.com"] = "Original subject"
+    channel._last_message_id_by_chat["alice@example.com"] = "<orig@example.com>"
+
+    await channel.send(
+        OutboundMessage(
+            channel="email",
+            chat_id="alice@example.com",
+            content="Reply with attachment.",
+            media=[str(attachment)],
+        )
+    )
+
+    assert len(sent_messages) == 1
+    sent = sent_messages[0]
+    assert sent["Subject"] == "Re: Original subject"
+    assert sent["In-Reply-To"] == "<orig@example.com>"
+    assert sent["References"] == "<orig@example.com>"
+
+    attachment_parts = []
+    for part in sent.walk():
+        if part.get_content_disposition() == "attachment":
+            attachment_parts.append(part)
+    assert len(attachment_parts) == 1
+    assert attachment_parts[0].get_filename() == "summary.pdf"

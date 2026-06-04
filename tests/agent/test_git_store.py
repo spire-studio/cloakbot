@@ -1,9 +1,10 @@
 """Tests for GitStore — git-backed version control for memory files."""
 
-
 import pytest
+from pathlib import Path
 
-from cloakbot.utils.gitstore import CommitInfo, GitStore
+from cloakbot.utils.gitstore import GitStore, CommitInfo
+
 
 TRACKED = ["SOUL.md", "USER.md", "memory/MEMORY.md"]
 

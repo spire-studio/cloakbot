@@ -11,6 +11,7 @@ from unittest.mock import patch
 from cloakbot.providers.base import ToolCallRequest
 from cloakbot.providers.openai_compat_provider import OpenAICompatProvider
 
+
 GEMINI_EXTRA = {"google": {"thought_signature": "sig-abc-123"}}
 
 
@@ -183,17 +184,22 @@ def test_stale_extra_content_in_tool_calls_survives_sanitize() -> None:
     with patch("cloakbot.providers.openai_compat_provider.AsyncOpenAI"):
         provider = OpenAICompatProvider()
 
-    messages = [{
-        "role": "assistant",
-        "content": None,
-        "tool_calls": [{
-            "id": "call_1",
-            "type": "function",
-            "function": {"name": "fn", "arguments": "{}"},
-            "extra_content": GEMINI_EXTRA,
-        }],
-    }]
+    messages = [
+        {"role": "user", "content": "hi"},
+        {
+            "role": "assistant",
+            "content": None,
+            "tool_calls": [{
+                "id": "call_1",
+                "type": "function",
+                "function": {"name": "fn", "arguments": "{}"},
+                "extra_content": GEMINI_EXTRA,
+            }],
+        },
+        {"role": "tool", "content": "ok", "tool_call_id": "call_1"},
+        {"role": "user", "content": "thanks"},
+    ]
 
     sanitized = provider._sanitize_messages(messages)
 
-    assert sanitized[0]["tool_calls"][0]["extra_content"] == GEMINI_EXTRA
+    assert sanitized[1]["tool_calls"][0]["extra_content"] == GEMINI_EXTRA
