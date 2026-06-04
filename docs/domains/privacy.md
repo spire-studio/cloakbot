@@ -24,7 +24,9 @@ should see placeholders, not raw sensitive values.
    sanitization handler.
 6. The session Vault stores placeholder identity, aliases, normalized values for
    computable entities, and local computation records.
-7. `IntentAnalyzer` classifies the raw user input as `chat` or `math`.
+7. `analyze_user_intent()` (the `UserIntentAnalyzer` in
+   `agents/classification/intent_analyzer.py`) classifies the raw user input as
+   `chat` or `math`.
 8. `runtime/registry.py` maps `chat` to `ChatAgent` and `math` to `MathAgent`.
 9. The remote LLM receives only the sanitized prompt.
 10. `post_llm_hook()` calls `PrivacyRuntime.finalize_turn()`.
@@ -239,8 +241,8 @@ The behaviour is configurable via `CLOAKBOT_VISUAL_FAIL_MODE`:
 
 ## User Prompt Media
 
-`PrivacyRuntime.prepare_turn(text, *, media=None)` accepts the user's
-attached images alongside the text input. When `media` is non-empty:
+`PrivacyRuntime.prepare_turn(text, session_key, *, media=None, fail_open=True)`
+accepts the user's attached images alongside the text input. When `media` is non-empty:
 
 - The runtime builds `image_url` blocks from the file paths and routes them
   through `process_visual_blocks` *before* the context builder sees them, so
@@ -259,7 +261,8 @@ attached images alongside the text input. When `media` is non-empty:
 ## PDF Text-Layer Fast Path
 
 `cloakbot/agent/tools/filesystem.py:read_file` now tries the PDF's embedded
-text layer first via `fitz.get_text("text")`. When the layer is non-empty —
+text layer first via `doc.load_page(i).get_text("text")`. When the layer is
+non-empty —
 digital invoices, contracts, reports — the tool returns the extracted text
 directly (orders of magnitude cheaper and more accurate than rasterise + OCR).
 Image-only / scanned PDFs fall back to the existing first-page render path,
