@@ -106,7 +106,7 @@ git tag v0.2.0 && git push origin v0.2.0
 
 The `Release` workflow verifies the tag matches `pyproject.toml`, builds the
 artifacts, and publishes a GitHub Release with generated notes. Record notable
-changes in [`CHANGELOG.md`](CHANGELOG.md).
+changes in [`CHANGELOG.md`](../CHANGELOG.md).
 
 ## Questions and Feedback
 

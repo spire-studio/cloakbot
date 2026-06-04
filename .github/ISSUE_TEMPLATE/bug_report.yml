@@ -8,7 +8,7 @@ body:
         Thanks for taking the time to file a bug.
 
         ⚠️ **Do not report security vulnerabilities here.** See
-        [SECURITY.md](https://github.com/spire-studio/cloakbot/blob/main/SECURITY.md)
+        [SECURITY.md](https://github.com/spire-studio/cloakbot/blob/main/.github/SECURITY.md)
         and use a private advisory instead.
 
         ⚠️ **Do not paste real secrets, API keys, or sensitive personal data.**
