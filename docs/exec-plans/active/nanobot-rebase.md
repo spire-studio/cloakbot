@@ -11,7 +11,18 @@ egress, webui side-channel) so the previously-gated features become safe to ship
 
 ## Status
 
-- Created: 2026-06-04. State: **planning complete, execution not started.**
+- Created: 2026-06-04. State: **W0 in progress** on branch `rebase/v0.2.1`
+  (`main` untouched; snapshot tag `pre-rebase-snapshot`; `upstream` remote added).
+  - Done: tree lay-down committed `58dba2b` — upstream `nanobot@87bd564` laid down
+    (renamed `nanobot`→`cloakbot`, attribution URLs preserved), Workbench `webui/`
+    adopted, upstream core tests overlaid, privacy package (48 modules) +
+    `tool_privacy.py` + `providers/vllm.py` restored, `tests/{privacy,eval,sanitizer}`
+    kept. Package is syntactically valid (`compileall`). 204 `cloakbot/*.py`.
+  - Next (W0 exit gate): merge `pyproject.toml` deps (upstream runtime deps + our
+    privacy deps + cloakbot metadata), `uv sync`, runtime `import cloakbot`, apply the
+    S-cost seams (1,4,6,8,10,11,12), green non-integration suite at parity.
+  - Then W1: the High-risk seam re-architecture (PrivacyHook over upstream's
+    `_state_*` state machine + tool-IO interceptor over `_run_tool`).
 - Upstream baseline: nanobot `v0.2.1` (2026-06-01), tracked at `main`.
 - Fork point: nanobot `v0.1.x`. Drift ≈ one minor release + ongoing fixes.
 - Companion analysis (not checked in): two design workflows produced the seam map,
