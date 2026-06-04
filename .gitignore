@@ -1,50 +1,56 @@
-.worktrees/
-.assets
-.docs
+# .gitignore — paths kept out of the repo, grouped by concern.
+# See .dockerignore for the image-build equivalent and .env.example for config.
+
+# ── Secrets & local config ──────────────────────────────────────────────────
 .env
-.web
-.claude
-.vscode/
-bridge/node_modules/
-*.pyc
+
+# ── Python artifacts ────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.egg
+*.egg-info/
 dist/
 build/
-*.egg-info/
-*.egg
-*.pycs
-*.pyo
-*.pyd
-*.pyw
-*.pyz
-*.pywz
-*.pyzz
-.venv/
-.omc/
-venv/
-__pycache__/
-poetry.lock
 .pytest_cache/
-botpy.log
-nano.*.save
-.DS_Store
+
+# ── Virtual environments & lockfiles ────────────────────────────────────────
+.venv/
+venv/
+poetry.lock
 uv.lock
 
-# Local model downloads (can be large)
+# ── Editor / OS / misc cruft ────────────────────────────────────────────────
+.vscode/
+.DS_Store
+nano.*.save
+botpy.log
+MagicMock/
+
+# ── Agent & assistant local state ───────────────────────────────────────────
+.claude
+.omc/
+.worktrees/
+
+# ── Local scratch dirs (shadow real ones; keep out of the repo) ─────────────
+.assets
+.docs
+.web
+
+# ── Node (WhatsApp bridge) ──────────────────────────────────────────────────
+bridge/node_modules/
+
+# ── Local model downloads (can be large) ────────────────────────────────────
 models/
 *.gguf
 vllm_server.log
 
-# evals
+# ── Eval datasets (generated locally) ───────────────────────────────────────
 datasets/
 evals/
 
-# Local privacy test fixtures (may contain real PII; keep out of the public repo)
+# ── Local privacy data — may contain real PII; never commit ─────────────────
+# Test fixtures, sanitizer session maps, vault snapshots, and session traces.
 gamma4-image-test/
-
-# Sanitizer session maps (contain PII placeholders, stay local)
 ~/.cloakbot/sanitizer_maps/
-MagicMock/
-
-# Runtime-local privacy state (vault snapshots, session traces, debug dumps)
 privacy_vault/
 sessions/
