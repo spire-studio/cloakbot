@@ -13,7 +13,21 @@ from typing import Any
 from loguru import logger
 from pydantic import BaseModel, Field
 
-from cloakbot.config.paths import get_privacy_vault_dir
+from cloakbot.config.paths import get_workspace_path
+
+
+def get_privacy_vault_dir(workspace: str | Path | None = None) -> Path:
+    """Workspace-scoped privacy vault directory.
+
+    Privacy-owned to avoid patching upstream ``config/paths.py`` (keeps it
+    mergeable on rebase). Mirrors the pre-rebase semantics.
+    """
+    base = Path(workspace).expanduser() if workspace is not None else get_workspace_path()
+    path = base / "privacy_vault"
+    path.mkdir(parents=True, exist_ok=True)
+    path.chmod(0o700)
+    return path
+
 
 # Canonical placeholder format: <<TAG_N>>
 PLACEHOLDER_RE = re.compile(r"<<[A-Z]+(?:_[A-Z]+)*_\d+>>")
