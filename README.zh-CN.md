@@ -83,7 +83,7 @@
 | 多语言（中 / 日 / 韩 / 英）在一个模型里 | 每个语种一套正则 | 每种语言 600 MB+ | 一个 2B 模型 |
 | 可计算性归一化——`$1,200.50` → `1200.5`（可供本地数学执行） | 仅字符串 | 仅字符串 | ✓ 类型化数值 |
 
-只能拦住简单情况的 PII 代理**比完全没有代理更糟糕**——因为用户会信任它。真正的门槛是判断**在这次具体对话里**这个 token 到底该不该被遮蔽，这是一个生成式 LLM 形状的问题。Gemma 4 E2B 是唯一同时满足这些条件的可商用再分发模型：能塞进消费级硬件（量化后约 5 GB，MacBook 通过 Ollama 就能跑）、T=0 下稳出可解析 JSON、同一套权重原生多模态且多语言——**信任层就是这个模型**，而不是在 Presidio 上挂一个 chat 改写器。老实交代代价：单次检测约 50–200 ms，正则不到 1 ms；靠 general + digit 并发、已知格式走正则快通道、长文档分块并发来抵消。完整理由、延迟与方法学见 [hackathon writeup](docs/HACKATHON_WRITEUP_DRAFT.md)。
+只能拦住简单情况的 PII 代理**比完全没有代理更糟糕**——因为用户会信任它。真正的门槛是判断**在这次具体对话里**这个 token 到底该不该被遮蔽，这是一个生成式 LLM 形状的问题。Gemma 4 E2B 是唯一同时满足这些条件的可商用再分发模型：能塞进消费级硬件（量化后约 5 GB，MacBook 通过 Ollama 就能跑）、T=0 下稳出可解析 JSON、同一套权重原生多模态且多语言——**信任层就是这个模型**，而不是在 Presidio 上挂一个 chat 改写器。老实交代代价：单次检测约 50–200 ms，正则不到 1 ms；靠 general + digit 并发、已知格式走正则快通道、长文档分块并发来抵消。完整理由、延迟与方法学见 [hackathon writeup](docs/HACKATHON_WRITEUP.md)。
 
 ---
 
@@ -143,7 +143,7 @@
 - **MEDICAL 召回：20% → 95%**——靠类型驱动的 prompt 迭代（规则 → 类型相邻示例）
 - **226 个 A3 seam 泄漏中 0 个**落在 chunker 300 字符的重叠带里——剩下的长文档泄漏全部是块内检测漏召，而不是 seam 处掉链子
 
-完整的逐模板拆分、方法学，以及我们自己抓出来的 eval bug 见 [`docs/HACKATHON_WRITEUP_DRAFT.md`](docs/HACKATHON_WRITEUP_DRAFT.md)。复现方式：每层一条命令，runner 都在 `tests/eval/runners/` 下。
+完整的逐模板拆分、方法学，以及我们自己抓出来的 eval bug 见 [`docs/HACKATHON_WRITEUP.md`](docs/HACKATHON_WRITEUP.md)。复现方式：每层一条命令，runner 都在 `tests/eval/runners/` 下。
 
 > *所有 p95 延迟数字都是用 Gemma 4 E2B 经 vLLM 部署在 RTX 5090 上实测得到的。MacBook（Ollama）部署路径端到端能跑通，但延迟更慢 —— MacBook 是目标部署硬件，不是测量平台。*
 
@@ -238,7 +238,7 @@ uv run python -m cloakbot webui        # 网关 :8000 · 前端 :5173
 
 ## Hackathon 赛道
 
-- **主赛道 —— Gemma 4 Good（Safety & Trust 方向）** —— Gemma 4 E2B 作为本地隐私内核，在任何字节抵达远端 LLM 之前就执行一道「上线前」边界。背后是 A1（文本）、A2（视觉）、A3（长文档）三层泄漏 eval、共 2,872 条实体级回归测试作为存证 —— 详见 [`docs/HACKATHON_WRITEUP_DRAFT.md`](docs/HACKATHON_WRITEUP_DRAFT.md)。
+- **主赛道 —— Gemma 4 Good（Safety & Trust 方向）** —— Gemma 4 E2B 作为本地隐私内核，在任何字节抵达远端 LLM 之前就执行一道「上线前」边界。背后是 A1（文本）、A2（视觉）、A3（长文档）三层泄漏 eval、共 2,872 条实体级回归测试作为存证 —— 详见 [`docs/HACKATHON_WRITEUP.md`](docs/HACKATHON_WRITEUP.md)。
 - **Ollama 特别技术赛道** —— `bash scripts/start_ollama.sh` 一条命令同时拉起模型和 OpenAI 兼容接口 —— 不用折腾 GGUF，也不用按操作系统分叉 Metal / CUDA。**Gemma 4 是信任层，Ollama 是部署层。** 试一下：`bash scripts/quickstart_demo.sh`。
 
 ---

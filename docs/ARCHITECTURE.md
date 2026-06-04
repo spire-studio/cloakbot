@@ -79,8 +79,9 @@ Detailed behavior lives in `domains/privacy.md`.
   local vLLM/Gemma endpoint for sensitive-field identification and local
   OCR/Pillow for coordinate-based redaction. Renders a vault placeholder
   *inside* each redaction box so the downstream multimodal model can address
-  redactions by name, with per-token rendering deduped so adjacent boxes
-  sharing a placeholder don't cause the LLM to repeat the value in its reply.
+  redactions by name. Every matching box is labelled (the earlier
+  one-box-per-token-family overlay was dropped); placeholder de-duplication
+  now happens in the sibling region-map text block, not in the image.
   Emits a sibling region-map text block alongside each image for text-only
   models. Cross-modal recall bridge: text-side entities found by
   `PiiDetector` are forwarded as additional needles into the visual matcher,

@@ -83,7 +83,7 @@ Detection is split into `GeneralPrivacyDetector` (non-computable text spans) and
 | Multilingual (CN / JP / KR / EN) on one model | one regex set per locale | 600 MB+ per language | one 2B model |
 | Computable normalization — `$1,200.50` → `1200.5` (ready for local math) | string-only | string-only | ✓ typed numeric |
 
-A PII proxy that only catches the easy stuff is **strictly worse than no proxy** — users trust it. The real bar is reasoning about whether a token should be redacted *in this specific conversation*, a generative-LLM-shaped problem. Gemma 4 E2B is the one commercially-redistributable model that fits consumer hardware (~5 GB quantised, runs on a MacBook via Ollama), returns parseable JSON at T=0, and is multimodal and multilingual in one weight set — **the trust layer is the model**, not a chat rewriter bolted onto Presidio. The honest cost: ~50–200 ms per detector call vs regex's <1 ms, mitigated by concurrent general+digit detectors, regex on the fast path, and per-chunk concurrency. Full rationale, latency, and methodology in the [hackathon writeup](docs/HACKATHON_WRITEUP_DRAFT.md).
+A PII proxy that only catches the easy stuff is **strictly worse than no proxy** — users trust it. The real bar is reasoning about whether a token should be redacted *in this specific conversation*, a generative-LLM-shaped problem. Gemma 4 E2B is the one commercially-redistributable model that fits consumer hardware (~5 GB quantised, runs on a MacBook via Ollama), returns parseable JSON at T=0, and is multimodal and multilingual in one weight set — **the trust layer is the model**, not a chat rewriter bolted onto Presidio. The honest cost: ~50–200 ms per detector call vs regex's <1 ms, mitigated by concurrent general+digit detectors, regex on the fast path, and per-chunk concurrency. Full rationale, latency, and methodology in the [hackathon writeup](docs/HACKATHON_WRITEUP.md).
 
 ---
 
@@ -143,7 +143,7 @@ We refused to ship trust-by-assertion. Three end-to-end leak eval layers run aga
 - **MEDICAL recall: 20% → 95%** via type-driven prompt iteration (rules → adjacent examples)
 - **0 of 226** A3 seam leaks fall within the 300-char chunker overlap band — every long-doc leak is an intra-chunk detector miss, not a boundary failure
 
-Full per-template breakdown, methodology, and self-caught eval bugs in [`docs/HACKATHON_WRITEUP_DRAFT.md`](docs/HACKATHON_WRITEUP_DRAFT.md). Reproducibility: one command per layer in `tests/eval/runners/`.
+Full per-template breakdown, methodology, and self-caught eval bugs in [`docs/HACKATHON_WRITEUP.md`](docs/HACKATHON_WRITEUP.md). Reproducibility: one command per layer in `tests/eval/runners/`.
 
 > *All p95 latency numbers measured with Gemma 4 E2B served via vLLM on an RTX 5090. The MacBook (Ollama) path is functionally end-to-end but slower — MacBook is the target hardware, not the measurement rig.*
 
@@ -238,7 +238,7 @@ uv run python -m cloakbot webui        # gateway :8000 · frontend :5173
 
 ## Hackathon tracks
 
-- **Main Track — Gemma 4 Good (Safety & Trust direction)** — Gemma 4 E2B as a local privacy kernel that enforces a pre-wire boundary before any byte reaches the remote LLM. Backed by 2,872 entity-test instances across A1 (text), A2 (visual), and A3 (long-document) leak evals — see [`docs/HACKATHON_WRITEUP_DRAFT.md`](docs/HACKATHON_WRITEUP_DRAFT.md).
+- **Main Track — Gemma 4 Good (Safety & Trust direction)** — Gemma 4 E2B as a local privacy kernel that enforces a pre-wire boundary before any byte reaches the remote LLM. Backed by 2,872 entity-test instances across A1 (text), A2 (visual), and A3 (long-document) leak evals — see [`docs/HACKATHON_WRITEUP.md`](docs/HACKATHON_WRITEUP.md).
 - **Ollama Special Technology** — `bash scripts/start_ollama.sh` ships the model + the OpenAI-compatible endpoint in one tool. **Gemma 4 is the trust layer; Ollama is the deployment layer.** Try it: `bash scripts/quickstart_demo.sh`.
 
 ---
