@@ -4,8 +4,7 @@ import json
 import tempfile
 from pathlib import Path
 
-from cloakbot.config.paths import get_privacy_vault_dir
-from cloakbot.privacy.core.state.vault import _safe_key
+from cloakbot.privacy.core.state.vault import _safe_key, get_privacy_vault_dir
 from cloakbot.privacy.webui.contracts import WebUIPrivacyPayload
 
 

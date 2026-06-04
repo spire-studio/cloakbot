@@ -471,7 +471,9 @@ async def test_runner_sanitizes_large_tool_output_before_persisting(tmp_path) ->
         if call_count["n"] == 1:
             return LLMResponse(
                 content="reading",
-                tool_calls=[ToolCallRequest(id="call_big", name="read_file", arguments={"path": "x"})],
+                # read_file is offload-exempt upstream (binds its own output); use a
+                # generic tool name so the large-output offload+sanitize path runs.
+                tool_calls=[ToolCallRequest(id="call_big", name="fetch_data", arguments={"path": "x"})],
             )
         return LLMResponse(content="done", tool_calls=[])
 

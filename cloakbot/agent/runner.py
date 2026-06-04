@@ -14,8 +14,8 @@ from loguru import logger
 
 from cloakbot.agent.hook import AgentHook, AgentHookContext
 from cloakbot.agent.tools.registry import ToolRegistry
-from cloakbot.providers.base import LLMProvider, LLMResponse, ToolCallRequest
 from cloakbot.privacy.tool_models import ToolApprovalRequiredError, ToolPrivacyClass
+from cloakbot.providers.base import LLMProvider, LLMResponse, ToolCallRequest
 from cloakbot.utils.file_edit_events import (
     StreamingFileEditTracker,
     build_file_edit_end_event,
@@ -412,6 +412,15 @@ class AgentRunner:
                     }
                     messages.append(tool_message)
                     completed_tool_results.append(tool_message)
+                # --- [seam:5] privacy: append synthetic follow-up messages the
+                # interceptor queued (e.g. a redacted image converted to a text
+                # block) so the next model call never re-sends raw media.
+                if spec.tool_privacy_interceptor is not None:
+                    for tool_call in response.tool_calls:
+                        for follow_up in spec.tool_privacy_interceptor.take_follow_up_messages(
+                            tool_call.id
+                        ):
+                            messages.append(follow_up)
                 if fatal_error is not None:
                     error = f"Error: {type(fatal_error).__name__}: {fatal_error}"
                     final_content = error

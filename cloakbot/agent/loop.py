@@ -38,6 +38,10 @@ from cloakbot.bus.runtime_events import (
 )
 from cloakbot.command import CommandContext, CommandRouter, register_builtin_commands
 from cloakbot.config.schema import AgentDefaults, ModelPresetConfig
+from cloakbot.privacy import post_llm_hook, pre_llm_hook
+from cloakbot.privacy.core.state.vault import set_vault_workspace
+from cloakbot.privacy.hooks.context import TurnContext as PrivacyTurnContext
+from cloakbot.privacy.runtime.tool_interceptor import ToolPrivacyInterceptor
 from cloakbot.providers.base import LLMProvider
 from cloakbot.providers.factory import ProviderSnapshot
 from cloakbot.security.workspace_access import (
@@ -126,6 +130,8 @@ class TurnContext:
 
     ephemeral: bool = False
     tools: ToolRegistry | None = None
+
+    privacy_ctx: PrivacyTurnContext | None = None
 
     turn_wall_started_at: float = field(default_factory=time.time)
     visible_run_started_at: float | None = None
@@ -226,6 +232,7 @@ class AgentLoop:
         self._provider_signature = provider_signature
         self._default_selection_signature = preset_helpers.default_selection_signature(provider_signature)
         self.workspace = workspace
+        set_vault_workspace(workspace)
         self.model = model or provider.get_default_model()
         self.max_iterations = (
             max_iterations if max_iterations is not None else defaults.max_tool_iterations
@@ -675,6 +682,7 @@ class AgentLoop:
         pending_queue: asyncio.Queue | None = None,
         ephemeral: bool = False,
         tools: ToolRegistry | None = None,
+        tool_privacy_interceptor: Any = None,
     ) -> tuple[str | None, list[str], list[dict], str, bool]:
         """Run the agent iteration loop.
 
@@ -794,6 +802,7 @@ class AgentLoop:
                 max_iterations=self.max_iterations,
                 max_tool_result_chars=self.max_tool_result_chars,
                 hook=hook,
+                tool_privacy_interceptor=tool_privacy_interceptor,
                 error_message="Sorry, I encountered an error calling the AI model.",
                 concurrent_tools=True,
                 workspace=effective_scope.project_path,
@@ -1378,6 +1387,25 @@ class AgentLoop:
         return "dispatch"
 
     async def _state_build(self, ctx: TurnContext) -> str:
+        # --- [seam:2] privacy: sanitize the user turn before it enters the
+        # prompt OR the persisted session. Restoration happens in
+        # _state_respond; suppress live streaming so no <<TYPE_N>> placeholder
+        # is ever shown mid-stream. Media is fail-closed (the visual-redaction
+        # -> message-block route is not wired into the rebased loop yet).
+        if ctx.privacy_ctx is None:
+            prepared, ctx.privacy_ctx = await pre_llm_hook(
+                ctx.msg.content, ctx.session_key, media=None, fail_open=True,
+            )
+            new_content = prepared if isinstance(prepared, str) else ctx.msg.content
+            if ctx.msg.media:
+                new_content = (
+                    new_content
+                    + "\n\n[image attachment withheld: visual privacy redaction"
+                    " is not yet wired into the rebased loop]"
+                ).strip()
+            ctx.msg = dataclasses.replace(ctx.msg, content=new_content, media=[])
+            if ctx.privacy_ctx.was_sanitized:
+                ctx.on_stream = None
         if not ctx.ephemeral:
             await self.consolidator.maybe_consolidate_by_tokens(
                 ctx.session,
@@ -1447,6 +1475,11 @@ class AgentLoop:
             pending_queue=ctx.pending_queue,
             ephemeral=ctx.ephemeral,
             tools=ctx.tools,
+            tool_privacy_interceptor=(
+                ToolPrivacyInterceptor(ctx.privacy_ctx)
+                if ctx.privacy_ctx is not None
+                else None
+            ),
         )
         final_content, tools_used, all_msgs, stop_reason, had_injections = result
         ctx.final_content = final_content
@@ -1498,6 +1531,15 @@ class AgentLoop:
         if ctx.suppress_response:
             ctx.outbound = None
             return "ok"
+        # --- [seam:2] privacy: restore placeholders locally before the user
+        # sees the response (session history keeps the sanitized form).
+        if ctx.privacy_ctx is not None and ctx.final_content is not None:
+            ctx.final_content = await post_llm_hook(
+                ctx.final_content,
+                ctx.privacy_ctx,
+                ctx.session_key,
+                include_report=ctx.msg.channel != "webui",
+            )
         ctx.outbound = self._assemble_outbound(
             ctx.msg,
             ctx.final_content,
