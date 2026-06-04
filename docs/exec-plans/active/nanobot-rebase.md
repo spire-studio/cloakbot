@@ -189,7 +189,7 @@ loop `TurnContext`; carry it as hook-private state.
 | Cap | What | Plugs into | Acceptance test |
 |---|---|---|---|
 | **A** | `StreamingSanitizer` with carry-over window (≥ longest entity span) | `ToolPrivacyInterceptor.sanitize_tool_result` | HIGH entity straddling a 4096-byte poll boundary → zero raw chars, placeholder reused; fuzz every byte offset of a 12KB stream |
-| **B** | Scoped/keyed Vaults (`shared` / `ephemeral` child) | replace flat `_cache` in `core/state/vault.py`; created at run-key construction | ephemeral `/goal`/`dream` map never written to parent `maps/{user}.json`; cross-scope restore is a no-op |
+| **B** | **DONE** — Scoped/keyed Vaults (`shared` / `ephemeral` child) via `VaultScope`; `use_ephemeral_scope` wraps the turn state machine for `ephemeral=True` runs | replace flat `_cache` in `core/state/vault.py`; scope routed at run-key addressing | ephemeral `/goal`/`dream` map never written to parent `maps/{user}.json`; cross-scope restore is a no-op |
 | **C** | Explicit EgressPolicy + provider egress gate + at-rest `goal_state` sanitizer | `_tool_privacy_class` fall-through; wrap `FallbackProvider`; goal metadata | unregistered network-shaped tool → safe default + approval; non-allow-listed fallback never sees raw value; `/goal` objective persists placeholdered |
 | **D** | Placeholder-stable compaction (`validate_placeholders`) | autocompact/consolidation hook | stubbed summarizer that drops/renumbers/emits-raw → rejected/repaired; counters never rewound |
 | **E** | Multimodal egress gate for image-gen | thin wrapper at provider-factory time | reference image redacted + prompt placeholdered before bytes leave; fail-closed omits image |
@@ -251,7 +251,25 @@ package imports clean.
    `tests/privacy/` sanitize/restore tests.
 2. Seam 3/5: `tool_privacy_interceptor` spec field + `_run_tool` prepare/sanitize
    bracket → verify: `tests/privacy/runtime/test_tool_interceptor.py`, runner tests.
-3. Cap B scoped/keyed Vaults → verify: ephemeral-no-bleed test.
+3. **Cap B DONE** — `core/state/vault.py` now keys placeholder state on a
+   `VaultScope(root_session_key, scope_kind, scope_id, isolation)` instead of a
+   bare string. `shared` scopes are disk-backed at the unchanged
+   `maps/{key}.json` (default; pre-Cap-B behavior preserved byte-for-byte);
+   `ephemeral` scopes are memory-only and dropped at run end. The flat
+   `get_map`/`save_map`/`clear_cache` API routes through the active scope.
+   `use_ephemeral_scope(...)` (thread-local route, nested-safe) is wrapped around
+   the turn state machine in `AgentLoop._process_message` whenever
+   `ephemeral=True`, so dream/cron/heartbeat/autonomous runs never write a
+   placeholder vault to disk. Per-path verification (critique correction):
+   `spawn`/`dream`/`cron`/`heartbeat` already construct their OWN session_key
+   (not flat parent reuse); `pairing` does not build a session-key vault run;
+   `/goal` (long_task) runs in the parent user turn against the shared vault and
+   persists a placeholdered objective via the Cap C at-rest sanitizer. Verified
+   by `tests/privacy/core/test_vault_scopes.py` (13 tests: scope identity,
+   ephemeral-never-on-disk, cross-scope restore no-op, distinct-scope isolation,
+   `/goal` placeholders never in the user file, route lifecycle) +
+   `tests/agent/test_loop_privacy_seam.py::test_ephemeral_run_vault_never_lands_on_disk`
+   (e2e: provider sees placeholders, zero on-disk vault, scope dropped at run end).
 4. **Cap C DONE** [seam:9] — additive `cloakbot/privacy/egress_policy.py`
    `EgressPolicy` registry classifies tools by name/pattern (MCP/network-shaped →
    `EXTERNAL`+approval, fs-shaped → `LOCAL`, side-effecting locals →

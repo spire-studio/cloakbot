@@ -79,6 +79,49 @@ Remote or untrusted zone:
   could match, the resolver returns `None` and a fresh placeholder is
   allocated, because over-merging silently corrupts restoration.
 
+## Vault Scopes (Cap B)
+
+`core/state/vault.py` keys placeholder state on a `VaultScope`, not a bare
+session-key string. A scope is `(root_session_key, scope_kind, scope_id,
+isolation)` with `isolation ∈ {shared, ephemeral}`:
+
+- `shared` — the persistent user vault. Its `storage_key` is the bare
+  `root_session_key`, so the on-disk file stays `privacy_vault/maps/{key}.json`
+  and every pre-Cap-B call site behaves byte-for-byte as before. This is the
+  default for ordinary user turns.
+- `ephemeral` — a memory-only child scope for autonomous / derived runs. Its map
+  is **never** written under any `maps/{key}.json` and is dropped at run end.
+
+The flat API (`get_map` / `save_map` / `clear_cache`) is unchanged; it now routes
+through the *active* scope. `use_ephemeral_scope(root_session_key, ...)` activates
+a memory-only child scope for the duration of a run (thread-local route, restored
+on exit so nested runs compose). `AgentLoop._process_message` wraps the turn
+state machine in `use_ephemeral_scope` whenever the turn is `ephemeral=True`, so
+every in-turn vault access (input sanitize, tool-IO interceptor, output restore)
+resolves to the child scope.
+
+Two isolation guarantees fall out and are asserted by the acceptance tests
+(`tests/privacy/core/test_vault_scopes.py`,
+`tests/agent/test_loop_privacy_seam.py::test_ephemeral_run_vault_never_lands_on_disk`):
+
+- An ephemeral run's placeholder map never lands on disk and cannot pollute the
+  user's persistent vault file.
+- Cross-scope restore is a no-op: an ephemeral scope starts empty, so a parent
+  placeholder it never minted resolves back to the placeholder text, not the raw
+  value. Distinct ephemeral scopes likewise cannot see each other's mappings.
+
+Per-path note (the plan's critique correction — verify each derived path
+individually, do not assume flat reuse): `spawn` already constructs its own
+`session_key` (`spawn_session_key`, default `cli:direct`); `dream` uses
+`dream:{timestamp}`; `cron` runs use `cron:{job.id}`; `heartbeat` uses
+`heartbeat`. None of those flatly reuse the parent file. Cap B still routes the
+autonomous ones through an ephemeral scope (they pass `ephemeral=True` to the
+loop) so even their own-keyed vault stays memory-only. `pairing` does not
+construct an agent run with its own session-key vault, so it is not a vault-bleed
+path today. The remaining shared-vault case is `/goal` (`long_task`), which runs
+inside the parent user turn and persists a placeholdered objective via the Cap C
+at-rest sanitizer against the shared vault.
+
 ## Math Privacy
 
 `MathAgent.prepare_input()` appends the privacy math instruction. The remote LLM

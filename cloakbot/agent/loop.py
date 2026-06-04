@@ -39,7 +39,7 @@ from cloakbot.bus.runtime_events import (
 from cloakbot.command import CommandContext, CommandRouter, register_builtin_commands
 from cloakbot.config.schema import AgentDefaults, ModelPresetConfig
 from cloakbot.privacy import post_llm_hook, pre_llm_hook
-from cloakbot.privacy.core.state.vault import set_vault_workspace
+from cloakbot.privacy.core.state.vault import set_vault_workspace, use_ephemeral_scope
 from cloakbot.privacy.hooks.context import TurnContext as PrivacyTurnContext
 from cloakbot.privacy.runtime.tool_interceptor import ToolPrivacyInterceptor
 from cloakbot.providers.base import LLMProvider
@@ -1233,52 +1233,62 @@ class AgentLoop:
             tools=tools,
         )
 
-        while ctx.state is not TurnState.DONE:
-            handler_name = f"_state_{ctx.state.name.lower()}"
-            handler = getattr(self, handler_name, None)
-            if handler is None:
-                raise RuntimeError(f"Missing state handler for {ctx.state}")
+        # --- [Cap B] scoped vaults: an ephemeral run (dream / cron / heartbeat /
+        # other autonomous turns) gets a memory-only child vault scope so its
+        # placeholder mappings never land on disk under any session's
+        # maps/{key}.json and are dropped at run end. Persistent user turns use
+        # the default (shared) scope and behave exactly as before.
+        if ephemeral:
+            scope_cm = use_ephemeral_scope(key, scope_kind="run", scope_id=ctx.turn_id)
+        else:
+            scope_cm = nullcontext()
+        with scope_cm:
+            while ctx.state is not TurnState.DONE:
+                handler_name = f"_state_{ctx.state.name.lower()}"
+                handler = getattr(self, handler_name, None)
+                if handler is None:
+                    raise RuntimeError(f"Missing state handler for {ctx.state}")
 
-            t0 = time.perf_counter()
-            try:
-                event = await handler(ctx)
-            except Exception:
+                t0 = time.perf_counter()
+                try:
+                    event = await handler(ctx)
+                except Exception:
+                    duration = (time.perf_counter() - t0) * 1000
+                    ctx.trace.append(
+                        StateTraceEntry(
+                            state=ctx.state,
+                            started_at=t0,
+                            duration_ms=duration,
+                            event="",
+                            error="exception",
+                        )
+                    )
+                    raise
+
                 duration = (time.perf_counter() - t0) * 1000
                 ctx.trace.append(
                     StateTraceEntry(
                         state=ctx.state,
                         started_at=t0,
                         duration_ms=duration,
-                        event="",
-                        error="exception",
+                        event=event,
                     )
                 )
-                raise
-
-            duration = (time.perf_counter() - t0) * 1000
-            ctx.trace.append(
-                StateTraceEntry(
-                    state=ctx.state,
-                    started_at=t0,
-                    duration_ms=duration,
-                    event=event,
+                logger.debug(
+                    "[turn {}] State {} took {:.1f}ms -> event {}",
+                    ctx.turn_id,
+                    ctx.state.name,
+                    duration,
+                    event,
                 )
-            )
-            logger.debug(
-                "[turn {}] State {} took {:.1f}ms -> event {}",
-                ctx.turn_id,
-                ctx.state.name,
-                duration,
-                event,
-            )
 
-            next_state = self._TRANSITIONS.get((ctx.state, event))
-            if next_state is None:
-                raise RuntimeError(
-                    f"[turn {ctx.turn_id}] No transition from {ctx.state} "
-                    f"on event {event!r}"
-                )
-            ctx.state = next_state
+                next_state = self._TRANSITIONS.get((ctx.state, event))
+                if next_state is None:
+                    raise RuntimeError(
+                        f"[turn {ctx.turn_id}] No transition from {ctx.state} "
+                        f"on event {event!r}"
+                    )
+                ctx.state = next_state
 
         logger.debug(
             "[turn {}] Turn completed after {} states",
