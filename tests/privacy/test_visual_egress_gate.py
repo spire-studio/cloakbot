@@ -74,10 +74,16 @@ async def test_reference_image_redacted_and_prompt_placeholdered(tmp_path, monke
 
     async def _fake_process(blocks, **kwargs):
         # Stand in for the real OCR/redaction pipeline: return a *redacted*
-        # image_url block (different bytes from the original).
+        # image_url block (different bytes from the original). The pipeline
+        # stamps a visual_privacy record carrying the redaction-box count; a
+        # confidently-redacted block (>=1 box) is the only thing M2 forwards.
         return VisualBlocksResult(
             redacted_blocks=[
-                {"type": "image_url", "image_url": {"url": _REDACTED_DATA_URL}},
+                {
+                    "type": "image_url",
+                    "image_url": {"url": _REDACTED_DATA_URL},
+                    "_meta": {"visual_privacy": {"redactionBoxes": 2, "status": "redacted"}},
+                },
                 {"type": "text", "text": "[Image redaction map — <<PERSON_1>> ...]"},
             ],
             sanitized_text="",
@@ -226,6 +232,90 @@ async def test_no_reference_images_only_sanitizes_prompt(tmp_path, monkeypatch):
 
     assert called["process"] is False  # no image path => pipeline not invoked
     assert inner.calls[0]["prompt"] == "<<PERSON_1>> portrait"
+    assert inner.calls[0]["reference_images"] is None
+
+
+@pytest.mark.asyncio
+async def test_prompt_fail_closed_blocks_image_gen_when_detector_down(tmp_path, monkeypatch):
+    """H3: a detector outage blocks the image-gen call — no raw prompt leaves.
+
+    The prompt goes to a REMOTE endpoint, so on detector unavailability the gate
+    must refuse to forward an unsanitized prompt. ``generate`` raises
+    ImageGenerationError and the inner provider is never called.
+    """
+    from cloakbot.providers.image_generation import ImageGenerationError
+
+    _vault_workspace(tmp_path)
+
+    async def _detector_down(text, session_key, *, fail_open=False, turn_id=None):
+        # Mirror the real detector's fail-CLOSED contract: it raises when down.
+        assert fail_open is False
+        raise RuntimeError("local LLM detector unavailable")
+
+    async def _never_called_process(blocks, **kwargs):  # pragma: no cover - guard
+        raise AssertionError("redaction must not run once the prompt is blocked")
+
+    monkeypatch.setattr(gate_mod, "sanitize_input_with_detection", _detector_down)
+    monkeypatch.setattr(gate_mod, "process_visual_blocks", _never_called_process)
+
+    inner = _FakeInnerProvider()
+    gate = VisualEgressGatedImageProvider(inner)
+
+    with pytest.raises(ImageGenerationError):
+        await gate.generate(
+            prompt="make a poster for John Q. Public at 12 Acacia Ave",
+            model="some/image-model",
+        )
+
+    # The raw prompt never reached the remote provider.
+    assert inner.calls == []
+
+
+@pytest.mark.asyncio
+async def test_reference_with_zero_redaction_regions_is_omitted(tmp_path, monkeypatch):
+    """M2: a reference image with no confident redaction regions is omitted.
+
+    The shared OCR pipeline forwards the ORIGINAL bytes for an image with no OCR
+    text and no detector items (redaction_boxes == 0). For the image-gen egress
+    path we fail-closed-by-default and drop it rather than ship it raw.
+    """
+    _vault_workspace(tmp_path)
+
+    async def _no_region_process(blocks, **kwargs):
+        # Pipeline produced a "redacted" image_url block but drew ZERO boxes —
+        # i.e. these are effectively the original bytes.
+        return VisualBlocksResult(
+            redacted_blocks=[
+                {
+                    "type": "image_url",
+                    "image_url": {"url": _REDACTED_DATA_URL},
+                    "_meta": {"visual_privacy": {"redactionBoxes": 0, "status": "redacted"}},
+                },
+            ],
+            sanitized_text="",
+            modified=False,
+        )
+
+    async def _passthrough_sanitize(text, session_key, *, fail_open=False, turn_id=None):
+        return text, False, [], None
+
+    monkeypatch.setattr(gate_mod, "process_visual_blocks", _no_region_process)
+    monkeypatch.setattr(gate_mod, "sanitize_input_with_detection", _passthrough_sanitize)
+
+    inner = _FakeInnerProvider()
+    gate = VisualEgressGatedImageProvider(inner)
+
+    ref = tmp_path / "vacation_photo.png"
+    ref.write_bytes(_PNG_BYTES)
+
+    await gate.generate(
+        prompt="add a sunset",
+        model="some/image-model",
+        reference_images=[str(ref)],
+    )
+
+    assert len(inner.calls) == 1
+    # The zero-region reference was omitted — no original bytes forwarded.
     assert inner.calls[0]["reference_images"] is None
 
 

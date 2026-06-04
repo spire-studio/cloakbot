@@ -52,6 +52,7 @@ from cloakbot.privacy.visual_redaction import (
     VisualBlocksResult,
     process_visual_blocks,
 )
+from cloakbot.providers.image_generation import ImageGenerationError
 from cloakbot.utils.helpers import detect_image_mime
 
 # Stable session key under which image-gen egress allocates / reuses placeholders.
@@ -109,6 +110,32 @@ def _reference_blocks(paths: list[str]) -> tuple[list[dict[str, Any]], list[str]
     return blocks, omitted
 
 
+def _block_redaction_region_count(block: dict[str, Any]) -> int:
+    """How many confident redaction regions the pipeline drew on *block*.
+
+    Reads the per-block ``_meta["visual_privacy"]`` record the redaction
+    pipeline stamps. ``redactionBoxes`` (camelCase, the pydantic alias) is the
+    authoritative count; ``redacted_regions`` is a fallback when only the region
+    list is present. Returns 0 when the meta is missing — which the M2 gate
+    treats as "no confident redaction", fail-closed.
+    """
+    meta = block.get("_meta")
+    if not isinstance(meta, dict):
+        return 0
+    record = meta.get("visual_privacy")
+    if isinstance(record, dict):
+        boxes = record.get("redactionBoxes", record.get("redaction_boxes"))
+        if isinstance(boxes, int):
+            return boxes
+        regions = record.get("regions")
+        if isinstance(regions, list):
+            return len(regions)
+    regions = meta.get("redacted_regions")
+    if isinstance(regions, list):
+        return len(regions)
+    return 0
+
+
 def _redacted_paths_from_result(
     result: VisualBlocksResult,
     *,
@@ -121,6 +148,14 @@ def _redacted_paths_from_result(
     Blocks that the pipeline turned into a ``text`` placeholder (fail-closed
     omission) contribute *no* path — the corresponding reference image is
     dropped from the outbound set, never shipped raw.
+
+    [Cap E / M2] Fail-closed-by-default for the image-gen EGRESS path: a
+    reference image that produced **zero confident redaction regions** (e.g. a
+    photo with no OCR text and no detector items, where the shared redaction
+    pipeline would otherwise forward the ORIGINAL bytes) is **omitted** here.
+    A user-supplied reference is opaque bytes we cannot prove are safe, so unlike
+    the tool-output OCR path we never forward an un-redacted reference image to
+    the remote image-gen endpoint.
     """
     from cloakbot.privacy.core.state.vault import save_artifact_bytes
 
@@ -132,6 +167,14 @@ def _redacted_paths_from_result(
             continue
         url = (block.get("image_url") or {}).get("url") if isinstance(block.get("image_url"), dict) else None
         if not isinstance(url, str) or not url.startswith("data:image/"):
+            continue
+        if _block_redaction_region_count(block) <= 0:
+            # M2: no confident redaction region -> the bytes may be the original
+            # reference. Omit it from the outbound set rather than ship it raw.
+            logger.bind(privacy="egress").warning(
+                "visual egress: omitting reference image with zero confident "
+                "redaction regions (fail-closed image-gen egress)"
+            )
             continue
         try:
             _header, b64 = url.split(",", 1)
@@ -178,19 +221,21 @@ class VisualEgressGatedImageProvider:
     async def _sanitize_prompt(self, prompt: str, *, turn_id: str) -> str:
         """Placeholder the prompt before it reaches the remote endpoint.
 
-        ``fail_open=True`` matches the user-input pre-hook contract: a raw prompt
-        is best-effort placeholdered, and a detector outage degrades to passing
-        the prompt through rather than blocking the turn. The *hard* fail-closed
-        surface in Cap E is the reference image (``process_visual_blocks`` omits
-        an image it cannot confidently redact); a typed prompt is the user's own
-        already-known text, not opaque bytes they cannot inspect.
+        ``fail_open=False`` (fail-CLOSED): the image-gen prompt goes to a REMOTE
+        endpoint and can carry raw PII the user typed ("make a poster for John
+        Smith at 12 Acacia Ave"). If the local detector is unavailable we cannot
+        confirm the prompt is scrubbed, so we refuse to forward an unsanitized
+        prompt — the underlying call raises and :meth:`generate` blocks/omits the
+        image-gen request rather than shipping a raw prompt. This matches the
+        module's stated (stronger) fail-closed contract and the reference-image
+        omit gate.
         """
         if not prompt:
             return prompt
         sanitized, _modified, _entities, _detection = await sanitize_input_with_detection(
             prompt,
             self._session_key,
-            fail_open=True,
+            fail_open=False,
             turn_id=turn_id,
         )
         return sanitized
@@ -241,14 +286,36 @@ class VisualEgressGatedImageProvider:
     ) -> Any:
         import uuid
 
+        from cloakbot.privacy.core.state.vault import route_fixed_key_through_active_run
+
         turn_id = f"{_VISUAL_EGRESS_TURN_PREFIX}_{uuid.uuid4().hex[:12]}"
 
-        safe_prompt = await self._sanitize_prompt(prompt, turn_id=turn_id)
+        # [Cap B / M3] The image-gen seam uses a fixed shared key
+        # (``image_gen``). If an ephemeral run (dream / cron) generates an image,
+        # route the placeholder mint into that run's memory-only ephemeral scope
+        # so it never lands at maps/image_gen.json on disk. No-op on normal turns.
+        with route_fixed_key_through_active_run(self._session_key):
+            # [Cap E / H3] Fail-CLOSED on the prompt: if the local detector is
+            # unavailable we cannot confirm the prompt is scrubbed, so block the
+            # image-gen call instead of shipping a raw prompt to the remote model.
+            try:
+                safe_prompt = await self._sanitize_prompt(prompt, turn_id=turn_id)
+            except Exception as exc:  # noqa: BLE001 - detector outage -> block egress
+                logger.bind(privacy="egress").warning(
+                    "visual egress: blocking image-gen (prompt could not be "
+                    "sanitized fail-closed): {}",
+                    exc,
+                )
+                raise ImageGenerationError(
+                    "image generation blocked: the local privacy detector is "
+                    "unavailable, so the prompt could not be sanitized before "
+                    "leaving the host"
+                ) from exc
 
-        refs = list(reference_images or [])
-        safe_refs: list[str] = []
-        if refs:
-            safe_refs = await self._redact_reference_images(refs, turn_id=turn_id)
+            refs = list(reference_images or [])
+            safe_refs: list[str] = []
+            if refs:
+                safe_refs = await self._redact_reference_images(refs, turn_id=turn_id)
 
         return await self._inner.generate(
             prompt=safe_prompt,
