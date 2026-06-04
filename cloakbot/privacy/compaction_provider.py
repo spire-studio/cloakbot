@@ -100,19 +100,27 @@ class CompactionGuardedProvider:
         *args: Any,
         **kwargs: Any,
     ) -> LLMResponse:
+        from cloakbot.privacy.core.state.vault import route_fixed_key_through_active_run
+
         guard = CompactionGuard(self._session_key)
         window = _window_text_from_messages(messages)
 
-        # Pre-summarize: sanitize-or-fail-closed. A detector-unavailable failure
-        # raises out of here; archive() catches it and raw-archives.
-        safe_input = await guard.prepare(window)
-        guarded_messages = _replace_user_window(messages, safe_input)
+        # [Cap B / M3] The compaction seam uses a fixed shared key
+        # (``compaction``). If compaction is triggered inside an ephemeral run
+        # (dream / cron / heartbeat), route the guard's placeholder bookkeeping
+        # into that run's memory-only ephemeral scope so it never lands at
+        # maps/compaction.json on disk. No-op on normal user turns.
+        with route_fixed_key_through_active_run(self._session_key):
+            # Pre-summarize: sanitize-or-fail-closed. A detector-unavailable
+            # failure raises out of here; archive() catches it and raw-archives.
+            safe_input = await guard.prepare(window)
+            guarded_messages = _replace_user_window(messages, safe_input)
 
-        response = await self._inner.chat_with_retry(guarded_messages, *args, **kwargs)
-        if response.finish_reason == "error":
-            return response
+            response = await self._inner.chat_with_retry(guarded_messages, *args, **kwargs)
+            if response.finish_reason == "error":
+                return response
 
-        result = await guard.finalize(response.content)
+            result = await guard.finalize(response.content)
         if not result.accepted:
             logger.bind(privacy="compaction").warning(
                 "compaction: summary rejected ({}); keeping un-summarized history",

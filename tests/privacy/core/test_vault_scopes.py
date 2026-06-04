@@ -26,11 +26,13 @@ import cloakbot.privacy.core.state.vault as vault
 from cloakbot.privacy.core.sanitization.restorer import restore_tokens
 from cloakbot.privacy.core.state.vault import (
     VaultScope,
+    active_ephemeral_run_key,
     drop_scope,
     ephemeral_scope,
     get_map,
     register_scope,
     resolve_scope,
+    route_fixed_key_through_active_run,
     save_map,
     set_vault_workspace,
     shared_scope,
@@ -271,3 +273,58 @@ def test_default_scope_still_persists_to_disk(real_vault: Path) -> None:
     assert reloaded.original_to_placeholder["Alice Chen"] == "<<PERSON_1>>"
     assert isinstance(resolve_scope(key), VaultScope)
     assert resolve_scope(key).persistent is True
+
+
+# --------------------------------------------------------------------------- #
+# M3: fixed-key provider seams (image_gen / compaction) route through the
+#     active ephemeral run instead of writing maps/{fixed_key}.json to disk.
+# --------------------------------------------------------------------------- #
+
+
+def test_active_ephemeral_run_key_tracks_the_innermost_run(real_vault: Path) -> None:
+    assert active_ephemeral_run_key() is None
+    with use_ephemeral_scope("tg:owner", scope_kind="run", scope_id="r1"):
+        assert active_ephemeral_run_key() == "tg:owner"
+        with use_ephemeral_scope("tg:other", scope_kind="run", scope_id="r2"):
+            assert active_ephemeral_run_key() == "tg:other"
+        assert active_ephemeral_run_key() == "tg:owner"
+    assert active_ephemeral_run_key() is None
+
+
+def test_fixed_key_is_disk_backed_outside_an_ephemeral_run(real_vault: Path) -> None:
+    """On a normal user turn, image_gen / compaction keep their shared scope."""
+    with route_fixed_key_through_active_run("image_gen"):
+        smap = get_map("image_gen")
+        smap.get_or_create_placeholder("Acme Corp", "ORG", turn_id="t0")
+        save_map("image_gen", smap)
+    # No ephemeral run active -> the fixed key persisted to disk as before.
+    assert "image_gen.json" in _disk_files(real_vault)
+
+
+def test_image_gen_fixed_key_routes_into_active_ephemeral_run(real_vault: Path) -> None:
+    """M3: an image generated inside an ephemeral run never lands on disk."""
+    with use_ephemeral_scope("tg:dreamer", scope_kind="run", scope_id="dream-1"):
+        with route_fixed_key_through_active_run("image_gen"):
+            # While routed, the fixed key resolves to a memory-only ephemeral scope.
+            assert resolve_scope("image_gen").persistent is False
+            smap = get_map("image_gen")
+            smap.get_or_create_placeholder("Bruce Wayne", "PERSON", turn_id="t0")
+            save_map("image_gen", smap)
+
+    # After both scopes close, NOTHING for image_gen was written to disk.
+    assert "image_gen.json" not in _disk_files(real_vault)
+    assert _disk_files(real_vault) == []
+    # And the ephemeral fixed-key map was dropped.
+    assert vault._ephemeral_cache == {}
+
+
+def test_compaction_fixed_key_routes_into_active_ephemeral_run(real_vault: Path) -> None:
+    """M3: compaction inside an ephemeral run never writes maps/compaction.json."""
+    with use_ephemeral_scope("tg:dreamer", scope_kind="run", scope_id="dream-1"):
+        with route_fixed_key_through_active_run("compaction"):
+            smap = get_map("compaction")
+            smap.get_or_create_placeholder("Clark Kent", "PERSON", turn_id="t0")
+            save_map("compaction", smap)
+
+    assert "compaction.json" not in _disk_files(real_vault)
+    assert _disk_files(real_vault) == []
