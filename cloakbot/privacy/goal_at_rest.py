@@ -6,34 +6,60 @@ block every turn. The ``long_task`` tool receives *restored* arguments (tools ru
 against real values locally), so the objective text it stores can contain raw
 sensitive values. Persisting that raw text is an at-rest leak: it would survive
 across turns and be re-injected into future prompts before the per-turn detector
-runs.
+runs — once per turn, indefinitely.
 
-This helper re-applies the **already-known** vault mappings for the session via
-``replace_known_originals`` — a placeholder-only pass that needs no detector
-call and never invents new entities. Raw surface forms the session has already
-seen become stable placeholders; everything else is left untouched. Restoration
-for display happens through the normal vault path, so this is loss-free.
+This helper runs the objective through the **real per-turn detector**
+(:func:`sanitize_input_with_detection`) so a not-yet-minted raw value (one the
+session has never seen before — e.g. a name typed directly into ``/goal``) is
+still detected and tokenized, not just the already-known surface forms. It is
+**fail-closed**: if the local detector is unavailable, it does NOT fall back to
+persisting the raw objective (the old behavior, which silently swallowed the
+error and re-injected raw PII every turn). Instead it raises
+:class:`GoalSanitizationError` so the caller refuses to register the goal rather
+than write an un-sanitized objective to disk.
+
+Restoration for display happens through the normal vault path, so a successfully
+placeholdered objective is loss-free when shown back to the user.
 """
 
 from __future__ import annotations
 
-from cloakbot.privacy.core.state.vault import get_map
+from cloakbot.privacy.core.sanitization.sanitize import sanitize_input_with_detection
 
 
-def sanitize_goal_objective(session_key: str | None, objective: str | None) -> str:
-    """Return *objective* with known raw values swapped to stable placeholders.
+class GoalSanitizationError(RuntimeError):
+    """Raised when a ``/goal`` objective cannot be safely sanitized at rest.
 
-    Fail-open: any vault error returns the input unchanged rather than dropping
-    the objective (the per-turn pipeline remains the primary boundary).
+    The caller MUST NOT persist the raw objective when this is raised — doing so
+    would re-inject un-detected PII into every future prompt. Refuse the goal (or
+    drop the objective) instead.
+    """
+
+
+async def sanitize_goal_objective(session_key: str | None, objective: str | None) -> str:
+    """Return *objective* tokenized via the per-turn detector (fail-closed).
+
+    * Empty / session-less objectives pass through unchanged (nothing to leak).
+    * Otherwise the objective is routed through
+      :func:`sanitize_input_with_detection` with ``fail_open=False`` so a
+      not-yet-minted raw value is detected and replaced by a stable placeholder.
+    * On detector unavailability the underlying call raises; we surface it as
+      :class:`GoalSanitizationError` so the caller declines to persist raw text.
     """
     if not objective or not session_key:
         return objective or ""
     try:
-        smap = get_map(session_key)
-        sanitized, _changed = smap.replace_known_originals(objective)
-        return sanitized
-    except Exception:
-        return objective
+        sanitized, _modified, _entities, _detection = await sanitize_input_with_detection(
+            objective,
+            session_key,
+            fail_open=False,
+        )
+    except Exception as exc:  # noqa: BLE001 - any detector failure must fail closed
+        raise GoalSanitizationError(
+            "goal objective could not be sanitized (privacy detector unavailable); "
+            "refusing to persist raw objective"
+        ) from exc
+    return sanitized
 
 
-__all__ = ["sanitize_goal_objective"]
+__all__ = ["GoalSanitizationError", "sanitize_goal_objective"]

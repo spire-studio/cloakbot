@@ -333,28 +333,34 @@ def test_factory_wraps_fallback_provider_with_gate() -> None:
 
 def test_goal_objective_persists_placeholdered(tmp_path) -> None:
     """Cap C acceptance: a /goal objective persists placeholdered, not raw."""
+    import asyncio
+
     set_vault_workspace(tmp_path)
     smap = get_map("cli:goaluser")
     placeholder, _ = smap.get_or_create_placeholder("Alice Smith", "PERSON", turn_id="t1")
     save_map("cli:goaluser", smap)
 
     raw_objective = "Schedule a meeting with Alice Smith next Tuesday"
-    sanitized = sanitize_goal_objective("cli:goaluser", raw_objective)
+    sanitized = asyncio.run(sanitize_goal_objective("cli:goaluser", raw_objective))
 
     assert "Alice Smith" not in sanitized
     assert placeholder in sanitized
 
 
 def test_goal_objective_without_known_entities_passes_through(tmp_path) -> None:
+    import asyncio
+
     set_vault_workspace(tmp_path)
     get_map("cli:clean")  # empty vault
     objective = "Refactor the build pipeline and add tests"
-    assert sanitize_goal_objective("cli:clean", objective) == objective
+    assert asyncio.run(sanitize_goal_objective("cli:clean", objective)) == objective
 
 
-def test_goal_objective_fail_open_on_missing_session() -> None:
-    assert sanitize_goal_objective(None, "do the thing") == "do the thing"
-    assert sanitize_goal_objective("cli:x", "") == ""
+def test_goal_objective_passthrough_on_missing_session() -> None:
+    import asyncio
+
+    assert asyncio.run(sanitize_goal_objective(None, "do the thing")) == "do the thing"
+    assert asyncio.run(sanitize_goal_objective("cli:x", "")) == ""
 
 
 def test_long_task_persists_placeholdered_objective(tmp_path) -> None:
@@ -386,3 +392,100 @@ def test_long_task_persists_placeholdered_objective(tmp_path) -> None:
     stored = session.metadata[GOAL_STATE_KEY]
     assert "Bob Jones" not in stored["objective"]
     assert placeholder in stored["objective"]
+
+
+# --------------------------------------------------------------------------- #
+# H2: at-rest goal sanitizer routes through the detector (not-yet-minted value)
+#     and fails CLOSED on detector unavailability.
+# --------------------------------------------------------------------------- #
+
+
+def test_goal_objective_tokenizes_not_yet_minted_value(tmp_path, monkeypatch) -> None:
+    """H2: a raw value the session has NEVER seen is still tokenized at rest.
+
+    The old implementation only ran ``replace_known_originals`` (mapping reuse,
+    no detection), so a value typed straight into ``/goal`` that was never minted
+    upstream would persist RAW into ``goal_state['objective']`` and re-inject
+    every turn. Routing through the detector mints a placeholder for it.
+    """
+    import asyncio
+
+    set_vault_workspace(tmp_path)
+    session_key = "cli:fresh"
+    get_map(session_key)  # empty vault — nothing known yet
+
+    async def _fake_detector(text, key, *args, **kwargs):
+        # The detector finds a brand-new entity and tokenizes it.
+        smap = get_map(key)
+        placeholder, _ = smap.get_or_create_placeholder("Carol Danvers", "PERSON")
+        save_map(key, smap)
+        sanitized = text.replace("Carol Danvers", placeholder)
+        return sanitized, True, [], None
+
+    monkeypatch.setattr(
+        "cloakbot.privacy.goal_at_rest.sanitize_input_with_detection",
+        _fake_detector,
+    )
+
+    sanitized = asyncio.run(
+        sanitize_goal_objective(session_key, "Call Carol Danvers about the launch")
+    )
+    assert "Carol Danvers" not in sanitized
+    assert "<<PERSON_" in sanitized
+
+
+def test_goal_objective_fails_closed_on_detector_error(tmp_path, monkeypatch) -> None:
+    """H2: a detector outage raises GoalSanitizationError — never returns raw."""
+    import asyncio
+
+    from cloakbot.privacy.goal_at_rest import GoalSanitizationError
+
+    set_vault_workspace(tmp_path)
+
+    async def _detector_down(*args, **kwargs):
+        raise RuntimeError("local LLM unavailable")
+
+    monkeypatch.setattr(
+        "cloakbot.privacy.goal_at_rest.sanitize_input_with_detection",
+        _detector_down,
+    )
+
+    with pytest.raises(GoalSanitizationError):
+        asyncio.run(sanitize_goal_objective("cli:down", "Wire money to Dave Lister"))
+
+
+def test_long_task_refuses_goal_when_detector_down(tmp_path, monkeypatch) -> None:
+    """H2: long_task declines to persist any objective on detector outage."""
+    import asyncio
+
+    from cloakbot.agent.tools.context import RequestContext
+    from cloakbot.agent.tools.long_task import LongTaskTool
+    from cloakbot.session.goal_state import GOAL_STATE_KEY
+
+    set_vault_workspace(tmp_path)
+    session_key = "cli:downtask"
+
+    async def _detector_down(*args, **kwargs):
+        raise RuntimeError("local LLM unavailable")
+
+    monkeypatch.setattr(
+        "cloakbot.privacy.goal_at_rest.sanitize_input_with_detection",
+        _detector_down,
+    )
+
+    sessions = MagicMock()
+    session = MagicMock()
+    session.metadata = {}
+    sessions.get_or_create.return_value = session
+
+    tool = LongTaskTool(sessions=sessions)
+    tool.set_context(
+        RequestContext(channel="cli", chat_id="downtask", session_key=session_key)
+    )
+
+    result = asyncio.run(tool.execute(goal="Email Eve Polastri the raw SSN 123-45-6789"))
+
+    assert "could not record the goal" in result.lower()
+    # Nothing — raw or otherwise — was persisted to goal metadata.
+    assert GOAL_STATE_KEY not in session.metadata
+    sessions.save.assert_not_called()

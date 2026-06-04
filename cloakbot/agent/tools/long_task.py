@@ -162,13 +162,26 @@ class LongTaskTool(Tool, _GoalToolsMixin):
 
         summary = (ui_summary or "").strip()[:120]
         # [Cap C] at-rest goal sanitizer: tools receive restored (raw) arguments,
-        # so persist the objective placeholdered using the session's known vault
-        # mappings — the per-turn pipeline already saw these values upstream.
-        from cloakbot.privacy.goal_at_rest import sanitize_goal_objective
+        # so persist the objective placeholdered. The objective is routed through
+        # the real per-turn detector (fail-closed) so even a not-yet-minted raw
+        # value is tokenized; if the detector is unavailable we refuse the goal
+        # rather than write an un-sanitized objective to disk.
+        from cloakbot.privacy.goal_at_rest import (
+            GoalSanitizationError,
+            sanitize_goal_objective,
+        )
 
         request_ctx = self._request_ctx.get()
         session_key = request_ctx.session_key if request_ctx is not None else None
-        objective = sanitize_goal_objective(session_key, goal.strip())
+        try:
+            objective = await sanitize_goal_objective(session_key, goal.strip())
+        except GoalSanitizationError:
+            return (
+                "Error: could not record the goal because the local privacy "
+                "detector is unavailable, and persisting the objective unredacted "
+                "would risk leaking sensitive values. Try again once detection is "
+                "back online."
+            )
         blob = {
             "status": "active",
             "objective": objective,

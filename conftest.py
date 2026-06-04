@@ -48,6 +48,21 @@ def _transparent_local_detector():
     async def _noop_input(prompt, *args, **kwargs):
         return prompt, False, [], None
 
+    async def _available_empty_detection(text, session_key, *args, **kwargs):
+        """Available-but-empty detector that still applies KNOWN vault mappings.
+
+        Mirrors the real detector's available-but-no-new-entities behavior: the
+        per-turn pipeline always runs ``replace_known_originals`` before calling
+        the model, so already-minted placeholders are reused even when the model
+        finds nothing new. The plain ``_noop_input`` skips this; the goal-at-rest
+        seam needs it so a session's known surface forms still tokenize.
+        """
+        from cloakbot.privacy.core.state.vault import get_map
+
+        smap = get_map(session_key)
+        swapped, modified = smap.replace_known_originals(text)
+        return swapped, modified, [], None
+
     async def _noop_tool(text, *args, **kwargs):
         return text, False, []
 
@@ -99,6 +114,14 @@ def _transparent_local_detector():
         patch(
             "cloakbot.privacy.visual_egress_gate.process_visual_blocks",
             new=_noop_visual_blocks,
+        ),
+        # Cap C / H2: the at-rest /goal objective sanitizer routes the objective
+        # through the per-turn detector (fail-closed). Patch its namespace with an
+        # available-but-empty detector that still applies known vault mappings so
+        # the seam is on-but-inert by default; fail-closed tests patch it to raise.
+        patch(
+            "cloakbot.privacy.goal_at_rest.sanitize_input_with_detection",
+            new=_available_empty_detection,
         ),
     ):
         yield
