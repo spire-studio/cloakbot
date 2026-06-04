@@ -27,17 +27,24 @@ egress, webui side-channel) so the previously-gated features become safe to ship
     (restore tool args locally before exec; sanitize tool output before model reuse).
     Verified neutral — `tests/agent/test_runner.py` identical 10-fail/15-pass with & without
     the seam.
-  - W1b loop seam NEXT (the crux, High-risk — input sanitization before egress):
-    integration points located in upstream `agent/loop.py` (1764 lines): `__init__:178`
-    (`set_vault_workspace`), `AgentRunSpec(...):790` (pass `ToolPrivacyInterceptor(turn_ctx)`),
-    `_state_build:1380` (sanitize user turn via `pre_llm_hook`), `_state_respond:1497`
-    (restore via `post_llm_hook`/`finalize_content`), `_process_message:1183`. Rename privacy
-    `TurnContext`→`PrivacyTurnContext` (collides with upstream loop `TurnContext`). Gate:
-    `tests/privacy/runtime` + A1 leak-eval at/below baseline. **Privacy enforcement is OFF
-    on the live path until the loop seam lands — do not run real sessions on this branch.**
-  - W0-tail (separate from privacy): 10 `tests/agent/test_runner.py` failures are
-    pre-existing upstream-test vs our-kept-`conftest.py` mismatches (e.g. `SubagentManager`
-    `status` arg) — reconcile test infra for the "green suite at parity" gate.
+  - **W1b loop seam DONE** `dac638b`,`2d6ab41` — **privacy enforcement is ON for the live
+    text path.** `set_vault_workspace` in `__init__`; `TurnContext.privacy_ctx` (aliased
+    import, no rename needed); `_state_build` sanitizes the user turn before prompt+persist
+    and forces non-streaming when sanitized (no mid-stream placeholder leak); `_state_run`
+    threads `ToolPrivacyInterceptor`; `_run_agent_loop`+`AgentRunSpec` carry it;
+    `_state_respond` restores before the user sees output. Runner follow-up
+    (`take_follow_up_messages`) wired. **Verified by an e2e leak test**
+    (`tests/agent/test_loop_privacy_seam.py`): the real `AgentLoop` payload to the provider
+    carries `<<PERSON_1>>`, never the raw value. Privacy suite **209 passed / 2 failed**
+    (the 2 are `test_pdf_text_layer.py` → W3).
+    - Documented limitations until later waves: media is **fail-closed** (stripped + noted)
+      until the visual route is re-applied (W3); streaming is forced off for sanitized turns
+      (UX upgrade = a buffering `PrivacyHook`, later); tool-approval flow is W2.
+  - Next: W0-tail harness reconciliation (the conftest `make_provider`/`estimate_prompt_tokens`
+    mismatch, the 10 `test_runner` failures, the 2 `pdf_text_layer` failures); then W1 finish
+    (Cap B scoped vaults, Cap C egress policy), then W2 (WebUI + side-channel + localhost gate),
+    W3 (streaming sanitizer + visual read_file + exec_session/apply_patch), W4–W7.
+  - A1/A2/A3 leak-evals (need local vLLM) not yet run — schedule once W1 finishes.
 - Upstream baseline: nanobot `v0.2.1` (2026-06-01), tracked at `main`.
 - Fork point: nanobot `v0.1.x`. Drift ≈ one minor release + ongoing fixes.
 - Companion analysis (not checked in): two design workflows produced the seam map,
