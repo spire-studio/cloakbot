@@ -274,6 +274,49 @@ async def test_upstream_client_ignores_unknown_privacy_frames() -> None:
     assert msg_frame["text"] == _VISIBLE_CONTENT
 
 
+@pytest.mark.asyncio
+async def test_l1_raw_privacy_blob_not_persisted_to_transcript(monkeypatch) -> None:
+    """[Cap F / L1] The raw localhost ``agent_ui.privacy`` blob must NOT be
+    written to the webui transcript.
+
+    The live localhost frame carries raw entity values / original document text
+    by design (gated per-connection). The on-disk transcript has no localhost
+    gate and replay would re-broadcast it ungated, so the persisted copy must
+    strip the ``privacy`` projection. We capture every transcript append and
+    assert no raw vault value reaches it.
+    """
+    import cloakbot.channels.websocket as ws_mod
+
+    appended: list[Any] = []
+    monkeypatch.setattr(
+        ws_mod, "append_transcript_object", lambda sk, obj: appended.append((sk, obj))
+    )
+
+    ch = _channel()
+    conn = _conn(("127.0.0.1", 5))  # localhost: the live frame DOES carry raw
+    ch._attach(conn, "chat-1")
+    await ch.send(_msg(_payload()))
+
+    # Sanity: the live localhost frame still carried the raw blob (gate unchanged).
+    live_blob = json.dumps(_frames(conn), ensure_ascii=False)
+    assert RAW_NAME in live_blob
+
+    # The persisted transcript carries ZERO raw vault values and no privacy blob.
+    transcript_blob = json.dumps(appended, ensure_ascii=False)
+    assert appended, "no transcript append captured"
+    assert RAW_NAME not in transcript_blob
+    assert RAW_DOC_TEXT not in transcript_blob
+    for _sk, obj in appended:
+        agent_ui = obj.get("agent_ui") if isinstance(obj, dict) else None
+        if isinstance(agent_ui, dict):
+            assert "privacy" not in agent_ui, "raw privacy blob persisted to transcript"
+    # The transcript still records the visible message text (non-secret).
+    assert any(
+        isinstance(obj, dict) and obj.get("text") == _VISIBLE_CONTENT
+        for _sk, obj in appended
+    )
+
+
 def test_privacy_channel_is_websocket_subclass() -> None:
     assert issubclass(PrivacyWebSocketChannel, WebSocketChannel)
     assert PrivacyWebSocketChannel.name == "websocket"

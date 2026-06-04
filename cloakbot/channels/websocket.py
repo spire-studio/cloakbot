@@ -931,6 +931,21 @@ class WebSocketChannel(BaseChannel):
             payload["kind"] = "progress"
         transcript_payload = dict(payload)
         transcript_payload["text"] = text
+        # [Cap F / L1] Never persist the raw privacy side-channel blob to the
+        # webui transcript. The localhost group's ``agent_ui.privacy`` carries
+        # raw entity values / original images / restored arguments by design
+        # (the Privacy Inspector renders placeholder<->real). The live frame is
+        # gated per-connection (localhost only), but the on-disk transcript has
+        # no such gate and replay would re-broadcast it ungated. Strip the
+        # ``privacy`` projection from the persisted copy (keep any other
+        # ``agent_ui`` content) so the cleartext vault never lands at rest.
+        _agent_ui = transcript_payload.get("agent_ui")
+        if isinstance(_agent_ui, dict) and "privacy" in _agent_ui:
+            sanitized_agent_ui = {k: v for k, v in _agent_ui.items() if k != "privacy"}
+            if sanitized_agent_ui:
+                transcript_payload["agent_ui"] = sanitized_agent_ui
+            else:
+                transcript_payload.pop("agent_ui", None)
         self._try_append_webui_transcript(msg.chat_id, transcript_payload)
         raw = json.dumps(payload, ensure_ascii=False)
         for connection in conns:
