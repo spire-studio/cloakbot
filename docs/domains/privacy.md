@@ -210,6 +210,48 @@ overhead on small outputs while unlocking concurrency for big ones.
 per-session and should be recycled across major version bumps — the version
 string is the audit signal for callers that need to detect mismatches.
 
+## Streaming Tool Output (Cap A)
+
+`cloakbot/privacy/runtime/streaming_sanitizer.py` handles tools that deliver
+their output *incrementally* across multiple poll calls against one long-running
+stream — exec sessions (`exec` / `write_stdin`), `shell`, and `long_task`
+progress. Sanitizing each poll in isolation is unsafe: an entity (SSN, email,
+name) can straddle a poll boundary, so each half escapes detection and the raw
+bytes reach the remote model.
+
+`StreamingSanitizer` is keyed `(session_key, stream_id)` (the exec
+`session_id` argument is the identity stable across polls; the per-call
+`tool_call.id` is the fallback). It buffers the whole raw stream and, on each
+`feed(text)`, emits only the **longest common prefix** of `sanitize(raw)` and
+`sanitize(raw[:-window])`. `window = DEFAULT_CARRY_OVER_CHARS = 256`, which is
+≥ the longest detectable entity span. Reasoning: an entity wholly inside
+`raw[:-window]` tokenizes identically in both sanitizations and so falls inside
+the common prefix (safe to emit); an entity straddling the `-window` boundary
+tokenizes differently (raw/partial vs placeholder) so the common prefix stops
+*before* it and the partial is withheld until the next `feed` completes it.
+`finalize()` flushes the residual tail. Because entities are ≤ `window` chars,
+anything that could still grow lives within `window` of the live tail — so the
+common prefix is always safe.
+
+`StreamingSanitizerRegistry` holds one sanitizer per live stream (owned per
+turn by `ToolPrivacyInterceptor`); `finalize_stream`/`clear` release buffers so
+carry-over never bleeds across turns. `ToolPrivacyInterceptor.sanitize_tool_result`
+routes `_STREAMING_TOOLS` text results to `_sanitize_streaming_tool_result`,
+which first splits the exec status trailer off the process output
+(`_split_session_output_and_trailer`) so a locally-generated status line
+(`Exit code:`, `Process running. session_id:`, `Elapsed:`) can never bisect an
+entity across the held-back boundary; only the process output flows through the
+window, and the trailer is re-appended verbatim. A stream stays live (tail held
+back) only while an exec poll prints the "Process running" marker; finished,
+terminated, timed-out, or single-call (`long_task`) results finalize
+immediately so nothing is withheld from the model. `exec_session.py` is not
+edited — this is entirely additive inside `cloakbot/privacy/`.
+
+Egress class: `exec` / `write_stdin` / `shell` / `list_exec_sessions` /
+`long_task` are `SIDE_EFFECT` in `egress_policy.py` (they run locally; output is
+sanitized via the streaming window). `write_stdin` previously fell through to
+fail-closed `EXTERNAL` + approval, which would have blocked exec-session polling.
+
 ## Adversarial-Input Posture
 
 Tool output is *untrusted data*, never instructions. Two layers of defence:
@@ -377,6 +419,9 @@ When adding a tool, assign the least permissive accurate privacy class.
 
 - `uv run pytest -m "not integration" tests/privacy/`
 - `uv run pytest -m "not integration" tests/privacy/runtime/test_tool_interceptor.py`
+- `uv run pytest -m "not integration" tests/privacy/runtime/test_streaming_sanitizer.py`
+  — Cap A carry-over window: 4096-boundary straddle, residual-tail flush, and the
+  byte-offset fuzz over a 12KB stream (0 seam leaks).
 - `uv run pytest -m "not integration" tests/privacy/core/test_math_executer.py`
 - `uv run pytest -m "not integration" tests/privacy/test_chunking.py` —
   content-type sniffer + the four chunkers.

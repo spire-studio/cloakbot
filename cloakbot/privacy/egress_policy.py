@@ -73,8 +73,14 @@ _SIDE_EFFECT_TOOLS: frozenset[str] = frozenset(
         "write_file",
         "edit_file",
         "apply_patch",
+        # exec-session + shell tools (Cap A): run locally, their incremental
+        # output is sanitized through the StreamingSanitizer carry-over window,
+        # so they are SIDE_EFFECT, not fail-closed EXTERNAL (which would block
+        # exec-session polling).
         "exec",
+        "write_stdin",
         "list_exec_sessions",
+        "shell",
         "cron",
         "message",
         "spawn",

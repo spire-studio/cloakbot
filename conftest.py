@@ -65,6 +65,11 @@ def _transparent_local_detector():
             "cloakbot.privacy.runtime.tool_interceptor.sanitize_tool_output_chunked",
             new=_noop_tool_chunked,
         ),
+        # Cap A: the StreamingSanitizer (exec_session / shell / long_task carry-over
+        # window) calls sanitize_tool_output through its own module namespace, so it
+        # needs the same transparent-but-available no-op or every streamed exec poll
+        # would fail-closed on the absent local detector.
+        patch("cloakbot.privacy.runtime.streaming_sanitizer.sanitize_tool_output", new=_noop_tool),
     ):
         yield
 

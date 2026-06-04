@@ -59,6 +59,14 @@ from cloakbot.tool_privacy import ToolPrivacyClass
         ("apply_patch", ToolPrivacyClass.SIDE_EFFECT, False),
         ("write_file", ToolPrivacyClass.SIDE_EFFECT, False),
         ("exec", ToolPrivacyClass.SIDE_EFFECT, False),
+        # Cap A: streaming/poll exec-session + shell tools run locally; their
+        # incremental output is sanitized via the StreamingSanitizer carry-over
+        # window, so they classify SIDE_EFFECT (no fail-closed approval wall that
+        # would block exec-session polling).
+        ("write_stdin", ToolPrivacyClass.SIDE_EFFECT, False),
+        ("shell", ToolPrivacyClass.SIDE_EFFECT, False),
+        ("list_exec_sessions", ToolPrivacyClass.SIDE_EFFECT, False),
+        ("long_task", ToolPrivacyClass.SIDE_EFFECT, False),
     ],
 )
 def test_known_tools_classify_as_expected(name, expected_class, expected_approval) -> None:

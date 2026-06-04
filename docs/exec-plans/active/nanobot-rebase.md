@@ -188,7 +188,7 @@ loop `TurnContext`; carry it as hook-private state.
 
 | Cap | What | Plugs into | Acceptance test |
 |---|---|---|---|
-| **A** | `StreamingSanitizer` with carry-over window (≥ longest entity span) | `ToolPrivacyInterceptor.sanitize_tool_result` | HIGH entity straddling a 4096-byte poll boundary → zero raw chars, placeholder reused; fuzz every byte offset of a 12KB stream |
+| **A** | **DONE** — `StreamingSanitizer` with carry-over window (≥ longest entity span) | `ToolPrivacyInterceptor.sanitize_tool_result` | HIGH entity straddling a 4096-byte poll boundary → zero raw chars, placeholder reused; fuzz every byte offset of a 12KB stream |
 | **B** | **DONE** — Scoped/keyed Vaults (`shared` / `ephemeral` child) via `VaultScope`; `use_ephemeral_scope` wraps the turn state machine for `ephemeral=True` runs | replace flat `_cache` in `core/state/vault.py`; scope routed at run-key addressing | ephemeral `/goal`/`dream` map never written to parent `maps/{user}.json`; cross-scope restore is a no-op |
 | **C** | Explicit EgressPolicy + provider egress gate + at-rest `goal_state` sanitizer | `_tool_privacy_class` fall-through; wrap `FallbackProvider`; goal metadata | unregistered network-shaped tool → safe default + approval; non-allow-listed fallback never sees raw value; `/goal` objective persists placeholdered |
 | **D** | Placeholder-stable compaction (`validate_placeholders`) | autocompact/consolidation hook | stubbed summarizer that drops/renumbers/emits-raw → rejected/repaired; counters never rewound |
@@ -309,9 +309,30 @@ localhost-gate test green; webui lint/test/build green.
 
 ### W3 — Streaming + filesystem tools — `[BLOCKED-until Cap A + W1]`
 
-1. Cap A `StreamingSanitizer` → verify: carry-over + byte-offset fuzz.
-2. Tools: `exec_session`, `shell`/`long_task` streaming, `apply_patch`/`file_state`,
-   filesystem parity; classify each via EgressPolicy → verify: tool tests.
+1. **Cap A DONE** — `cloakbot/privacy/runtime/streaming_sanitizer.py`
+   `StreamingSanitizer` (keyed `(session_key, stream_id)`) + `StreamingSanitizerRegistry`.
+   Holds a tail carry-over window (`DEFAULT_CARRY_OVER_CHARS = 256`, ≥ longest
+   detectable entity span). Each `feed(text)` appends to the raw buffer and emits
+   only the **longest common prefix** of `sanitize(raw)` and `sanitize(raw[:-window])`
+   — an entity straddling the settle boundary tokenizes differently between the two
+   sanitizations, so the common prefix stops before it and the partial is withheld
+   until the next feed completes it. `finalize()` flushes the residual tail.
+   Wired into `ToolPrivacyInterceptor.sanitize_tool_result` via
+   `_sanitize_streaming_tool_result`: streaming tools (`exec`, `write_stdin`,
+   `shell`, `long_task`) route through the registry; exec-session status trailers
+   are split off (`_split_session_output_and_trailer`) so a status line never
+   bisects an entity, and only the process output flows through the window. Streams
+   stay live (tail held) only while an exec poll prints "Process running"; every
+   other result finalizes immediately so nothing is withheld from the model.
+   `exec_session.py` is **not** edited. Verified by
+   `tests/privacy/runtime/test_streaming_sanitizer.py` (9 tests: 4096-boundary
+   straddle acceptance, residual-tail flush, finalize idempotence, **fuzz across
+   every byte offset of a 12KB stream chunked at 4096 — 0 seam leaks**, registry
+   carry-over sharing, end-to-end through the interceptor).
+2. Tools: `exec_session`, `shell`/`long_task` classified SIDE_EFFECT via Cap C
+   EgressPolicy (`write_stdin`/`shell` added to `_SIDE_EFFECT_TOOLS`; previously
+   `write_stdin` fail-closed to EXTERNAL+approval, which would have blocked exec
+   polling). Remaining W3: `apply_patch`/`file_state` visual + filesystem parity.
 
 **Exit gate:** Cap A acceptance + fuzz; **A3 long-doc leak-eval at/below baseline
 (0/226 seam leaks must hold).**
