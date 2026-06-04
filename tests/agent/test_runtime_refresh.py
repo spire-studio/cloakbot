@@ -43,7 +43,10 @@ def test_provider_refresh_updates_all_model_dependents(tmp_path: Path) -> None:
     assert loop.subagents.provider is new_provider
     assert loop.subagents.model == "new-model"
     assert loop.subagents.runner.provider is new_provider
-    assert loop.consolidator.provider is new_provider
+    # [Cap D] the consolidator's provider is wrapped by the placeholder-stable
+    # compaction guard (re-installed on every provider swap); the new provider is
+    # the wrapper's transparently-delegated inner.
+    assert loop.consolidator.provider.inner is new_provider
     assert loop.consolidator.model == "new-model"
     assert loop.consolidator.context_window_tokens == 2000
     assert loop.consolidator.max_completion_tokens == 456

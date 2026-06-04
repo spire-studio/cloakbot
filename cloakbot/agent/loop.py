@@ -39,6 +39,7 @@ from cloakbot.bus.runtime_events import (
 from cloakbot.command import CommandContext, CommandRouter, register_builtin_commands
 from cloakbot.config.schema import AgentDefaults, ModelPresetConfig
 from cloakbot.privacy import post_llm_hook, pre_llm_hook
+from cloakbot.privacy.compaction_provider import install_compaction_guard
 from cloakbot.privacy.core.state.vault import set_vault_workspace, use_ephemeral_scope
 from cloakbot.privacy.hooks.context import TurnContext as PrivacyTurnContext
 from cloakbot.privacy.runtime.tool_interceptor import ToolPrivacyInterceptor
@@ -322,6 +323,12 @@ class AgentLoop:
             max_completion_tokens=provider.generation.max_tokens,
             consolidation_ratio=consolidation_ratio,
         )
+        # [Cap D] Placeholder-stable compaction: bracket the consolidation
+        # summarizer call with the Cap D vault contract (sanitize-or-fail-closed
+        # pre-summarize; validate_placeholders + repair / fail-closed
+        # post-summarize). Additive provider wrapper — no fork of memory.py /
+        # autocompact.py.
+        install_compaction_guard(self.consolidator)
         self.auto_compact = AutoCompact(
             sessions=self.sessions,
             consolidator=self.consolidator,
@@ -415,6 +422,9 @@ class AgentLoop:
         self.runner.provider = provider
         self.subagents.set_provider(provider, model)
         self.consolidator.set_provider(provider, model, context_window_tokens)
+        # [Cap D] set_provider reassigns consolidator.provider directly, dropping
+        # the guard wrapper; re-install it on every provider swap.
+        install_compaction_guard(self.consolidator)
         self._provider_signature = snapshot.signature
         if publish_update and self._runtime_model_publisher is not None:
             self._runtime_model_publisher(

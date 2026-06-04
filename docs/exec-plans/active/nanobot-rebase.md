@@ -191,7 +191,7 @@ loop `TurnContext`; carry it as hook-private state.
 | **A** | **DONE** — `StreamingSanitizer` with carry-over window (≥ longest entity span) | `ToolPrivacyInterceptor.sanitize_tool_result` | HIGH entity straddling a 4096-byte poll boundary → zero raw chars, placeholder reused; fuzz every byte offset of a 12KB stream |
 | **B** | **DONE** — Scoped/keyed Vaults (`shared` / `ephemeral` child) via `VaultScope`; `use_ephemeral_scope` wraps the turn state machine for `ephemeral=True` runs | replace flat `_cache` in `core/state/vault.py`; scope routed at run-key addressing | ephemeral `/goal`/`dream` map never written to parent `maps/{user}.json`; cross-scope restore is a no-op |
 | **C** | Explicit EgressPolicy + provider egress gate + at-rest `goal_state` sanitizer | `_tool_privacy_class` fall-through; wrap `FallbackProvider`; goal metadata | unregistered network-shaped tool → safe default + approval; non-allow-listed fallback never sees raw value; `/goal` objective persists placeholdered |
-| **D** | Placeholder-stable compaction (`validate_placeholders`) | autocompact/consolidation hook | stubbed summarizer that drops/renumbers/emits-raw → rejected/repaired; counters never rewound |
+| **D** | **DONE** — Placeholder-stable compaction (`validate_placeholders`) | additive `CompactionGuardedProvider` around the consolidator provider (no fork of `memory.py`/`autocompact.py`) | stubbed summarizer that drops/renumbers/emits-raw → rejected/repaired; counters never rewound |
 | **E** | Multimodal egress gate for image-gen | thin wrapper at provider-factory time | reference image redacted + prompt placeholdered before bytes leave; fail-closed omits image |
 | **F** | Privacy event side-channel (webui) + **localhost gate** | `_agent_ui.privacy` blob + `privacy_trace` event + additive `ws_http` route | round-trip re-validates; upstream client ignores privacy frames; **non-localhost client receives zero raw values** (blocking invariant) |
 
@@ -340,7 +340,10 @@ localhost-gate test green; webui lint/test/build green.
 ### W4 — Sustained goals & autonomy — `[BLOCKED-until Cap B + Cap C + Cap D]`
 
 1. `/goal` + `long_task` (Cap C at-rest `goal_state` sanitizer).
-2. `autocompact` + `progress_hook` (Cap D).
+2. `autocompact` + `progress_hook` (Cap D **DONE** — `cloakbot/privacy/compaction.py`
+   contract + `compaction_provider.py` additive guard around the consolidator
+   provider, installed in `AgentLoop.__init__` / re-installed on `set_provider`;
+   `tests/privacy/test_compaction.py`).
 3. `memory` hardening + `dream` refactor #3990 (Cap B ephemeral scopes + Cap D);
    keep `ephemeral` runs hooked (do **not** copy upstream's hook-skip).
 4. `context`/`loader` (in-package `pkgutil` only, no `entry_points`)/`self.py`

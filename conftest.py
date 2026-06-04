@@ -70,6 +70,12 @@ def _transparent_local_detector():
         # needs the same transparent-but-available no-op or every streamed exec poll
         # would fail-closed on the absent local detector.
         patch("cloakbot.privacy.runtime.streaming_sanitizer.sanitize_tool_output", new=_noop_tool),
+        # Cap D: the compaction guard (consolidation / autocompact boundary) calls
+        # sanitize_tool_output through its own module namespace for the
+        # pre-summarize tokenize backstop and the post-summarize raw-value
+        # re-tokenize; same transparent-but-available no-op so compaction is
+        # on-but-inert by default (redaction tests patch it themselves).
+        patch("cloakbot.privacy.compaction.sanitize_tool_output", new=_noop_tool),
     ):
         yield
 

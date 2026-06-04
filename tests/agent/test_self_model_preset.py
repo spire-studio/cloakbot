@@ -110,7 +110,9 @@ def test_model_preset_setter_replaces_provider_from_snapshot(tmp_path) -> None:
     assert loop.runner.provider is new_provider
     assert loop.subagents.provider is new_provider
     assert loop.subagents.runner.provider is new_provider
-    assert loop.consolidator.provider is new_provider
+    # [Cap D] the consolidator's provider is wrapped by the placeholder-stable
+    # compaction guard; the swapped provider is its transparent inner.
+    assert loop.consolidator.provider.inner is new_provider
     assert loop.model == "anthropic/claude-opus-4-5"
     assert loop.context_window_tokens == 200_000
     assert loop.consolidator.max_completion_tokens == 2048

@@ -252,6 +252,51 @@ Egress class: `exec` / `write_stdin` / `shell` / `list_exec_sessions` /
 sanitized via the streaming window). `write_stdin` previously fell through to
 fail-closed `EXTERNAL` + approval, which would have blocked exec-session polling.
 
+## Placeholder-Stable Compaction (Cap D)
+
+`cloakbot/privacy/compaction.py` is a compaction-aware vault contract invoked at
+the autocompact / consolidation boundary (`agent/memory.py` `Consolidator`,
+`agent/autocompact.py` `AutoCompact`). It is an **additive bracket** around the
+summarizer call — neither `Consolidator` nor `AutoCompact` is forked. The seam is
+the consolidator's injected `provider`: `compaction_provider.CompactionGuardedProvider`
+transparently delegates every method to the wrapped provider except
+`chat_with_retry`, which it brackets with a `CompactionGuard`.
+`install_compaction_guard(consolidator)` is wired in `AgentLoop.__init__` and
+re-applied after every `set_provider` swap (mirrors the Cap C provider-factory
+gate). The compaction summarizer validates against the user's shared vault under
+a stable `"compaction"` session key, routed through the Cap B scope table.
+
+The guard runs two checks against the **scoped** (Cap B) vault:
+
+- **pre-summarize** (`assert_tokenized`): the window handed to the summarizer is
+  re-run through `sanitize_tool_output` (the same tool-boundary sanitizer), so it
+  is provably tokenized before the model sees it. This fails *closed* on detector
+  unavailability — the consolidator's own `try/except` then raw-archives the
+  chunk rather than shipping raw text.
+- **post-summarize** (`validate_placeholders`): every `<<TAG_N>>` in the summary
+  must be a member of the *pre-compaction* token set (the placeholders in the
+  sanitized input window). Diffing the summary's token set against the input's is
+  what forbids both **foreign** tokens (hallucinated — never minted by this
+  vault) and **renumbering** (a vault-known token that was not in the window, so
+  restoration would resolve to the wrong entity).
+
+Repair / fail-closed policy:
+
+- **Renumbering is unrepairable** → reject the whole summary (we cannot know
+  which valid token the model meant); `Consolidator.archive` sees a
+  `finish_reason="error"` and falls back to `raw_archive` (keeps the
+  un-summarized history).
+- **Foreign / hallucinated** tokens carry no attribution → their spans are
+  dropped and the rest of the summary is kept.
+- **Raw value** emitted into the summary → re-tokenized via `sanitize_tool_output`
+  (may mint a *new* placeholder); a raw value is never persisted at rest.
+- A foreign token surviving repair also fails closed.
+
+Two hard invariants, asserted by `tests/privacy/test_compaction.py`: **vault
+counters are never rewound** (a compaction pass may move a counter forward when
+re-tokenizing a leaked raw value, but nothing resets a counter or re-points an
+existing placeholder), and **no raw sensitive value is persisted** to history.
+
 ## Adversarial-Input Posture
 
 Tool output is *untrusted data*, never instructions. Two layers of defence:
