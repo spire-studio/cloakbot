@@ -3,5 +3,12 @@
   "compilerOptions": {
     "types": ["node", "vite/client"]
   },
-  "exclude": ["src/tests/**"]
+  "exclude": [
+    "src/tests/**",
+    "src/**/*.test.ts",
+    "src/**/*.test.tsx",
+    "src/**/*.spec.ts",
+    "src/**/*.spec.tsx",
+    "src/**/__fixtures__.ts"
+  ]
 }

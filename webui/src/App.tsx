@@ -39,6 +39,8 @@ import {
   toRuntimeSurface,
 } from "@/lib/runtime";
 import { projectNameFromPath } from "@/lib/workspace";
+import { PrivacyStateProvider } from "@/overlays/privacy/context/PrivacyStateProvider";
+import { PrivacyPanel } from "@/overlays/privacy/components/PrivacyPanel";
 
 type BootState =
   | { status: "loading" }
@@ -534,6 +536,7 @@ function Shell({
     useState<boolean>(readSidebarOpen);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [sessionSearchOpen, setSessionSearchOpen] = useState(false);
+  const [privacyPanelOpen, setPrivacyPanelOpen] = useState(true);
   const [pendingDelete, setPendingDelete] = useState<{
     key: string;
     label: string;
@@ -1252,6 +1255,7 @@ function Shell({
   }, [showHostChrome]);
 
   return (
+    <PrivacyStateProvider client={client} chatId={activeChatId}>
     <ThemeProvider theme={theme}>
       <div
         className={cn(
@@ -1385,6 +1389,13 @@ function Shell({
               </div>
             )}
           </main>
+          {view === "chat" && activeKey ? (
+            <PrivacyPanel
+              open={privacyPanelOpen}
+              onToggle={() => setPrivacyPanelOpen((v) => !v)}
+              sessionId={activeKey}
+            />
+          ) : null}
         </div>
 
         <DeleteConfirm
@@ -1418,5 +1429,6 @@ function Shell({
         ) : null}
       </div>
     </ThemeProvider>
+    </PrivacyStateProvider>
   );
 }

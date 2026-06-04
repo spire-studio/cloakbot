@@ -33,6 +33,7 @@ import { faviconUrls, logoFallbackUrls } from "@/lib/provider-brand";
 import { formatToolCallTrace } from "@/lib/tool-traces";
 import { cn } from "@/lib/utils";
 import type { CliAppInfo, McpPresetInfo, ToolProgressEvent, UIFileEdit, UIMessage } from "@/lib/types";
+import { PrivacyTraceRow } from "@/overlays/privacy/components/PrivacyTraceRow";
 
 /** Scrollport height for the Cursor-style “live trace” strip (tailwind spacing). */
 const CLUSTER_SCROLL_MAX_CLASS = "max-h-52";
@@ -511,6 +512,9 @@ export function AgentActivityCluster({
                 return null;
               })}
               {fileEdits.length ? <FileEditGroup edits={fileEdits} /> : null}
+              {/* CloakBot privacy overlay: per-turn privacy summary in the
+                  activity timeline (renders nothing until a privacy turn lands). */}
+              <PrivacyTraceRow />
             </div>
           </div>
         </div>

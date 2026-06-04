@@ -4,6 +4,8 @@ import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 import { useClient } from "@/providers/ClientProvider";
 import type { ConnectionStatus } from "@/lib/types";
+import { BlockedCounter } from "@/overlays/privacy/components/BlockedCounter";
+import { usePrivacyState } from "@/overlays/privacy/context/PrivacyStateProvider";
 
 const COPY: Record<ConnectionStatus, { color: string }> = {
   idle: { color: "text-muted-foreground" },
@@ -37,24 +39,29 @@ export function ConnectionBadge() {
     status === "reconnecting" ||
     status === "error";
   const label = t(`connection.${status}`);
+  const { stats } = usePrivacyState();
   return (
-    <span
-      className={cn(
-        "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-colors",
-        "text-muted-foreground/70 hover:bg-sidebar-accent/65",
-        meta.color,
-      )}
-      aria-live="polite"
-      role="status"
-      title={label}
-    >
-      <span className="relative flex h-2 w-2" aria-hidden>
-        {pulsing && (
-          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-current opacity-75" />
+    <span className="inline-flex items-center gap-1.5">
+      <span
+        className={cn(
+          "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-colors",
+          "text-muted-foreground/70 hover:bg-sidebar-accent/65",
+          meta.color,
         )}
-        <span className="relative inline-flex h-2 w-2 rounded-full bg-current" />
+        aria-live="polite"
+        role="status"
+        title={label}
+      >
+        <span className="relative flex h-2 w-2" aria-hidden>
+          {pulsing && (
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-current opacity-75" />
+          )}
+          <span className="relative inline-flex h-2 w-2 rounded-full bg-current" />
+        </span>
+        <span className="sr-only">{label}</span>
       </span>
-      <span className="sr-only">{label}</span>
+      {/* CloakBot privacy overlay: live "PII spans blocked" badge (hidden at 0). */}
+      <BlockedCounter total={stats.blockedSpans} />
     </span>
   );
 }

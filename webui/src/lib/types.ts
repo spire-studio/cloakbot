@@ -64,6 +64,11 @@ export interface UIMessage {
   reasoningStreaming?: boolean;
   /** End-to-end wall time for this assistant turn (persisted ``latency_ms`` / ``turn_end``). */
   latencyMs?: number;
+  /** CloakBot privacy overlay: restoration annotations (placeholder ↔ real
+   * value spans) for this assistant turn, indexing the locally-restored display
+   * string only. Populated by the privacy side-channel; ``undefined`` for turns
+   * with no detected entities. Never echoed back to the remote model. */
+  privacyAnnotations?: unknown[];
 }
 
 export interface UICliAppAttachment {
@@ -748,4 +753,8 @@ export type Outbound =
       /** Marks messages sent by the embedded WebUI, without changing the
        * generic websocket protocol for other clients. */
       webui?: true;
-    };
+    }
+  /** CloakBot privacy HITL: reply to a pending ``tool_approval`` prompt. The
+   * server resolves the matching ``PendingToolApproval`` and either runs the
+   * locally-restored arguments (``approved: true``) or drops the call. */
+  | { type: "tool_approval"; chat_id: string; approval_id: string; approved: boolean };

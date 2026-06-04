@@ -10,6 +10,10 @@ import type {
   WorkspaceScopePayload,
 } from "./types";
 import { createHostWebSocket } from "./runtime";
+import {
+  classifyPrivacyFrame,
+  type PrivacyEvent,
+} from "@/overlays/privacy/lib/privacy-client-lane";
 
 /** WebSocket readyState constants, referenced by value to stay portable
  * across runtimes that don't expose a global ``WebSocket`` (tests, SSR). */
@@ -73,6 +77,8 @@ type SessionUpdateHandler = (
   workspaceScope?: WorkspaceScopePayload,
 ) => void;
 type RunStatusHandler = (chatId: string, startedAt: number | null) => void;
+/** CloakBot privacy side-channel: decoded privacy events for one chat. */
+type PrivacyHandler = (event: PrivacyEvent) => void;
 
 /** Structured errors surfaced to the UI.
  *
@@ -122,6 +128,8 @@ export class NanobotClient {
   private errorHandlers = new Set<ErrorHandler>();
   // chat_id -> handlers listening on it
   private chatHandlers = new Map<string, Set<EventHandler>>();
+  // chat_id -> privacy-overlay handlers (CloakBot side-channel)
+  private privacyHandlers = new Map<string, Set<PrivacyHandler>>();
   /** Inbound frames received while no subscriber is registered (e.g. user switched away). */
   private pendingInboundByChat = new Map<string, InboundEvent[]>();
   private static readonly PENDING_INBOUND_MAX = 2000;
@@ -272,6 +280,48 @@ export class NanobotClient {
       current.delete(handler);
       if (current.size === 0) this.chatHandlers.delete(chatId);
     };
+  }
+
+  /**
+   * Subscribe to decoded CloakBot privacy events for *chatId*.
+   *
+   * Privacy data rides the SAME socket as the thread (folded under
+   * ``agent_ui.privacy`` on ``message`` frames + standalone
+   * ``privacy_snapshot`` / ``privacy_trace`` / ``tool_approval`` frames). This
+   * lane is additive: it decodes those frames via ``classifyPrivacyFrame`` and
+   * never interferes with the thread/activity ``onChat`` fan-out.
+   */
+  onPrivacy(chatId: string, handler: PrivacyHandler): Unsubscribe {
+    let handlers = this.privacyHandlers.get(chatId);
+    if (!handlers) {
+      handlers = new Set();
+      this.privacyHandlers.set(chatId, handlers);
+    }
+    handlers.add(handler);
+    this.attach(chatId);
+    return () => {
+      const current = this.privacyHandlers.get(chatId);
+      if (!current) return;
+      current.delete(handler);
+      if (current.size === 0) this.privacyHandlers.delete(chatId);
+    };
+  }
+
+  /**
+   * Reply to a pending tool-approval prompt (HITL).
+   *
+   * Sends the inbound ``tool_approval`` envelope so the server can resolve the
+   * ``PendingToolApproval`` and either run the locally-restored arguments
+   * (approved) or drop the call (denied).
+   */
+  respondToToolApproval(chatId: string, approvalId: string, approved: boolean): void {
+    this.knownChats.add(chatId);
+    this.queueSend({
+      type: "tool_approval",
+      chat_id: chatId,
+      approval_id: approvalId,
+      approved,
+    });
   }
 
   connect(): void {
@@ -472,6 +522,7 @@ export class NanobotClient {
   }
 
   private dispatch(chatId: string, ev: InboundEvent): void {
+    this.dispatchPrivacy(chatId, ev);
     const handlers = this.chatHandlers.get(chatId);
     if (handlers !== undefined && handlers.size > 0) {
       for (const h of handlers) {
@@ -488,6 +539,21 @@ export class NanobotClient {
     const over = q.length - NanobotClient.PENDING_INBOUND_MAX;
     if (over > 0) {
       q.splice(0, over);
+    }
+  }
+
+  /** Decode privacy-bearing frames and fan out to ``onPrivacy`` subscribers. */
+  private dispatchPrivacy(chatId: string, ev: InboundEvent): void {
+    const handlers = this.privacyHandlers.get(chatId);
+    if (!handlers || handlers.size === 0) return;
+    const decoded = classifyPrivacyFrame(ev);
+    if (!decoded) return;
+    for (const handler of handlers) {
+      try {
+        handler(decoded);
+      } catch {
+        // best-effort: an overlay subscriber fault must not stall the socket
+      }
     }
   }
 

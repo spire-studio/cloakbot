@@ -324,15 +324,45 @@ package imports clean.
 3. **DONE (partial)** — outbound token restoration already lives in the upstream
    outbound path (`_state_respond` → `post_llm_hook`, restore-local-only); the
    report is now off the content and on the side-channel.
-4. **TODO (W2 frontend)** — Cap F frontend: adopt Workbench; build the 5 overlay
-   attach points → verify: `cd webui && npm run lint && npm run test && npm run
-   build`. Inbound `tool_approval` *envelope* handling (the client → server
-   approve/deny reply) is still W2-frontend-adjacent; the backend emits the
-   approval prompts and gates them, but the inbound approval reply wiring is not
-   yet re-homed onto the websocket envelope dispatcher.
+4. **W2 frontend DONE** — Cap F frontend overlay landed under
+   `webui/src/overlays/privacy/` (the ONLY CloakBot-authored frontend), fed by
+   the Cap F side-channel. Salvageable components recovered from
+   `git show main:webui/src/features/privacy/...` and re-homed (types,
+   annotated-markdown, export-audit, PrivacyPanel + EntitySummary/PromptLog/
+   ComputationLog/BlockedCounter), re-targeted off the deleted SPA's UI deps
+   (`chip`/`tabs`/`scroll-area`/`--privacy-*` CSS vars) onto a self-contained
+   overlay kit (`lib/ui.tsx` Chip/Tabs/ScrollArea/GhostButton +
+   `lib/severity.ts` fixed-color severity maps) so the overlay adds **zero**
+   fork to upstream's shared UI. New: `lib/privacy-client-lane.ts`
+   (`onPrivacy(client, chatId, handler)` + pure `classifyPrivacyFrame` /
+   `extractPrivacyPayload` decoders for `privacy_snapshot`/`privacy_trace`/
+   `tool_approval` + `agent_ui.privacy` on `message`), `context/PrivacyStateProvider`
+   (accumulates snapshot/turns/annotations-by-replyTo/approvals + header stats,
+   resets+resubscribes per chat for session isolation), `PrivacyTraceRow`,
+   `RestorationAnnotations` (+ `AssistantMarkdown` slot on `MessageBubble`),
+   `ToolApprovalPrompt` + `PendingToolApprovals`. **5 additive attach points:**
+   (1) `onPrivacy(chatId, handler)` method + `dispatchPrivacy` branch in
+   `lib/nanobot-client.ts handleMessage` + `respondToToolApproval` inbound
+   `tool_approval` envelope sender; (2) `privacyAnnotations?: unknown[]` field on
+   `UIMessage`; (3) `PrivacyStateProvider` mounted beside `ClientProvider` in
+   `App.tsx` + `PrivacyPanel` docked in `<main>`; (4) `RestorationAnnotations`
+   render-prop slot on `MessageBubble.tsx`; (5) `BlockedCounter` on
+   `ConnectionBadge` + `PrivacyTraceRow` in `AgentActivityCluster`. UI guards
+   honoured: `ToolApprovalPrompt` shows only `remoteArguments` (placeholdered),
+   never `restoredArguments`; `EntitySummary` masks the redacted sentinel
+   (non-localhost projection) to `••••••`; `export-audit` JSONL is
+   types+placeholders only (test asserts no `Ada Lovelace`/`ada@example.com`).
+   Verify: `cd webui && npm ci && npm run lint && npm run test && npm run build`
+   all green (lint clean, 29 files / 351 tests, build OK). 26 new overlay tests
+   (`privacy-client-lane.test.ts` 12, `PrivacyStateProvider.test.tsx` 7,
+   `components.test.tsx` 7). Inbound `tool_approval` reply *sender* is wired on
+   the client; the server-side envelope *dispatcher* that resolves
+   `PendingToolApproval` is still a backend TODO (see Gaps).
+   `tsconfig.build.json` exclude broadened to skip colocated `*.test.*`/
+   `__fixtures__.*` from the production typecheck (vitest discovery unchanged).
 
 **Exit gate:** Workbench renders without privacy code; overlay augments additively;
-localhost-gate test green (**DONE**); webui lint/test/build green (TODO).
+localhost-gate test green (**DONE**); webui lint/test/build green (**DONE**).
 
 ### W3 — Streaming + filesystem tools — `[BLOCKED-until Cap A + W1]`
 

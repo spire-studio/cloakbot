@@ -13,6 +13,8 @@ import { AttachmentTile } from "@/components/AttachmentTile";
 import { CliAppMentionText } from "@/components/CliAppMentionText";
 import { ImageLightbox } from "@/components/ImageLightbox";
 import { MarkdownText, preloadMarkdownText } from "@/components/MarkdownText";
+import { usePrivacyAnnotations } from "@/overlays/privacy/context/PrivacyStateProvider";
+import { AnnotatedMarkdown } from "@/overlays/privacy/lib/annotated-markdown";
 import { cn } from "@/lib/utils";
 import { copyTextToClipboard } from "@/lib/clipboard";
 import { formatTurnLatency } from "@/lib/format";
@@ -148,7 +150,7 @@ export function MessageBubble({
         <TypingDots />
       ) : empty && message.isStreaming ? null : (
         <>
-          <MarkdownText streaming={!!message.isStreaming}>{message.content}</MarkdownText>
+          <AssistantMarkdown messageId={message.id} content={message.content} streaming={!!message.isStreaming} />
           {media.length > 0 ? <MessageMedia media={media} align="left" /> : null}
           {showAssistantFooterRow ? (
             <div className="mt-2 flex min-h-8 flex-wrap items-center gap-x-2 gap-y-1 text-muted-foreground">
@@ -185,6 +187,31 @@ export function MessageBubble({
       )}
     </div>
   );
+}
+
+/**
+ * Assistant reply renderer with the CloakBot privacy restoration slot.
+ *
+ * When the privacy side-channel recorded restoration annotations for this
+ * message (and the turn has settled — offsets index the final restored string),
+ * render through ``AnnotatedMarkdown`` so placeholder ↔ real-value spans get
+ * inline highlights/tooltips. Otherwise fall back to the upstream
+ * ``MarkdownText`` byte-for-byte. Additive: zero change for non-privacy turns.
+ */
+function AssistantMarkdown({
+  messageId,
+  content,
+  streaming,
+}: {
+  messageId: string;
+  content: string;
+  streaming: boolean;
+}) {
+  const annotations = usePrivacyAnnotations(messageId);
+  if (!streaming && annotations.length > 0) {
+    return <AnnotatedMarkdown content={content} annotations={annotations} />;
+  }
+  return <MarkdownText streaming={streaming}>{content}</MarkdownText>;
 }
 
 function mergeMcpMentionPresets(
