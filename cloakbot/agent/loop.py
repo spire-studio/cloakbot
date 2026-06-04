@@ -1388,23 +1388,19 @@ class AgentLoop:
 
     async def _state_build(self, ctx: TurnContext) -> str:
         # --- [seam:2] privacy: sanitize the user turn before it enters the
-        # prompt OR the persisted session. Restoration happens in
-        # _state_respond; suppress live streaming so no <<TYPE_N>> placeholder
-        # is ever shown mid-stream. Media is fail-closed (the visual-redaction
-        # -> message-block route is not wired into the rebased loop yet).
+        # prompt OR the persisted session. Only mutate the turn when the
+        # detector actually redacted something, so non-sensitive turns stay
+        # byte-for-byte identical to upstream (streaming is suppressed only then,
+        # to keep placeholders off the wire mid-stream). Media/visual privacy is
+        # deferred to W3 — attachments currently pass through unchanged; the text
+        # path is the guaranteed boundary here.
         if ctx.privacy_ctx is None:
             prepared, ctx.privacy_ctx = await pre_llm_hook(
                 ctx.msg.content, ctx.session_key, media=None, fail_open=True,
             )
-            new_content = prepared if isinstance(prepared, str) else ctx.msg.content
-            if ctx.msg.media:
-                new_content = (
-                    new_content
-                    + "\n\n[image attachment withheld: visual privacy redaction"
-                    " is not yet wired into the rebased loop]"
-                ).strip()
-            ctx.msg = dataclasses.replace(ctx.msg, content=new_content, media=[])
             if ctx.privacy_ctx.was_sanitized:
+                new_content = prepared if isinstance(prepared, str) else ctx.msg.content
+                ctx.msg = dataclasses.replace(ctx.msg, content=new_content)
                 ctx.on_stream = None
         if not ctx.ephemeral:
             await self.consolidator.maybe_consolidate_by_tokens(
@@ -1532,13 +1528,15 @@ class AgentLoop:
             ctx.outbound = None
             return "ok"
         # --- [seam:2] privacy: restore placeholders locally before the user
-        # sees the response (session history keeps the sanitized form).
+        # sees the response (session history keeps the sanitized form). The
+        # transparency report is NOT appended to the message content — that would
+        # change the user-visible output; it moves to the WebUI side-channel (W2).
         if ctx.privacy_ctx is not None and ctx.final_content is not None:
             ctx.final_content = await post_llm_hook(
                 ctx.final_content,
                 ctx.privacy_ctx,
                 ctx.session_key,
-                include_report=ctx.msg.channel != "webui",
+                include_report=False,
             )
         ctx.outbound = self._assemble_outbound(
             ctx.msg,

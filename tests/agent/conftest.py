@@ -28,7 +28,11 @@ def make_provider(
         temperature=0.1,
         reasoning_effort=None,
     )
-    provider.estimate_prompt_tokens.return_value = (10_000, "test")
+    # estimate_prompt_tokens moved off LLMProvider into utils.helpers upstream, so
+    # `provider.estimate_prompt_tokens.return_value = ...` (an attribute *get* on a
+    # spec'd mock) now raises. A direct *set* is allowed under plain `spec` and keeps
+    # token-budget tests deterministic via estimate_prompt_tokens_chain's getattr.
+    provider.estimate_prompt_tokens = MagicMock(return_value=(10_000, "test"))
     return provider
 
 
