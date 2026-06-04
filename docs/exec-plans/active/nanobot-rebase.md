@@ -306,6 +306,45 @@ UNKNOWN→allow); full privacy suite + all three leak-evals green.
 
 **Exit gate:** full Validation suite at every layer; sync dry-run clean.
 
+## W1b loop-seam design (execution-ready)
+
+Integration points verified in upstream `agent/loop.py` (1764 lines; state machine
+`_process_message:1183` → `_state_build:1380` → `_state_run:1426` → `_state_save:1460`
+→ `_state_respond:1497`; `TurnContext:97`; `_run_agent_loop`→`AgentRunSpec(...):790`).
+
+1. **Rename** privacy `TurnContext`→`PrivacyTurnContext` in `privacy/hooks/context.py` +
+   all privacy importers (collides with upstream loop `TurnContext` at loop.py:97).
+2. **`AgentLoop.__init__`:** add `set_vault_workspace(self.workspace)` [seam 6] (mirrors
+   old loop.py:225-227).
+3. **`TurnContext`:** add field `privacy_ctx: PrivacyTurnContext | None = None`.
+4. **`_state_build` top (before `_build_initial_messages:1408` AND
+   `_persist_user_message_early:1415`):** sanitize the turn so both the prompt and the
+   persisted session see placeholders:
+   `prepared, ctx.privacy_ctx = await pre_llm_hook(ctx.msg.content, ctx.session_key, media=ctx.msg.media or None, fail_open=True)`
+   then `ctx.msg = dataclasses.replace(ctx.msg, content=<sanitized>, media=<redacted/[]>)`.
+   TEXT path: `prepared` is a str. **MEDIA path (hard):** `prepared` is redacted content
+   blocks — must reconcile with upstream's `_prepare_message_media` (ran in
+   `_state_restore:1318`) and `_build_initial_messages` so raw images are never re-attached;
+   **fail-closed if media present and the redacted-block route is not yet wired.**
+5. **`_state_run`→`_run_agent_loop`→`AgentRunSpec:790`:** add a `tool_privacy_interceptor`
+   param threaded to the spec: `tool_privacy_interceptor=ToolPrivacyInterceptor(ctx.privacy_ctx)`
+   [seam 3].
+6. **`_state_respond:1497` (before `_assemble_outbound`):**
+   `ctx.final_content = await post_llm_hook(ctx.final_content, ctx.privacy_ctx, ctx.session_key, include_report=ctx.msg.channel != "webui")`.
+7. **Streaming restoration (the load-bearing subtlety):** upstream streams deltas live via
+   `AgentHook.on_stream`, so placeholders would flash to the user mid-stream. Two correct
+   options: (a) a `PrivacyHook(AgentHook)` that buffers `on_stream` and flushes restored text
+   at stream-end/`finalize_content` (mirrors old `_buffered_stream`/`_buffered_stream_end`),
+   or (b) force non-streaming when `ctx.privacy_ctx.was_sanitized` (`on_stream=None` for that
+   turn). **Ship (b) first (simple + leak-safe), upgrade to (a) for UX.** A restore only in
+   `_state_respond` WITHOUT one of these LEAKS placeholders to the streamed UI — not acceptable.
+8. **Approval flow** (`ToolApprovalRequiredError`→pending approval, old loop.py ~715) is
+   W2-adjacent; until wired, non-LOCAL HIGH-severity tool turns fail-closed.
+
+Gate: `tests/privacy/runtime` + `tests/privacy/agents` + a smoke turn asserting (1) provider
+payload carries placeholders not raw values, (2) user-visible output is restored, (3) no raw
+placeholder is ever streamed, (4) A1 leak-eval ≤ baseline.
+
 ## Validation
 
 - [ ] `uv run pytest -m "not integration" tests/privacy/` — sanitizer/vault/runtime/
