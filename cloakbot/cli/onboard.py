@@ -1157,6 +1157,12 @@ _SETTINGS_SECTIONS: dict[str, tuple[str, str, set[str] | None]] = {
     "API Server": ("API Server", "Configure OpenAI-compatible API endpoint", None),
     "Gateway": ("Gateway Settings", "Configure server host, port", None),
     "Tools": ("Tools Settings", "Configure web search, shell exec, and other tools", {"mcp_servers"}),
+    "Privacy Detector": (
+        "Privacy Detector",
+        "Local PII detector endpoint/key/model. Keep this LOCAL — a remote endpoint "
+        "(e.g. OpenRouter) sends raw data there and is TEST-ONLY.",
+        None,
+    ),
 }
 
 _SETTINGS_GETTER = {
@@ -1165,6 +1171,7 @@ _SETTINGS_GETTER = {
     "API Server": lambda c: c.api,
     "Gateway": lambda c: c.gateway,
     "Tools": lambda c: c.tools,
+    "Privacy Detector": lambda c: c.privacy,
 }
 
 _SETTINGS_SETTER = {
@@ -1173,6 +1180,7 @@ _SETTINGS_SETTER = {
     "API Server": lambda c, v: setattr(c, "api", v),
     "Gateway": lambda c, v: setattr(c, "gateway", v),
     "Tools": lambda c, v: setattr(c, "tools", v),
+    "Privacy Detector": lambda c, v: setattr(c, "privacy", v),
 }
 
 
@@ -1263,6 +1271,7 @@ def _show_summary(config: Config) -> None:
         ("API Server", config.api),
         ("Gateway", config.gateway),
         ("Tools", config.tools),
+        ("Privacy Detector", config.privacy),
     ]:
         _print_summary_panel(_summarize_model(model), title)
 
@@ -1344,6 +1353,7 @@ def run_onboard(initial_config: Config | None = None) -> OnboardResult:
                     "[I] API Server",
                     "[G] Gateway",
                     "[T] Tools",
+                    "[D] Privacy Detector",
                     "[V] View Configuration Summary",
                     "[S] Save and Exit",
                     "[X] Exit Without Saving",
@@ -1371,6 +1381,7 @@ def run_onboard(initial_config: Config | None = None) -> OnboardResult:
             "[I] API Server": lambda: _configure_general_settings(config, "API Server"),
             "[G] Gateway": lambda: _configure_general_settings(config, "Gateway"),
             "[T] Tools": lambda: _configure_general_settings(config, "Tools"),
+            "[D] Privacy Detector": lambda: _configure_general_settings(config, "Privacy Detector"),
             "[V] View Configuration Summary": lambda: _show_summary(config),
         }
 

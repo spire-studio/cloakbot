@@ -315,6 +315,31 @@ class ToolsConfig(Base):
     ssrf_whitelist: list[str] = Field(default_factory=list)  # CIDR ranges to exempt from SSRF blocking (e.g. ["100.64.0.0/10"] for Tailscale)
 
 
+class PrivacyDetectorConfig(Base):
+    """Local PII detector (OpenAI-compatible) used by the privacy kernel.
+
+    Detection runs on a LOCAL model so raw input never leaves the machine.
+    Pointing this at a REMOTE endpoint (e.g. OpenRouter) is TEST-ONLY: it sends
+    raw, unsanitized input to that endpoint for detection, which defeats the
+    privacy guarantee. The ``GEMMA_BASE_URL`` / ``GEMMA_API_KEY`` / ``GEMMA_MODEL``
+    env vars (``.env``) override these when set, for back-compat.
+    """
+
+    base_url: str | None = Field(
+        default=None,
+        description="Detector endpoint — OpenAI-compatible base URL "
+        "(local example: http://127.0.0.1:11434/v1 for Ollama)",
+    )
+    api_key: str | None = Field(
+        default=None,
+        description="Detector API key / Bearer token ('ollama' works for Ollama)",
+    )
+    model: str = Field(
+        default="google/gemma-4-E2B-it",
+        description="Detector model id (e.g. gemma4:e2b for Ollama)",
+    )
+
+
 class Config(BaseSettings):
     """Root configuration for cloakbot."""
 
@@ -324,6 +349,7 @@ class Config(BaseSettings):
     api: ApiConfig = Field(default_factory=ApiConfig)
     gateway: GatewayConfig = Field(default_factory=GatewayConfig)
     tools: ToolsConfig = Field(default_factory=ToolsConfig)
+    privacy: PrivacyDetectorConfig = Field(default_factory=PrivacyDetectorConfig)
     model_presets: dict[str, ModelPresetConfig] = Field(
         default_factory=dict,
         validation_alias=AliasChoices("modelPresets", "model_presets"),
