@@ -127,31 +127,12 @@ def _transparent_local_detector():
         yield
 
 
-# Known-failing fork tests after the upstream rebase, xfailed (strict=False so they
-# surface as XPASS if the underlying work lands) with a specific reason each. Tracked
-# in docs/exec-plans/active/nanobot-rebase.md (W0-tail / W3). strict=False keeps the
-# sandbox-only env tests honest — they XPASS in a real environment.
-_REBASE_XFAIL: dict[str, tuple[str, set[str]]] = {
-    "tests/agent/test_runner.py": (
-        "stale fork test: exercises a pre-rebase runner internal API replaced upstream",
-        {
-            "test_persist_tool_result_logs_cleanup_failures",
-            "test_runner_retries_empty_final_response_with_summary_prompt",
-            "test_runner_uses_specific_message_after_empty_finalization_retry",
-            "test_snip_history_drops_orphaned_tool_results_from_trimmed_slice",
-            "test_runner_batches_read_only_tools_before_exclusive_work",
-            "test_loop_max_iterations_message_stays_stable",
-            "test_loop_stream_filter_handles_think_only_prefix_without_crashing",
-            "test_process_message_drops_streamed_tool_call_prelude",
-            "test_loop_retries_think_only_final_response",
-            "test_subagent_max_iterations_announces_existing_fallback",
-        },
-    ),
-    "tests/test_cloakbot_facade.py": (
-        "stale fork test: SDK facade _make_provider replaced by providers/factory.py upstream",
-        {"test_from_config_default_path", "test_sdk_make_provider_uses_github_copilot_backend"},
-    ),
-}
+# Known-failing fork tests after the upstream rebase, xfailed (strict=False) with a
+# specific reason each. Add entries here as {path: (reason, {test names})} when a
+# rebase leaves a test pending. Currently empty: the stale pre-rebase duplicates
+# were deleted (their behavior is covered by the post-rebase split test files) and
+# the sandbox-network probe tests were made hermetic.
+_REBASE_XFAIL: dict[str, tuple[str, set[str]]] = {}
 
 
 def pytest_collection_modifyitems(config, items):

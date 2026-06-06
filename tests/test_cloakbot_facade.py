@@ -36,14 +36,13 @@ def test_from_config_creates_instance(tmp_path):
 
 
 def test_from_config_default_path():
+    """from_config() with no path resolves the default config via load_config(None)."""
     from cloakbot.config.schema import Config
 
     with patch("cloakbot.config.loader.load_config") as mock_load, \
-         patch("cloakbot.cloakbot._make_provider") as mock_prov:
+         patch("cloakbot.cloakbot.AgentLoop") as mock_loop_cls:
         mock_load.return_value = Config()
-        mock_prov.return_value = MagicMock()
-        mock_prov.return_value.get_default_model.return_value = "test"
-        mock_prov.return_value.generation.max_tokens = 4096
+        mock_loop_cls.from_config.return_value = MagicMock()
         Cloakbot.from_config()
         mock_load.assert_called_once_with(None)
 
@@ -123,27 +122,6 @@ def test_workspace_override(tmp_path):
 
     bot = Cloakbot.from_config(config_path, workspace=custom_ws)
     assert bot._loop.workspace == custom_ws
-
-
-def test_sdk_make_provider_uses_github_copilot_backend():
-    from cloakbot.cloakbot import _make_provider
-    from cloakbot.config.schema import Config
-
-    config = Config.model_validate(
-        {
-            "agents": {
-                "defaults": {
-                    "provider": "github-copilot",
-                    "model": "github-copilot/gpt-4.1",
-                }
-            }
-        }
-    )
-
-    with patch("cloakbot.providers.openai_compat_provider.AsyncOpenAI"):
-        provider = _make_provider(config)
-
-    assert provider.__class__.__name__ == "GitHubCopilotProvider"
 
 
 @pytest.mark.asyncio

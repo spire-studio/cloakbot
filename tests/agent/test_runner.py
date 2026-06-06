@@ -10,10 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from cloakbot.agent.tools.base import Tool
-from cloakbot.agent.tools.registry import ToolRegistry
-from cloakbot.bus.events import InboundMessage
 from cloakbot.config.schema import AgentDefaults
-from cloakbot.privacy.hooks.context import TurnContext
 from cloakbot.providers.base import LLMResponse, ToolCallRequest
 
 _MAX_TOOL_RESULT_CHARS = AgentDefaults().max_tool_result_chars
@@ -361,30 +358,6 @@ def test_persist_tool_result_leaves_no_temp_files(tmp_path):
     assert list((root / "current_session").glob("*.tmp")) == []
 
 
-def test_persist_tool_result_logs_cleanup_failures(monkeypatch, tmp_path):
-    from cloakbot.utils.helpers import maybe_persist_tool_result
-
-    warnings: list[str] = []
-
-    monkeypatch.setattr(
-        "cloakbot.utils.helpers._cleanup_tool_result_buckets",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("busy")),
-    )
-    monkeypatch.setattr(
-        "cloakbot.utils.helpers.logger.warning",
-        lambda message, *args: warnings.append(message.format(*args)),
-    )
-
-    persisted = maybe_persist_tool_result(
-        tmp_path,
-        "current:session",
-        "call_big",
-        "x" * 5000,
-        max_chars=64,
-    )
-
-    assert "[tool output persisted]" in persisted
-    assert warnings and "Failed to clean stale tool result buckets" in warnings[0]
 
 
 @pytest.mark.asyncio
@@ -458,122 +431,10 @@ async def test_runner_uses_raw_messages_when_context_governance_fails():
     assert captured_messages == initial_messages
 
 
-@pytest.mark.asyncio
-async def test_runner_retries_empty_final_response_with_summary_prompt():
-    from cloakbot.agent.runner import AgentRunner, AgentRunSpec
-
-    provider = MagicMock()
-    calls: list[dict] = []
-
-    async def chat_with_retry(*, messages, tools=None, **kwargs):
-        calls.append({"messages": messages, "tools": tools})
-        if len(calls) == 1:
-            return LLMResponse(
-                content=None,
-                tool_calls=[],
-                usage={"prompt_tokens": 10, "completion_tokens": 1},
-            )
-        return LLMResponse(
-            content="final answer",
-            tool_calls=[],
-            usage={"prompt_tokens": 3, "completion_tokens": 7},
-        )
-
-    provider.chat_with_retry = chat_with_retry
-    tools = MagicMock()
-    tools.get_definitions.return_value = []
-
-    runner = AgentRunner(provider)
-    result = await runner.run(AgentRunSpec(
-        initial_messages=[{"role": "user", "content": "do task"}],
-        tools=tools,
-        model="test-model",
-        max_iterations=1,
-        max_tool_result_chars=_MAX_TOOL_RESULT_CHARS,
-    ))
-
-    assert result.final_content == "final answer"
-    assert len(calls) == 2
-    assert calls[1]["tools"] is None
-    assert "Do not call any more tools" in calls[1]["messages"][-1]["content"]
-    assert result.usage["prompt_tokens"] == 13
-    assert result.usage["completion_tokens"] == 8
 
 
-@pytest.mark.asyncio
-async def test_runner_uses_specific_message_after_empty_finalization_retry():
-    from cloakbot.agent.runner import AgentRunner, AgentRunSpec
-    from cloakbot.utils.runtime import EMPTY_FINAL_RESPONSE_MESSAGE
-
-    provider = MagicMock()
-
-    async def chat_with_retry(*, messages, **kwargs):
-        return LLMResponse(content=None, tool_calls=[], usage={})
-
-    provider.chat_with_retry = chat_with_retry
-    tools = MagicMock()
-    tools.get_definitions.return_value = []
-
-    runner = AgentRunner(provider)
-    result = await runner.run(AgentRunSpec(
-        initial_messages=[{"role": "user", "content": "do task"}],
-        tools=tools,
-        model="test-model",
-        max_iterations=1,
-        max_tool_result_chars=_MAX_TOOL_RESULT_CHARS,
-    ))
-
-    assert result.final_content == EMPTY_FINAL_RESPONSE_MESSAGE
-    assert result.stop_reason == "empty_final_response"
 
 
-def test_snip_history_drops_orphaned_tool_results_from_trimmed_slice(monkeypatch):
-    from cloakbot.agent.runner import AgentRunner, AgentRunSpec
-
-    provider = MagicMock()
-    tools = MagicMock()
-    tools.get_definitions.return_value = []
-    runner = AgentRunner(provider)
-    messages = [
-        {"role": "system", "content": "system"},
-        {"role": "user", "content": "old user"},
-        {
-            "role": "assistant",
-            "content": "tool call",
-            "tool_calls": [{"id": "call_1", "type": "function", "function": {"name": "ls", "arguments": "{}"}}],
-        },
-        {"role": "tool", "tool_call_id": "call_1", "content": "tool output"},
-        {"role": "assistant", "content": "after tool"},
-    ]
-    spec = AgentRunSpec(
-        initial_messages=messages,
-        tools=tools,
-        model="test-model",
-        max_iterations=1,
-        max_tool_result_chars=_MAX_TOOL_RESULT_CHARS,
-        context_window_tokens=2000,
-        context_block_limit=100,
-    )
-
-    monkeypatch.setattr("cloakbot.agent.runner.estimate_prompt_tokens_chain", lambda *_args, **_kwargs: (500, None))
-    token_sizes = {
-        "old user": 120,
-        "tool call": 120,
-        "tool output": 40,
-        "after tool": 40,
-        "system": 0,
-    }
-    monkeypatch.setattr(
-        "cloakbot.agent.runner.estimate_message_tokens",
-        lambda msg: token_sizes.get(str(msg.get("content")), 40),
-    )
-
-    trimmed = runner._snip_history(spec, messages)
-
-    assert trimmed == [
-        {"role": "system", "content": "system"},
-        {"role": "assistant", "content": "after tool"},
-    ]
 
 
 @pytest.mark.asyncio
@@ -645,42 +506,6 @@ class _DelayTool(Tool):
         return self._name
 
 
-@pytest.mark.asyncio
-async def test_runner_batches_read_only_tools_before_exclusive_work():
-    from cloakbot.agent.runner import AgentRunner, AgentRunSpec
-
-    tools = ToolRegistry()
-    shared_events: list[str] = []
-    read_a = _DelayTool("read_a", delay=0.05, read_only=True, shared_events=shared_events)
-    read_b = _DelayTool("read_b", delay=0.05, read_only=True, shared_events=shared_events)
-    write_a = _DelayTool("write_a", delay=0.01, read_only=False, shared_events=shared_events)
-    tools.register(read_a)
-    tools.register(read_b)
-    tools.register(write_a)
-
-    runner = AgentRunner(MagicMock())
-    await runner._execute_tools(
-        AgentRunSpec(
-            initial_messages=[],
-            tools=tools,
-            model="test-model",
-            max_iterations=1,
-            max_tool_result_chars=_MAX_TOOL_RESULT_CHARS,
-            concurrent_tools=True,
-        ),
-        [
-            ToolCallRequest(id="ro1", name="read_a", arguments={}),
-            ToolCallRequest(id="ro2", name="read_b", arguments={}),
-            ToolCallRequest(id="rw1", name="write_a", arguments={}),
-        ],
-        {},
-    )
-
-    assert shared_events[0:2] == ["start:read_a", "start:read_b"]
-    assert "end:read_a" in shared_events and "end:read_b" in shared_events
-    assert shared_events.index("end:read_a") < shared_events.index("start:write_a")
-    assert shared_events.index("end:read_b") < shared_events.index("start:write_a")
-    assert shared_events[-2:] == ["start:write_a", "end:write_a"]
 
 
 @pytest.mark.asyncio
@@ -725,152 +550,12 @@ async def test_runner_blocks_repeated_external_fetches():
     assert "repeated external lookup blocked" in blocked_tool_message["content"]
 
 
-@pytest.mark.asyncio
-async def test_loop_max_iterations_message_stays_stable(tmp_path):
-    loop = _make_loop(tmp_path)
-    loop.provider.chat_with_retry = AsyncMock(return_value=LLMResponse(
-        content="working",
-        tool_calls=[ToolCallRequest(id="call_1", name="list_dir", arguments={})],
-    ))
-    loop.tools.get_definitions = MagicMock(return_value=[])
-    loop.tools.execute = AsyncMock(return_value="ok")
-    loop.max_iterations = 2
-
-    final_content, _, _, _ = await loop._run_agent_loop([])
-
-    assert final_content == (
-        "I reached the maximum number of tool call iterations (2) "
-        "without completing the task. You can try breaking the task into smaller steps."
-    )
 
 
-@pytest.mark.asyncio
-async def test_loop_stream_filter_handles_think_only_prefix_without_crashing(tmp_path):
-    loop = _make_loop(tmp_path)
-    deltas: list[str] = []
-    endings: list[bool] = []
-
-    async def chat_stream_with_retry(*, on_content_delta, **kwargs):
-        await on_content_delta("<think>hidden")
-        await on_content_delta("</think>Hello")
-        return LLMResponse(content="<think>hidden</think>Hello", tool_calls=[], usage={})
-
-    loop.provider.chat_stream_with_retry = chat_stream_with_retry
-
-    async def on_stream(delta: str) -> None:
-        deltas.append(delta)
-
-    async def on_stream_end(*, resuming: bool = False) -> None:
-        endings.append(resuming)
-
-    final_content, _, _, _ = await loop._run_agent_loop(
-        [],
-        on_stream=on_stream,
-        on_stream_end=on_stream_end,
-    )
-
-    assert final_content == "Hello"
-    assert deltas == ["Hello"]
-    assert endings == [False]
 
 
-@pytest.mark.asyncio
-async def test_process_message_drops_streamed_tool_call_prelude(tmp_path):
-    from cloakbot.agent.loop import AgentLoop
-    from cloakbot.bus.queue import MessageBus
-
-    bus = MessageBus()
-    provider = MagicMock()
-    provider.get_default_model.return_value = "test-model"
-    loop = AgentLoop(bus=bus, provider=provider, workspace=tmp_path)
-    loop.context.build_system_prompt = MagicMock(return_value="system")
-    loop.context.memory.get_token_estimate = MagicMock(return_value=0)
-    loop.consolidator.maybe_consolidate_by_tokens = AsyncMock()
-
-    def close_background(coro) -> None:
-        coro.close()
-
-    loop._schedule_background = close_background
-
-    call_count = {"n": 0}
-
-    async def chat_stream_with_retry(*, on_content_delta, **kwargs):
-        call_count["n"] += 1
-        if call_count["n"] == 1:
-            await on_content_delta("I will read the file.")
-            return LLMResponse(
-                content="I will read the file.",
-                tool_calls=[
-                    ToolCallRequest(
-                        id="call_1",
-                        name="list_dir",
-                        arguments={"path": "."},
-                    )
-                ],
-            )
-        await on_content_delta("Final answer")
-        return LLMResponse(content="Final answer", tool_calls=[])
-
-    async def fake_pre_llm_hook(*args, **kwargs):
-        return "read files", TurnContext(
-            session_key="webui:test",
-            turn_id="turn-1",
-            raw_input="read files",
-        )
-
-    async def fake_post_llm_hook(text, *args, **kwargs):
-        return text
-
-    provider.chat_stream_with_retry = chat_stream_with_retry
-    deltas: list[str] = []
-    endings: list[bool] = []
-
-    async def on_stream(delta: str) -> None:
-        deltas.append(delta)
-
-    async def on_stream_end(*, resuming: bool = False, **kwargs) -> None:
-        endings.append(resuming)
-
-    with patch("cloakbot.agent.loop.pre_llm_hook", new=fake_pre_llm_hook), patch(
-        "cloakbot.agent.loop.post_llm_hook",
-        new=fake_post_llm_hook,
-    ):
-        response = await loop._process_message(
-            InboundMessage(
-                channel="webui",
-                sender_id="user",
-                chat_id="test",
-                content="read files",
-                metadata={"_wants_stream": True},
-            ),
-            on_stream=on_stream,
-            on_stream_end=on_stream_end,
-        )
-
-    assert "".join(deltas) == "Final answer"
-    assert "I will read the file." not in "".join(deltas)
-    assert endings == [True, False]
-    assert response is not None
-    assert response.content == "Final answer"
 
 
-@pytest.mark.asyncio
-async def test_loop_retries_think_only_final_response(tmp_path):
-    loop = _make_loop(tmp_path)
-    call_count = {"n": 0}
-
-    async def chat_with_retry(**kwargs):
-        call_count["n"] += 1
-        if call_count["n"] == 1:
-            return LLMResponse(content="<think>hidden</think>", tool_calls=[], usage={})
-        return LLMResponse(content="Recovered answer", tool_calls=[], usage={})
-
-    loop.provider.chat_with_retry = chat_with_retry
-
-    final_content, _, _, _ = await loop._run_agent_loop([])
-
-    assert final_content == "Recovered answer"
-    assert call_count["n"] == 2
 
 
 @pytest.mark.asyncio
@@ -905,37 +590,6 @@ async def test_runner_tool_error_sets_final_content():
     assert result.stop_reason == "tool_error"
 
 
-@pytest.mark.asyncio
-async def test_subagent_max_iterations_announces_existing_fallback(tmp_path, monkeypatch):
-    from cloakbot.agent.subagent import SubagentManager
-    from cloakbot.bus.queue import MessageBus
-
-    bus = MessageBus()
-    provider = MagicMock()
-    provider.get_default_model.return_value = "test-model"
-    provider.chat_with_retry = AsyncMock(return_value=LLMResponse(
-        content="working",
-        tool_calls=[ToolCallRequest(id="call_1", name="list_dir", arguments={"path": "."})],
-    ))
-    mgr = SubagentManager(
-        provider=provider,
-        workspace=tmp_path,
-        bus=bus,
-        max_tool_result_chars=_MAX_TOOL_RESULT_CHARS,
-    )
-    mgr._announce_result = AsyncMock()
-
-    async def fake_execute(self, **kwargs):
-        return "tool result"
-
-    monkeypatch.setattr("cloakbot.agent.tools.filesystem.ListDirTool.execute", fake_execute)
-
-    await mgr._run_subagent("sub-1", "do task", "label", {"channel": "test", "chat_id": "c1"})
-
-    mgr._announce_result.assert_awaited_once()
-    args = mgr._announce_result.await_args.args
-    assert args[3] == "Task completed but no final response was generated."
-    assert args[5] == "ok"
 
 
 @pytest.mark.asyncio
