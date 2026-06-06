@@ -1,7 +1,6 @@
 """Tests for MCP HTTP probe guard (prevents event-loop crash on unreachable servers)."""
 from __future__ import annotations
 
-import asyncio
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -14,17 +13,27 @@ from cloakbot.agent.tools.registry import ToolRegistry
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_probe_returns_true_for_open_port(tmp_path):
-    """Start a trivial TCP server, probe should return True."""
-    server = await asyncio.start_server(
-        lambda r, w: None, "127.0.0.1", 0,
-    )
-    port = server.sockets[0].getsockname()[1]
-    try:
-        assert await _probe_http_url(f"http://127.0.0.1:{port}/mcp") is True
-    finally:
-        server.close()
-        await server.wait_closed()
+async def test_probe_returns_true_for_open_port():
+    """A reachable endpoint -> probe returns True.
+
+    The socket layer is mocked so the test is hermetic: no real server, DNS, or
+    default-executor dependency (a real ``start_server`` + ``getaddrinfo`` can
+    block under a saturated event loop when run late in the full suite).
+    """
+    async def _fake_wait_closed():
+        return None
+
+    writer = MagicMock()
+    writer.close = MagicMock()
+    writer.wait_closed = _fake_wait_closed
+
+    async def _fake_open_connection(host, port):
+        return MagicMock(), writer
+
+    with patch("asyncio.open_connection", _fake_open_connection):
+        assert await _probe_http_url("http://127.0.0.1:12345/mcp") is True
+
+    writer.close.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -35,8 +44,24 @@ async def test_probe_returns_false_for_closed_port():
 
 @pytest.mark.asyncio
 async def test_probe_uses_default_port_for_http():
-    """When no port in URL, should default to 80 (will fail -> False)."""
-    assert await _probe_http_url("http://unreachable-host.test/mcp") is False
+    """No port in the URL -> probe defaults to 80 (http scheme).
+
+    The socket layer is mocked, so the test never performs real DNS / network
+    I/O (a real lookup of a bogus host can block for a long time on restricted
+    networks). We assert both the default-port derivation and the False result
+    when the endpoint is unreachable.
+    """
+    captured: dict[str, object] = {}
+
+    async def _fake_open_connection(host, port):
+        captured["host"] = host
+        captured["port"] = port
+        raise OSError("unreachable")  # simulate a closed/unreachable endpoint
+
+    with patch("asyncio.open_connection", _fake_open_connection):
+        assert await _probe_http_url("http://unreachable-host.test/mcp") is False
+
+    assert captured["port"] == 80  # derived from the missing port + http scheme
 
 
 # ---------------------------------------------------------------------------
