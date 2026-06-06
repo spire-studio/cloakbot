@@ -22,7 +22,7 @@ export default defineConfig(({ mode }) => {
       exclude: ["@radix-ui/react-dialog"],
     },
     build: {
-      outDir: path.resolve(__dirname, "../nanobot/web/dist"),
+      outDir: path.resolve(__dirname, "../cloakbot/web/dist"),
       emptyOutDir: true,
       sourcemap: false,
       rollupOptions: {

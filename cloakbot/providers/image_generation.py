@@ -18,7 +18,7 @@ from cloakbot.providers.registry import find_by_name
 from cloakbot.utils.helpers import detect_image_mime
 
 _OPENROUTER_ATTRIBUTION_HEADERS = {
-    "HTTP-Referer": "https://github.com/HKUDS/nanobot",
+    "HTTP-Referer": "https://github.com/spire-studio/cloakbot",
     "X-OpenRouter-Title": "cloakbot",
     "X-OpenRouter-Categories": "cli-agent,personal-agent",
 }
