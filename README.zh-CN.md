@@ -207,34 +207,38 @@ cloakbot gateway      # 启动后打开它打印的 WebUI 地址（默认 http:/
 
 ## 🗺️ 路线图
 
-### ✅ 已发货（2026 年 4 月 – 5 月）
+### ✅ 已发货 —— 隐私内核（`0.2.1b1`，2026）
 
-**核心隐私运行时（v0.1）** —— 4 月
+**核心隐私运行时** —— 4 月
 - 基于 Gemma 4 E2B 的拆分本地检测器（general + digit）
 - JSON 落盘的 Session Vault + 跨轮别名复用
 - 数学片段契约 + 本地 AST 校验的算术执行器
 - IntentAnalyzer + chat / math 路由
 - `ToolPrivacyInterceptor`：工具 I/O 脱敏 + 按敏感度审批
 
-**信任边界扩展（v0.2）** —— 5 月
+**信任边界扩展** —— 5 月
 - ✓ 长文档 chunker 通道（`ToolPrivacyDetector` + 4 个内容感知 chunker：纯文本 / JSON / HTML / Markdown）
 - ✓ 视觉流水线：OCR + bbox 涂黑 + 占位符叠加 + 跨模态召回桥
 - ✓ WebUI 文档上传（text/plain、text/markdown ≤ 64 KB）走同一条 chunker 脱敏路径
 - ✓ 「本地 ↔ 远端」diff 对话框，每个文档独立高亮实体
 - ✓ Ollama 升级为一等公民后端（无需 GPU）—— `ollama pull gemma4:e2b` 一条命令拉起模型 + 接口
 
-**以测量建立信任（v0.3）** —— 5 月
+**以测量建立信任** —— 5 月
 - ✓ 端到端泄漏 eval 框架（`tests/eval/runners/`）
 - ✓ A1 / A2 / A3 三层 —— **2,872 条实体级回归测试**作为存证
 - ✓ 类型驱动的检测器 prompt（MEDICAL 召回 20% → 95%）
 - ✓ 自己抓出来并修掉的 eval bug（token 级打分；全值出现匹配收紧）
+
+**流式还原** —— 6 月
+- ✓ 带 carry-over 窗口的 `StreamingSanitizer` —— 流式工具输出（exec / shell / long-task）增量脱敏，不再整段缓冲
+- ✓ 远端回复流式返回时实时把占位符还原成原值，WebUI 里高亮 / 悬停 / diff
 
 ### 🚀 接下来
 
 - **领域专用 LoRA adapter** —— 在垂直语料（医疗、法律、金融）上微调 Gemma 4 E2B，提升领域短语的召回，解锁带策略的垂直部署。一套内核 + 三个 adapter：按租户挑。
 - **短 ORG / 连字符名召回**（71.67% → 90% 目标）—— A1 当前最大缺口，可借上面的 LoRA 路径修
 - **双语覆盖** —— 中文 eval 模板 + zh-CN 检测器 prompt 迭代
-- **流式 + 每轮 batch** —— 目标把医疗 p95 从 6.2 秒压到 2 秒以下
+- **每轮检测器 batch** —— 目标把医疗 p95 从 6.2 秒压到 2 秒以下
 - **Vault 加密落盘** —— 面向共享设备部署
 - **策略驱动的敏感度分级** —— 超越当前注册表默认值（目前全部 `high`）
 - **面向数据集 / 表格的结构化 chunker**（CSV / Parquet）—— 用于分析工具输出

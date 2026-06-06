@@ -207,34 +207,38 @@ Then drag [`docs/demo/demo_onboarding_memo.md`](docs/demo/demo_onboarding_memo.m
 
 ## 🗺️ Roadmap
 
-### ✅ Shipped (April – May 2026)
+### ✅ Shipped — privacy kernel (`0.2.1b1`, 2026)
 
-**Core privacy runtime (v0.1)** — April
+**Core privacy runtime** — April
 - Split local detectors (general + digit) via Gemma 4 E2B
 - Session Vault with JSON persistence + cross-turn alias reuse
 - Math snippet contract + local AST-validated arithmetic executor
 - IntentAnalyzer + chat/math routing
 - `ToolPrivacyInterceptor` for tool I/O sanitisation + severity-gated approval
 
-**Trust boundary expansion (v0.2)** — May
+**Trust boundary expansion** — May
 - ✓ Long-document chunker path (`ToolPrivacyDetector` + 4 content-aware chunkers: plaintext / JSON / HTML / Markdown)
 - ✓ Visual pipeline: OCR + bbox redaction + placeholder overlay + cross-modal recall bridge
 - ✓ WebUI document upload (text/plain, text/markdown ≤ 64 KB) via the same chunker-backed sanitizer
 - ✓ Local↔Remote diff dialog with per-document entity highlighting
 - ✓ Ollama as a first-class backend (no GPU required) — `ollama pull gemma4:e2b` ships the model + endpoint in one tool
 
-**Trust by measurement (v0.3)** — May
+**Trust by measurement** — May
 - ✓ End-to-end leak eval harness (`tests/eval/runners/`)
 - ✓ A1 / A2 / A3 layers — **2,872 entity-test instances** of receipts
 - ✓ Type-driven detector prompts (MEDICAL recall 20% → 95%)
 - ✓ Self-caught eval bugs surfaced and fixed (token-level scoring; full-value appearance tightening)
+
+**Streaming restoration** — June
+- ✓ `StreamingSanitizer` with a carry-over window — streamed tool output (exec / shell / long-task) is sanitised incrementally, never buffered whole
+- ✓ Live placeholder→original restoration as the remote reply streams, with highlight / hover / diff in the WebUI
 
 ### 🚀 Future
 
 - **Domain-specific LoRA adapters** — fine-tune Gemma 4 E2B on vertical corpora (healthcare, legal, finance) to lift recall on domain-specific phrases. The same kernel, three adapters: pick by tenant.
 - **ORG short / hyphenated name recall** (71.67% → 90% target) — the largest remaining A1 gap, addressable with the LoRA path above
 - **Bilingual coverage** — Chinese-language eval templates + zh-CN detector prompt iteration
-- **Streaming + per-turn batching** — Medical p95 6.2 s → < 2 s target
+- **Per-turn detector batching** — Medical p95 6.2 s → < 2 s target
 - **Encrypted Vault persistence** option for shared-machine deployments
 - **Policy-driven severity tiers** beyond the current registry defaults (all `high` today)
 - **Dataset / table-specific structured chunker** (CSV / Parquet) for analytics tool outputs
