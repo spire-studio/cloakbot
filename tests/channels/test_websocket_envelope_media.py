@@ -118,6 +118,39 @@ async def test_message_without_media_backward_compatible() -> None:
 
 
 @pytest.mark.asyncio
+async def test_webui_message_appends_user_frame_to_transcript(tmp_path, monkeypatch) -> None:
+    """A webui message is persisted to the transcript (as an ``event: user``
+    frame) so a page refresh replays the user's own bubble — the transcript
+    otherwise records only assistant frames."""
+    from cloakbot.webui.transcript import read_transcript_lines
+
+    monkeypatch.setattr("cloakbot.config.paths.get_data_dir", lambda: tmp_path)
+    channel = _make_channel()
+    envelope = {"type": "message", "chat_id": "abc123", "content": "hello", "webui": True}
+
+    await channel._dispatch_envelope(AsyncMock(), "client-1", envelope)
+
+    channel._handle_message.assert_awaited_once()
+    user_frames = [ln for ln in read_transcript_lines("websocket:abc123") if ln.get("event") == "user"]
+    assert len(user_frames) == 1
+    assert user_frames[0]["text"] == "hello"
+
+
+@pytest.mark.asyncio
+async def test_non_webui_message_does_not_write_transcript(tmp_path, monkeypatch) -> None:
+    """Non-webui channels must not write to the webui transcript."""
+    from cloakbot.webui.transcript import read_transcript_lines
+
+    monkeypatch.setattr("cloakbot.config.paths.get_data_dir", lambda: tmp_path)
+    channel = _make_channel()
+    envelope = {"type": "message", "chat_id": "abc123", "content": "hello"}
+
+    await channel._dispatch_envelope(AsyncMock(), "client-1", envelope)
+
+    assert read_transcript_lines("websocket:abc123") == []
+
+
+@pytest.mark.asyncio
 async def test_message_forwards_normalized_cli_app_attachments() -> None:
     channel = _make_channel()
     mock_conn = AsyncMock()

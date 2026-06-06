@@ -7,6 +7,7 @@ import pytest
 
 from cloakbot.config.loader import load_config, save_config
 from cloakbot.config.schema import Config, ModelPresetConfig
+from cloakbot.providers.registry import find_by_name
 from cloakbot.webui.settings_api import (
     WebUISettingsError,
     _oauth_provider_status,
@@ -16,8 +17,8 @@ from cloakbot.webui.settings_api import (
     update_agent_settings,
     update_model_configuration,
     update_network_safety_settings,
+    update_privacy_settings,
 )
-from cloakbot.providers.registry import find_by_name
 
 
 def test_create_model_configuration_writes_label_and_selects(
@@ -461,3 +462,65 @@ def test_create_model_configuration_accepts_configured_oauth_provider(
     assert payload["agent"]["model_preset"] == "codex"
     saved = load_config(config_path)
     assert saved.model_presets["codex"].provider == "openai_codex"
+
+
+def test_update_privacy_settings_writes_detector_and_switches(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config_path = tmp_path / "config.json"
+    save_config(Config(), config_path)
+    monkeypatch.setattr("cloakbot.config.loader._current_config_path", config_path)
+
+    update_privacy_settings(
+        {
+            "enabled": ["true"],
+            "visual_enabled": ["true"],
+            "base_url": ["http://127.0.0.1:11434/v1"],
+            "api_key": ["secret-key"],
+            "model": ["gemma4:e2b"],
+        }
+    )
+
+    saved = load_config(config_path).privacy
+    assert saved.enabled is True
+    assert saved.visual_enabled is True
+    assert saved.base_url == "http://127.0.0.1:11434/v1"
+    assert saved.api_key == "secret-key"
+    assert saved.model == "gemma4:e2b"
+
+
+def test_update_privacy_settings_master_off_forces_image_off(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config_path = tmp_path / "config.json"
+    config = Config()
+    config.privacy.enabled = True
+    config.privacy.visual_enabled = True
+    save_config(config, config_path)
+    monkeypatch.setattr("cloakbot.config.loader._current_config_path", config_path)
+
+    update_privacy_settings({"enabled": ["false"]})
+
+    saved = load_config(config_path).privacy
+    assert saved.enabled is False
+    # Image privacy is nested under the master switch.
+    assert saved.visual_enabled is False
+
+
+def test_settings_payload_exposes_privacy_active_state(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config_path = tmp_path / "config.json"
+    config = Config()
+    config.privacy.enabled = True  # master ON, but no detector configured
+    save_config(config, config_path)
+    monkeypatch.setattr("cloakbot.config.loader._current_config_path", config_path)
+
+    privacy = settings_payload()["privacy"]
+    assert privacy["enabled"] is True
+    assert privacy["configured"] is False
+    # Effective privacy is OFF until a detector (base_url + api_key) is configured.
+    assert privacy["active"] is False

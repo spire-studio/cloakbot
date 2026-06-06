@@ -98,6 +98,25 @@ class PrivacyWebSocketChannel(WebSocketChannel):
         local_conns = [c for c in conns if _is_localhost(c)]
         remote_conns = [c for c in conns if not _is_localhost(c)]
 
+        if msg.metadata.get("_streamed"):
+            # [buffering PrivacyHook] A streamed turn already delivered its content
+            # via deltas; this final frame exists only to deliver the per-message
+            # restoration annotations LIVE. Send a localhost-only settle frame
+            # (gated _agent_ui.privacy, marked ``streamed`` so the client binds onto
+            # the streamed message without re-rendering) + the standalone privacy
+            # frames. Do NOT persist to the transcript — a refresh rehydrates from
+            # the delta replay + GET /privacy, which already validate offsets.
+            # Remote subscribers already received the streamed content and get no
+            # raw annotations by design, so they are skipped here.
+            if local_conns:
+                await self._send_message_group(
+                    msg, payload, conns=local_conns, is_localhost=True, persist=False
+                )
+                await self._send_standalone_privacy_frames(
+                    local_conns, payload, is_localhost=True
+                )
+            return
+
         # Main message frame: delegate to the parent once per group with the
         # group-appropriate gated _agent_ui blob already merged in. The parent
         # owns media signing + transcript append + the standard frame shape.
@@ -119,13 +138,16 @@ class PrivacyWebSocketChannel(WebSocketChannel):
         *,
         conns: list[Any],
         is_localhost: bool,
+        persist: bool = True,
     ) -> None:
         """Delegate the main message frame to the parent, restricted to *conns*,
         with the gated privacy blob folded into ``_agent_ui``.
 
         The subscriber set is temporarily narrowed to *conns* so the parent's
         fan-out (and its single transcript append) targets exactly this group;
-        it is always restored, even on error.
+        it is always restored, even on error. ``persist=False`` skips the
+        transcript append (used for the streamed settle frame, which must not
+        re-persist a turn the deltas already recorded).
         """
         metadata = {k: v for k, v in msg.metadata.items() if k != WEBUI_PRIVACY_METADATA_KEY}
         merge_privacy_into_agent_ui(metadata, payload, is_localhost=is_localhost)
@@ -140,7 +162,7 @@ class PrivacyWebSocketChannel(WebSocketChannel):
         original = self._subs.get(msg.chat_id)
         self._subs[msg.chat_id] = set(conns)
         try:
-            await super().send(scoped)
+            await super().send(scoped, persist=persist)
         finally:
             if original is None:
                 self._subs.pop(msg.chat_id, None)

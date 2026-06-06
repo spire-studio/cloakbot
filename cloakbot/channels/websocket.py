@@ -450,6 +450,18 @@ class WebSocketChannel(BaseChannel):
                 else f"{scheme}://{self.config.host}:{self.config.port}{self.config.path}"
             ),
         )
+        # The same port serves the bundled WebUI over HTTP — surface the URL so
+        # users do not have to guess it (the ws:// line alone is not clickable).
+        static_dist = getattr(self._http_router, "static_dist_path", None)
+        if static_dist is not None and not self.config.unix_socket_path:
+            webui_host = (
+                "127.0.0.1" if self.config.host in ("0.0.0.0", "::") else self.config.host
+            )
+            http_scheme = "https" if ssl_context else "http"
+            self.logger.info(
+                "WebUI ready at {}",
+                f"{http_scheme}://{webui_host}:{self.config.port}{self.config.path}",
+            )
         if self.config.token_issue_path:
             self.logger.info(
                 "WebSocket token issue route: {}",
@@ -768,6 +780,21 @@ class WebSocketChannel(BaseChannel):
                     "enabled": True,
                     "aspect_ratio": aspect_ratio if isinstance(aspect_ratio, str) else None,
                 }
+            # Persist the user's message to the webui transcript so a refresh
+            # replays it — the transcript otherwise records only assistant frames,
+            # so the user's own bubble vanishes on reload. Appended before the turn
+            # runs, so it precedes this turn's assistant frames. webui-only; this
+            # is the local rendered conversation (same trust level as the existing
+            # restored assistant text already stored here), not the remote path.
+            if envelope.get("webui") is True:
+                user_frame: dict[str, Any] = {"event": "user", "text": content}
+                if media_paths:
+                    user_frame["media_paths"] = media_paths
+                if cli_apps:
+                    user_frame["cli_apps"] = cli_apps
+                if mcp_presets:
+                    user_frame["mcp_presets"] = mcp_presets
+                self._try_append_webui_transcript(cid, user_frame)
             await self._handle_message(
                 sender_id=client_id,
                 chat_id=cid,
@@ -836,7 +863,7 @@ class WebSocketChannel(BaseChannel):
         except (ValueError, TypeError) as e:
             self.logger.warning("webui transcript append failed: {}", e)
 
-    async def send(self, msg: OutboundMessage) -> None:
+    async def send(self, msg: OutboundMessage, *, persist: bool = True) -> None:
         if msg.metadata.get("_runtime_model_updated"):
             await self.send_runtime_model_updated(
                 model_name=msg.metadata.get("model"),
@@ -922,6 +949,11 @@ class WebSocketChannel(BaseChannel):
         agent_ui = msg.metadata.get(OUTBOUND_META_AGENT_UI)
         if agent_ui is not None:
             payload["agent_ui"] = agent_ui
+        if msg.metadata.get("_streamed"):
+            # [buffering PrivacyHook] Marks the settle frame of a streamed turn so
+            # the client binds restoration annotations onto the already-streamed
+            # message instead of appending / re-rendering its content.
+            payload["streamed"] = True
         # Mark intermediate agent breadcrumbs (tool-call hints, generic
         # progress strings) so WS clients can render them as subordinate
         # trace rows rather than conversational replies.
@@ -946,7 +978,8 @@ class WebSocketChannel(BaseChannel):
                 transcript_payload["agent_ui"] = sanitized_agent_ui
             else:
                 transcript_payload.pop("agent_ui", None)
-        self._try_append_webui_transcript(msg.chat_id, transcript_payload)
+        if persist:
+            self._try_append_webui_transcript(msg.chat_id, transcript_payload)
         raw = json.dumps(payload, ensure_ascii=False)
         for connection in conns:
             await self._safe_send_to(connection, raw, label=" ")

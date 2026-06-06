@@ -124,6 +124,11 @@ class ChannelManager:
                     cls = PrivacyWebSocketChannel
                     parsed = WebSocketConfig.model_validate(section)
                     static_path = _default_webui_dist() if self._webui_static_dist else None
+                    if self._webui_static_dist and static_path is None:
+                        logger.warning(
+                            "WebUI assets not found — run `cd webui && npm run build` to "
+                            "build them. The gateway will start without serving the web UI."
+                        )
                     workspace = Path(self.config.workspace_path)
                     gateway = build_gateway_services(
                         config=parsed,
@@ -416,6 +421,19 @@ class ChannelManager:
             await channel.send_delta(msg.chat_id, msg.content, msg.metadata)
         elif not msg.metadata.get("_streamed"):
             await channel.send(msg)
+        else:
+            # [buffering PrivacyHook] A streamed turn already delivered its content
+            # via deltas, so its final frame is normally dropped here to avoid a
+            # duplicate. Deliver it ONLY when it carries the WebUI privacy
+            # side-channel — that final frame is the sole LIVE carrier of the
+            # per-message restoration annotations. The privacy channel marks it
+            # ``streamed`` (and does not re-persist the transcript), so the client
+            # binds highlights onto the streamed message without re-rendering.
+            # Other streamed turns (no privacy payload) stay dropped.
+            from cloakbot.privacy.webui.contracts import WEBUI_PRIVACY_METADATA_KEY
+
+            if msg.metadata.get(WEBUI_PRIVACY_METADATA_KEY) is not None:
+                await channel.send(msg)
 
     def _coalesce_stream_deltas(
         self, first_msg: OutboundMessage

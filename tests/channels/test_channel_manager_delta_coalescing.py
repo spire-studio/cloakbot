@@ -438,3 +438,37 @@ class TestRetryWaitFiltering:
         sent = send_mock.await_args_list[0].args[0]
         assert sent.content == "final answer"
         assert not sent.metadata.get("_retry_wait")
+
+
+class TestStreamedPrivacySettleDelivery:
+    """[buffering PrivacyHook] A streamed turn's final ``_streamed`` frame is
+    normally dropped (its content already went out via deltas), but it must be
+    DELIVERED when it carries the WebUI privacy side-channel — that frame is the
+    sole live carrier of the per-message restoration annotations.
+    """
+
+    @pytest.mark.asyncio
+    async def test_streamed_with_privacy_payload_is_delivered(self):
+        from cloakbot.privacy.webui.contracts import WEBUI_PRIVACY_METADATA_KEY
+
+        channel = MockChannel({}, MessageBus())
+        msg = OutboundMessage(
+            channel="mock",
+            chat_id="c1",
+            content="restored reply",
+            metadata={"_streamed": True, WEBUI_PRIVACY_METADATA_KEY: {"any": "payload"}},
+        )
+        await ChannelManager._send_once(channel, msg)
+        channel._send_mock.assert_awaited_once_with(msg)
+
+    @pytest.mark.asyncio
+    async def test_streamed_without_privacy_payload_is_dropped(self):
+        channel = MockChannel({}, MessageBus())
+        msg = OutboundMessage(
+            channel="mock",
+            chat_id="c1",
+            content="restored reply",
+            metadata={"_streamed": True},
+        )
+        await ChannelManager._send_once(channel, msg)
+        channel._send_mock.assert_not_called()

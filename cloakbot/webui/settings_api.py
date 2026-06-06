@@ -730,6 +730,23 @@ def settings_payload(
             "save_dir": image_config.save_dir,
             "providers": image_providers,
         },
+        "privacy": {
+            # Master switch + nested image switch + the local detector model.
+            "enabled": config.privacy.enabled,
+            # [alpha] Visual redaction for uploaded images (nested under enabled).
+            "visual_enabled": config.privacy.visual_enabled,
+            "base_url": config.privacy.base_url or None,
+            "api_key_hint": _mask_secret_hint(config.privacy.api_key),
+            "model": config.privacy.model,
+            # A detector (base_url + api_key) must be configured for privacy to do
+            # anything; ``active`` is the effective state shown in the UI.
+            "configured": bool(config.privacy.base_url and config.privacy.api_key),
+            "active": bool(
+                config.privacy.enabled
+                and config.privacy.base_url
+                and config.privacy.api_key
+            ),
+        },
         "runtime": {
             "config_path": str(get_config_path().expanduser()),
             "workspace_path": str(config.workspace_path),
@@ -1116,6 +1133,132 @@ def update_network_safety_settings(query: QueryParams) -> dict[str, Any]:
         except ValueError as exc:
             raise WebUISettingsError(str(exc)) from exc
     return settings_payload(requires_restart=changed)
+
+
+def update_privacy_settings(query: QueryParams) -> dict[str, Any]:
+    """Update the privacy detector + the master / image privacy switches.
+
+    Accepts any subset of: ``enabled`` (master switch), ``visual_enabled`` (image
+    privacy, nested under the master), and the local detector ``base_url`` /
+    ``api_key`` / ``model``. Applies on the next message (read fresh), so no
+    gateway restart is required. Image privacy is forced OFF whenever the master
+    switch is OFF.
+    """
+    recognized = {
+        "enabled",
+        "visual_enabled",
+        "visualEnabled",
+        "base_url",
+        "baseUrl",
+        "api_key",
+        "apiKey",
+        "model",
+    }
+    if not (recognized & set(query)):
+        raise WebUISettingsError("no privacy settings provided")
+
+    config = load_config()
+    p = config.privacy
+    changed = False
+
+    if "enabled" in query:
+        enabled = _parse_bool(_query_first(query, "enabled"), "enabled")
+        if p.enabled != enabled:
+            p.enabled = enabled
+            changed = True
+
+    if "visual_enabled" in query or "visualEnabled" in query:
+        visual_enabled = _parse_bool(
+            _query_first_alias(query, "visual_enabled", "visualEnabled"), "visual_enabled"
+        )
+        if p.visual_enabled != visual_enabled:
+            p.visual_enabled = visual_enabled
+            changed = True
+
+    if "base_url" in query or "baseUrl" in query:
+        base_url = (_query_first_alias(query, "base_url", "baseUrl") or "").strip() or None
+        if p.base_url != base_url:
+            p.base_url = base_url
+            changed = True
+
+    if "api_key" in query or "apiKey" in query:
+        api_key = (_query_first_alias(query, "api_key", "apiKey") or "").strip() or None
+        if p.api_key != api_key:
+            p.api_key = api_key
+            changed = True
+
+    if "model" in query:
+        model = (_query_first(query, "model") or "").strip()
+        if model and p.model != model:
+            p.model = model
+            changed = True
+
+    # Image privacy is nested under the master switch — never leave it on when
+    # overall privacy is off.
+    if not p.enabled and p.visual_enabled:
+        p.visual_enabled = False
+        changed = True
+
+    if changed:
+        save_config(config)
+    return settings_payload(requires_restart=False)
+
+
+def privacy_models_payload(query: QueryParams) -> dict[str, Any]:
+    """Fetch the privacy detector's OpenAI-compatible model list for Settings.
+
+    Advisory only (users can type a custom model id); never mutates config. Uses
+    the saved detector ``base_url`` + ``api_key``, or the same-named query
+    overrides so the dropdown can refresh before the user saves.
+    """
+    config = load_config()
+    base_url = (
+        _query_first_alias(query, "base_url", "baseUrl") or config.privacy.base_url or ""
+    ).strip()
+    api_key = (
+        _query_first_alias(query, "api_key", "apiKey") or config.privacy.api_key or ""
+    ).strip()
+
+    base_payload: dict[str, Any] = {
+        "models": [],
+        "model_count": 0,
+        "message": None,
+        "fetched_at": time.time(),
+    }
+    if not base_url:
+        return {
+            **base_payload,
+            "status": "missing_api_base",
+            "message": "Configure the detector base URL to load models.",
+        }
+    if not api_key:
+        return {
+            **base_payload,
+            "status": "not_configured",
+            "message": "Configure the detector API key to load models.",
+        }
+
+    headers = {"Accept": "application/json", "Authorization": f"Bearer {api_key}"}
+    models_url = f"{base_url.rstrip('/')}/models"
+    try:
+        response = httpx.get(models_url, headers=headers, timeout=10.0, follow_redirects=False)
+        response.raise_for_status()
+        rows = _extract_model_rows(response.json())
+    except httpx.HTTPStatusError as exc:
+        status = exc.response.status_code
+        message = (
+            "Authentication failed — check the detector API key."
+            if status in {401, 403}
+            else f"Detector returned HTTP {status}."
+        )
+        return {**base_payload, "status": "error", "message": message}
+    except Exception:
+        return {
+            **base_payload,
+            "status": "error",
+            "message": "Could not reach the detector endpoint.",
+        }
+    return {**base_payload, "status": "ok", "models": rows, "model_count": len(rows)}
 
 
 def update_web_search_settings(query: QueryParams) -> dict[str, Any]:

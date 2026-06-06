@@ -434,11 +434,20 @@ def main(
 def onboard(
     workspace: str | None = typer.Option(None, "--workspace", "-w", help="Workspace directory"),
     config: str | None = typer.Option(None, "--config", "-c", help="Path to config file"),
-    wizard: bool = typer.Option(False, "--wizard", help="Use interactive wizard"),
+    wizard: bool | None = typer.Option(
+        None,
+        "--wizard/--no-wizard",
+        help="Interactive wizard (default: on in a terminal, off when piped)",
+    ),
 ):
     """Initialize cloakbot configuration and workspace."""
     from cloakbot.config.loader import get_config_path, load_config, save_config, set_config_path
     from cloakbot.config.schema import Config
+
+    # No explicit flag: use the interactive wizard on a TTY, the non-interactive
+    # path otherwise. --wizard / --no-wizard force the choice.
+    if wizard is None:
+        wizard = sys.stdin.isatty()
 
     if config:
         config_path = Path(config).expanduser().resolve()
@@ -524,7 +533,7 @@ def onboard(
         console.print("     Get one at: https://openrouter.ai/keys")
         console.print(f"  2. Chat: [cyan]{agent_cmd}[/cyan]")
     console.print(
-        "\n[dim]Want Telegram/WhatsApp? See: https://github.com/HKUDS/nanobot#-chat-apps[/dim]"
+        "\n[dim]Want Telegram/WhatsApp? See: https://github.com/spire-studio/cloakbot[/dim]"
     )
 
 

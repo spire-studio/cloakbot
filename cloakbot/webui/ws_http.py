@@ -374,6 +374,11 @@ class GatewayHTTPHandler:
             return _http_error(404, "session not found")
         deleted = self.session_manager.delete_session(decoded_key)
         delete_webui_thread(decoded_key)
+        # Cascade-delete the session's privacy vault (placeholder map, per-turn
+        # privacy log, tool artifacts) so raw mappings never outlive the chat.
+        from cloakbot.privacy.core.state.vault import delete_session_vault
+
+        delete_session_vault(decoded_key)
         return _http_json_response({"deleted": bool(deleted)})
 
     # -- Media routes -------------------------------------------------------
