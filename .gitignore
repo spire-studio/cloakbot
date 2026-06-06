@@ -1,5 +1,6 @@
 # .gitignore — paths kept out of the repo, grouped by concern.
-# See .dockerignore for the image-build equivalent and .env.example for config.
+# See .dockerignore for the image-build equivalent. Runtime config lives in
+# ~/.cloakbot/config.json (cloakbot onboard / WebUI Settings), not in .env.
 
 # ── Secrets & local config ──────────────────────────────────────────────────
 .env

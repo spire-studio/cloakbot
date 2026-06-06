@@ -14,7 +14,7 @@ answers the task, then inspect the code paths it names.
 - `product-specs/` - user-facing product behavior by area.
 - `exec-plans/` - active/completed plans and the debt tracker.
 - `references/` - external or long-form references summarized for local use.
-- `demo/` - demo fixtures (e.g. `demo_onboarding_memo.md`) used by `scripts/quickstart_demo.sh`.
+- `demo/` - demo fixtures (e.g. `demo_onboarding_memo.md`) for the WebUI privacy demo (drag into the Composer).
 - `SECURITY.md` - security and privacy invariants.
 
 ## Update Rules

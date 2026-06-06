@@ -151,52 +151,43 @@
 
 ## 🛠️ 安装与启动
 
-### 最快路径 —— 一条命令
-
-```bash
-# 一次性: 装 Ollama + Node ≥24 + 依赖
-curl -fsSL https://ollama.com/install.sh | sh
-uv sync && cd webui && npm install && cd ..
-
-bash scripts/quickstart_demo.sh
-```
-
-脚本会拉起 `gemma4:e2b` 的 Ollama 实例、生成 `.env`、启动 WebUI（网关 `:8000`、前端 `:5173`）并打开浏览器。把 [`docs/demo/demo_onboarding_memo.md`](docs/demo/demo_onboarding_memo.md) 拖进 Composer，就能看到 20 条 PII 实体从头到尾被脱敏；点任意气泡上的 **Diff** 看「本地 ↔ 远端」对比。
-
-### 手动安装
-
 ```bash
 git clone https://github.com/spire-studio/cloakbot.git && cd cloakbot
 uv sync
-cd webui && npm install && cd ..        # WebUI 前端要 Node ≥24
-cp .env.example .env                     # 里面有两个 profile —— 二选一
+cd webui && npm install && npm run build && cd ..   # 构建 WebUI（需 Node ≥24）
 ```
 
-把远端 LLM（Claude / GPT / Gemini）写进 `~/.cloakbot/config.json`，或直接跑 `uv run python -m cloakbot onboard`；然后启动本地 Gemma 4 后端 —— **二选一**：
+### 1. 自带本地 Gemma 4 检测器
 
-**方案 A —— vLLM（GPU 机器）：** 快、可复现，A1/A2/A3 三份 eval 就是这条路径跑出来的。
+CloakBot 的隐私保证依赖于 PII 检测器跑在**你自己掌控的机器**上。任何 OpenAI 兼容服务都行（vLLM、Ollama、llama.cpp……），推荐 **Gemma 4 E2B**。把检测器指向**远端**端点（例如 OpenRouter）会把未脱敏的原始输入发过去做检测 —— 那是**仅供测试**、会破坏边界。
+
+**Ollama（macOS / Linux / WSL，无需 GPU）：**
+
+```bash
+curl -fsSL https://ollama.com/install.sh | sh
+ollama pull gemma4:e2b        # 一条命令同时拉起模型和 OpenAI 兼容接口
+# → base URL http://127.0.0.1:11434/v1 · API key "ollama"（随便填）· model gemma4:e2b
+```
+
+**vLLM（GPU 机器 —— 快、可复现，A1/A2/A3 eval 路径）：**
 
 ```bash
 uv sync --extra vllm
-uv run huggingface-cli login            # 在 hf.co/google/gemma-4-E2B-it 接受 Gemma 协议
-bash scripts/start_vllm.sh
+uv run huggingface-cli login   # 在 hf.co/google/gemma-4-E2B-it 接受 Gemma 协议
+vllm serve google/gemma-4-E2B-it --port 8000 --dtype bfloat16 --api-key <你的-token>
+# → base URL http://127.0.0.1:8000/v1 · API key <你的-token> · model google/gemma-4-E2B-it
 ```
 
-**方案 B —— Ollama（macOS / Linux / WSL）：** 无需 GPU，面向真实部署推荐这条。
+### 2. 配置与启动
 
 ```bash
-bash scripts/start_ollama.sh            # 拉取 gemma4:e2b（约 5 GB）并预热
-# 然后在 .env 里：
-#   GEMMA_BASE_URL=http://127.0.0.1:11434/v1
-#   GEMMA_API_KEY=ollama        # Ollama 不强制鉴权，随便填
-#   GEMMA_MODEL=gemma4:e2b
+uv run cloakbot onboard      # 配置远端 LLM + [D] Privacy Detector
+uv run cloakbot gateway      # 启动后打开它打印的 WebUI 地址（默认 http://127.0.0.1:8765/）
 ```
 
-两个后端暴露的都是同样的 OpenAI 兼容接口，只用于本地 PII 检测——远端 LLM 调用完全是另一条路径。最后启动 WebUI：
+在 `onboard` → **[D] Privacy Detector** 里填检测器的 **base URL / API key / model**（或之后在 WebUI 的 **Settings → Privacy** 里配），远端 LLM（Claude / GPT / Gemini）在同一流程里配（或 **Settings → Models**）。检测器暴露的 OpenAI 兼容接口**只**用于本地 PII 检测 —— 远端 LLM 调用完全是另一条路径。
 
-```bash
-uv run python -m cloakbot webui        # 网关 :8000 · 前端 :5173
-```
+然后把 [`docs/demo/demo_onboarding_memo.md`](docs/demo/demo_onboarding_memo.md) 拖进 Composer，就能看到 20 条 PII 实体从头到尾被脱敏；点任意气泡上的 **Diff** 看「本地 ↔ 远端」对比。
 
 ---
 
@@ -216,7 +207,7 @@ uv run python -m cloakbot webui        # 网关 :8000 · 前端 :5173
 - ✓ 视觉流水线：OCR + bbox 涂黑 + 占位符叠加 + 跨模态召回桥
 - ✓ WebUI 文档上传（text/plain、text/markdown ≤ 64 KB）走同一条 chunker 脱敏路径
 - ✓ 「本地 ↔ 远端」diff 对话框，每个文档独立高亮实体
-- ✓ Ollama 升级为一等公民后端（无需 GPU）+ 一键 demo 启动器
+- ✓ Ollama 升级为一等公民后端（无需 GPU）—— `ollama pull gemma4:e2b` 一条命令拉起模型 + 接口
 
 **以测量建立信任（v0.3）** —— 5 月
 - ✓ 端到端泄漏 eval 框架（`tests/eval/runners/`）
@@ -239,7 +230,7 @@ uv run python -m cloakbot webui        # 网关 :8000 · 前端 :5173
 ## Hackathon 赛道
 
 - **主赛道 —— Gemma 4 Good（Safety & Trust 方向）** —— Gemma 4 E2B 作为本地隐私内核，在任何字节抵达远端 LLM 之前就执行一道「上线前」边界。背后是 A1（文本）、A2（视觉）、A3（长文档）三层泄漏 eval、共 2,872 条实体级回归测试作为存证 —— 详见 [`docs/HACKATHON_WRITEUP.md`](docs/HACKATHON_WRITEUP.md)。
-- **Ollama 特别技术赛道** —— `bash scripts/start_ollama.sh` 一条命令同时拉起模型和 OpenAI 兼容接口 —— 不用折腾 GGUF，也不用按操作系统分叉 Metal / CUDA。**Gemma 4 是信任层，Ollama 是部署层。** 试一下：`bash scripts/quickstart_demo.sh`。
+- **Ollama 特别技术赛道** —— `ollama pull gemma4:e2b` 一条命令同时拉起模型和 OpenAI 兼容接口，再把检测器指向 `http://127.0.0.1:11434/v1` —— 不用折腾 GGUF，也不用按操作系统分叉 Metal / CUDA。**Gemma 4 是信任层，Ollama 是部署层。**
 
 ---
 

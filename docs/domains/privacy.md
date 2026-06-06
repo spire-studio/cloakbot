@@ -515,7 +515,18 @@ Environment variables that change runtime policy:
 |---|---|---|
 | `CLOAKBOT_VISUAL_FAIL_MODE` | `omit` | `omit` substitutes a text placeholder when visual detection fails closed; `pass` reinstates legacy permissive behaviour (debug only). |
 | `CLOAKBOT_APPROVAL_HIGH_SEVERITY_LOCAL` | `false` | When truthy, LOCAL tool calls whose restored arguments contain a `Severity.HIGH` entity raise `ToolApprovalRequiredError`. |
-| `GEMMA_BASE_URL` / `GEMMA_API_KEY` / `GEMMA_MODEL` | required | The local Gemma 4 visual + text detector endpoint (vLLM or Ollama; same three variables either way). **Must point at a host you control** — the visual inspector forwards original image bytes. |
+
+Detector connection and the privacy switches live in the saved config's
+`privacy` section (`config.privacy.*`), set via `cloakbot onboard` → [D] Privacy
+Detector or the WebUI **Settings → Privacy** tab. There is no `.env` / `GEMMA_*`
+path — `config.privacy` is the single source of truth (`cloakbot/providers/vllm.py`):
+
+| `config.privacy` field | Default | Effect |
+|---|---|---|
+| `base_url` / `api_key` / `model` | unset | Local Gemma 4 visual + text detector endpoint (vLLM or Ollama). **Must point at a host you control** — the visual inspector forwards original image bytes; a remote endpoint is TEST-ONLY. Privacy stays inactive until `base_url` + `api_key` are set. |
+| `enabled` | `true` | Master switch for the whole privacy pipeline. Off ⇒ raw text + images reach the model (plain-assistant mode). |
+| `visual_enabled` | `false` | [alpha] Visual redaction for uploaded images (needs a reachable local visual detector). Nested under `enabled`: forced off when `enabled` is false (enforced by a `PrivacyDetectorConfig` model validator). |
+| `inject_system_prompt` | `true` | Inject the always-on privacy-mode system prompt that teaches the model to treat `<<TYPE_N>>` placeholders as real values. Off-switch only; disabling it does not change detection/redaction. |
 
 ## Telemetry Hygiene
 
@@ -574,5 +585,7 @@ When adding a tool, assign the least permissive accurate privacy class.
   — ORG substring coalescing + NFKC / diacritic normalisation.
 - `uv run pytest -m "not integration" tests/privacy/test_pdf_text_layer.py`
   — `read_file` text-layer fast path vs. OCR fallback.
-- WebUI privacy changes should also run the relevant tests under
-  `webui/src/features/privacy/` and `webui/src/features/chat/`.
+- WebUI privacy changes should also run the WebUI test suite
+  (`cd webui && npx vitest run`), in particular the privacy overlay specs under
+  `webui/src/overlays/privacy/` and the chat/stream specs under
+  `webui/src/tests/`.

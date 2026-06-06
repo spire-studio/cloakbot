@@ -16,7 +16,9 @@ LLM turns. The repository has three runnable surfaces:
   and tool loop, applies privacy hooks, and saves sessions.
 - `cloakbot/agent/runner.py` executes provider/tool iterations and calls the
   optional privacy interceptor around tool inputs and outputs.
-- `cloakbot/channels/webui.py` bridges runtime events into WebUI payloads.
+- `cloakbot/channels/websocket.py` and `cloakbot/channels/websocket_privacy.py`
+  (the `PrivacyWebSocketChannel` subclass) bridge runtime events into WebUI
+  payloads; `cloakbot/webui/ws_http.py` serves the WebSocket/HTTP routes.
 
 ## Privacy Boundary
 
@@ -94,7 +96,14 @@ Detailed behavior lives in `domains/privacy.md`.
 - `cloakbot/privacy/protocol/` - strict event contracts, metrics, observability,
   and replay helpers.
 - `cloakbot/privacy/webui/` - backend contracts and builders for WebUI privacy
-  panels.
+  panels. `side_channel.py` assembles the privacy side-channel payload and
+  exposes `project_payload_for_egress()`, which returns a redacted projection
+  for non-localhost connections. The localhost gate that decides full-vs-redacted
+  is enforced in `cloakbot/webui/privacy_routes.py` — the WebSocket channel can
+  bind `0.0.0.0`, so this gate, not the bind address, is the trust boundary.
+- `webui/src/overlays/privacy/` - the React privacy overlay (timeline, inspector,
+  Local↔Remote diff). This replaced the earlier `webui/src/features/privacy`
+  layout.
 
 ## Dependency Direction
 
