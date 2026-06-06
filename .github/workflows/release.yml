@@ -1,8 +1,10 @@
 name: Release
 
-# Cut a release by pushing a SemVer tag from main:
-#   git tag v0.2.0 && git push origin v0.2.0
-# The tag should match the version in pyproject.toml.
+# Cut a release by pushing a tag from main whose name is "v" + the pyproject
+# version (PEP 440). For the privacy-kernel beta:
+#   git tag v0.2.1b1 && git push origin v0.2.1b1
+# The tag must equal "v" + the pyproject.toml version (the job fails otherwise).
+# Pre-release tags (aN/bN/rcN) are published as GitHub pre-releases automatically.
 
 # Force JavaScript-based actions (checkout / gh-release) to run on Node 24.
 env:
@@ -35,6 +37,18 @@ jobs:
             exit 1
           fi
 
+      # The compiled WebUI (Vite outDir = cloakbot/web/dist) is git-ignored and
+      # pulled into the wheel via [tool.hatch.build].artifacts, so it MUST exist
+      # on disk before `uv build` — otherwise the published package ships no UI.
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+
+      - name: Build the WebUI
+        run: npm ci && npm run build
+        working-directory: webui
+
       - name: Build sdist and wheel
         run: uv build
 
@@ -42,6 +56,8 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
+          # aN/bN/rcN tags (PEP 440 pre-releases) -> mark the Release as pre-release.
+          prerelease: ${{ contains(github.ref_name, 'a') || contains(github.ref_name, 'b') || contains(github.ref_name, 'rc') }}
           files: dist/*
 
   # Optional: publish to PyPI via Trusted Publishing (no API token needed).

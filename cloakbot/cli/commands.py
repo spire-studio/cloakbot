@@ -656,7 +656,7 @@ def serve(
     try:
         from aiohttp import web  # noqa: F401
     except ImportError:
-        console.print("[red]aiohttp is required. Install with: pip install 'cloakbot-ai[api]'[/red]")
+        console.print("[red]aiohttp is required. Install with: pip install 'cloakbot[api]'[/red]")
         raise typer.Exit(1)
 
     from loguru import logger

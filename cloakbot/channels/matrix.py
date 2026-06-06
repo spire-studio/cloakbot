@@ -45,7 +45,7 @@ try:
     from nio.exceptions import EncryptionError
 except ImportError as e:
     raise ImportError(
-        "Matrix dependencies not installed. Run: pip install cloakbot-ai[matrix]"
+        "Matrix dependencies not installed. Run: pip install cloakbot[matrix]"
     ) from e
 
 from cloakbot.bus.events import OutboundMessage

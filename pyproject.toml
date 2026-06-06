@@ -1,5 +1,5 @@
 [project]
-name = "cloakbot-ai"
+name = "cloakbot"
 version = "0.2.1b1"
 description = "Local privacy kernel for frontier LLMs — Gemma 4 E2B detects, redacts, and restores PII before any byte crosses the wire."
 readme = { file = "README.md", content-type = "text/markdown" }
@@ -129,10 +129,17 @@ build-backend = "hatchling.build"
 allow-direct-references = true
 
 [tool.hatch.build]
+# The compiled WebUI (Vite outDir = cloakbot/web/dist, see webui/vite.config.ts)
+# lives in a git-ignored dist/ dir. hatchling excludes VCS-ignored files by
+# default, so a plain `include` drops it; `artifacts` force-includes it.
+# release.yml runs `npm run build` before `uv build`, so the published package
+# ships the UI at the exact path _default_webui_dist() serves at runtime.
+# The webui/ React source itself is NOT packaged (only its build output is).
+artifacts = [
+    "cloakbot/web/dist/**/*",
+]
 include = [
     "cloakbot/**/*.py",
-    "webui/**/*.py",
-    "webui/dist/**/*",
     "cloakbot/templates/**/*.md",
     "cloakbot/privacy/**/*.md",
     "cloakbot/skills/**/*.md",
@@ -140,19 +147,20 @@ include = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["cloakbot", "webui"]
-
-[tool.hatch.build.targets.wheel.sources]
-"cloakbot" = "cloakbot"
-"webui" = "webui"
+packages = ["cloakbot"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "bridge" = "cloakbot/bridge"
 
 [tool.hatch.build.targets.sdist]
+# Ship the BUILT UI (cloakbot/web/dist, via artifacts above), not the webui/
+# React source tree. hatchling honors only the ROOT .gitignore, not
+# webui/.gitignore, so webui/node_modules would otherwise leak ~600 files into
+# the sdist; exclude the whole top-level webui/ wholesale. The "/" anchors to the
+# project root so the cloakbot/webui Python package is unaffected.
+exclude = ["/webui"]
 include = [
     "cloakbot/",
-    "webui/",
     "bridge/",
     "README.md",
     "LICENSE",

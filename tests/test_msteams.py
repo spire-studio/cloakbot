@@ -11,7 +11,7 @@ except ImportError:
     MSTEAMS_AVAILABLE = False
 
 if not MSTEAMS_AVAILABLE:
-    pytest.skip("MSTeams dependencies not installed (PyJWT, cryptography). Run: pip install cloakbot-ai[msteams]", allow_module_level=True)
+    pytest.skip("MSTeams dependencies not installed (PyJWT, cryptography). Run: pip install cloakbot[msteams]", allow_module_level=True)
 
 import jwt
 from cryptography.hazmat.primitives.asymmetric import rsa
@@ -902,7 +902,7 @@ async def test_start_logs_install_hint_when_pyjwt_missing(make_channel, monkeypa
 
     await ch.start()
 
-    assert errors == ["PyJWT not installed. Run: pip install cloakbot-ai[msteams]"]
+    assert errors == ["PyJWT not installed. Run: pip install cloakbot[msteams]"]
 
 
 def test_save_refs_prunes_webchat_and_stale_refs(make_channel):
