@@ -1,6 +1,6 @@
 [project]
 name = "cloakbot-ai"
-version = "0.2.0"
+version = "0.2.1b1"
 description = "Local privacy kernel for frontier LLMs — Gemma 4 E2B detects, redacts, and restores PII before any byte crosses the wire."
 readme = { file = "README.md", content-type = "text/markdown" }
 requires-python = ">=3.11"

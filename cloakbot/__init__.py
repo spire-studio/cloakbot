@@ -22,7 +22,7 @@ def _resolve_version() -> str:
         return _pkg_version("cloakbot-ai")
     except PackageNotFoundError:
         # Source checkouts often import cloakbot without installed dist-info.
-        return _read_pyproject_version() or "0.2.1"
+        return _read_pyproject_version() or "0.2.1b1"
 
 
 __version__ = _resolve_version()
