@@ -52,6 +52,13 @@ jobs:
       - name: Build sdist and wheel
         run: uv build
 
+      - name: Upload distributions for the publish job
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/*
+          if-no-files-found: error
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -60,18 +67,29 @@ jobs:
           prerelease: ${{ contains(github.ref_name, 'a') || contains(github.ref_name, 'b') || contains(github.ref_name, 'rc') }}
           files: dist/*
 
-  # Optional: publish to PyPI via Trusted Publishing (no API token needed).
-  # Enable after configuring the trusted publisher at https://pypi.org/manage/account/publishing/
-  # and creating a "pypi" environment in repo settings.
+  # Publish to PyPI via Trusted Publishing (OIDC — no API token or secret needed).
+  # This publishes the SAME artifacts built above (including the bundled WebUI);
+  # it never rebuilds, so the PyPI wheel is byte-identical to the GitHub Release.
   #
-  # publish-pypi:
-  #   needs: build-and-release
-  #   runs-on: ubuntu-latest
-  #   environment: pypi
-  #   permissions:
-  #     id-token: write
-  #   steps:
-  #     - uses: actions/checkout@v5
-  #     - uses: astral-sh/setup-uv@v7
-  #     - run: uv build
-  #     - run: uv publish
+  # One-time setup (both required before the first tag, or this job fails):
+  #   1. PyPI -> https://pypi.org/manage/account/publishing/ -> "Add a pending
+  #      publisher": project name "cloakbot", owner "spire-studio",
+  #      repository "cloakbot", workflow "release.yml", environment "pypi".
+  #   2. GitHub -> repo Settings -> Environments -> create an environment "pypi".
+  publish-pypi:
+    needs: build-and-release
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/cloakbot
+    permissions:
+      id-token: write  # mint the OIDC token PyPI exchanges for an upload token
+    steps:
+      - name: Download the distributions built above
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
