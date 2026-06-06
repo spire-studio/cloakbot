@@ -250,6 +250,8 @@ Then drag [`docs/demo/demo_onboarding_memo.md`](docs/demo/demo_onboarding_memo.m
 - **Main Track — Gemma 4 Good (Safety & Trust direction)** — Gemma 4 E2B as a local privacy kernel that enforces a pre-wire boundary before any byte reaches the remote LLM. Backed by 2,872 entity-test instances across A1 (text), A2 (visual), and A3 (long-document) leak evals — see [`docs/HACKATHON_WRITEUP.md`](docs/HACKATHON_WRITEUP.md).
 - **Ollama Special Technology** — `ollama pull gemma4:e2b` ships the model + the OpenAI-compatible endpoint in one tool, then point the detector at `http://127.0.0.1:11434/v1`. **Gemma 4 is the trust layer; Ollama is the deployment layer.**
 
+*Looking for the code exactly as submitted to the hackathon? `main` has since been rebased onto upstream nanobot — browse the [`hackathon-gemma4-2026-05`](https://github.com/spire-studio/cloakbot/tree/hackathon-gemma4-2026-05) tag for the submission snapshot.*
+
 ---
 
 ## ⭐ Star History
@@ -266,7 +268,7 @@ Then drag [`docs/demo/demo_onboarding_memo.md`](docs/demo/demo_onboarding_memo.m
 
 ## Credits & license
 
-CloakBot is built on [nanobot](https://github.com/HKUDS/nanobot) (MIT License) by HKUDS. The channel integrations, session management, memory system, and CLI come from the upstream framework. CloakBot's privacy-specific work lives primarily under [`cloakbot/privacy/`](cloakbot/privacy/), [`cloakbot/providers/vllm.py`](cloakbot/providers/vllm.py), and the hook integration points in [`cloakbot/agent/loop.py`](cloakbot/agent/loop.py).
+CloakBot is built on [nanobot](https://github.com/HKUDS/nanobot) (MIT License) by HKUDS. The channel integrations, session management, memory system, and CLI come from the upstream framework. CloakBot's privacy-specific work lives primarily under [`cloakbot/privacy/`](cloakbot/privacy/) (detection, vaulting, egress gates, streaming restoration, and the WebUI privacy surface), the local-detector client [`cloakbot/providers/vllm.py`](cloakbot/providers/vllm.py), the detector config (`PrivacyDetectorConfig`) in [`cloakbot/config/schema.py`](cloakbot/config/schema.py), and the runtime seams in [`cloakbot/agent/loop.py`](cloakbot/agent/loop.py).
 
 Architecture, reliability, security, privacy-domain notes, and [design decisions](docs/design-docs/design-decisions.md) live under [`docs/`](docs/) — start with [`AGENTS.md`](AGENTS.md).
 

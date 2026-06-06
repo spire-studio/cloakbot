@@ -250,6 +250,8 @@ cloakbot gateway      # 启动后打开它打印的 WebUI 地址（默认 http:/
 - **主赛道 —— Gemma 4 Good（Safety & Trust 方向）** —— Gemma 4 E2B 作为本地隐私内核，在任何字节抵达远端 LLM 之前就执行一道「上线前」边界。背后是 A1（文本）、A2（视觉）、A3（长文档）三层泄漏 eval、共 2,872 条实体级回归测试作为存证 —— 详见 [`docs/HACKATHON_WRITEUP.md`](docs/HACKATHON_WRITEUP.md)。
 - **Ollama 特别技术赛道** —— `ollama pull gemma4:e2b` 一条命令同时拉起模型和 OpenAI 兼容接口，再把检测器指向 `http://127.0.0.1:11434/v1` —— 不用折腾 GGUF，也不用按操作系统分叉 Metal / CUDA。**Gemma 4 是信任层，Ollama 是部署层。**
 
+*想看 hackathon 提交时一模一样的代码？`main` 此后已 rebase 到上游 nanobot —— 提交快照请查看 [`hackathon-gemma4-2026-05`](https://github.com/spire-studio/cloakbot/tree/hackathon-gemma4-2026-05) tag。*
+
 ---
 
 ## ⭐ Star History
@@ -266,7 +268,7 @@ cloakbot gateway      # 启动后打开它打印的 WebUI 地址（默认 http:/
 
 ## 致谢与许可证
 
-CloakBot 基于 HKUDS 的 [nanobot](https://github.com/HKUDS/nanobot)（MIT License）构建。频道接入、会话管理、记忆系统和 CLI 都来自上游框架。本仓库里 CloakBot 的隐私相关实现主要集中在 [`cloakbot/privacy/`](cloakbot/privacy/)、[`cloakbot/providers/vllm.py`](cloakbot/providers/vllm.py)，以及 [`cloakbot/agent/loop.py`](cloakbot/agent/loop.py) 中的 hook 接入点。
+CloakBot 基于 HKUDS 的 [nanobot](https://github.com/HKUDS/nanobot)（MIT License）构建。频道接入、会话管理、记忆系统和 CLI 都来自上游框架。本仓库里 CloakBot 的隐私相关实现主要集中在 [`cloakbot/privacy/`](cloakbot/privacy/)（检测、Vault、出口闸、流式还原，以及 WebUI 隐私界面）、本地检测器客户端 [`cloakbot/providers/vllm.py`](cloakbot/providers/vllm.py)、检测器配置（`PrivacyDetectorConfig`，位于 [`cloakbot/config/schema.py`](cloakbot/config/schema.py)），以及 [`cloakbot/agent/loop.py`](cloakbot/agent/loop.py) 中的运行时接入点。
 
 面向 agent 的架构、可靠性、安全、隐私域备注与[设计取舍](docs/design-docs/design-decisions.md)都在 [`docs/`](docs/) 下 —— 先看 [`AGENTS.md`](AGENTS.md)。
 
