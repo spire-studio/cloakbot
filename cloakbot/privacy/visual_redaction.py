@@ -15,7 +15,7 @@ from loguru import logger
 from PIL import Image, ImageDraw, ImageFont
 from pydantic import BaseModel, ConfigDict, Field
 
-from cloakbot.providers.vllm import get_vllm_client, get_vllm_model
+from cloakbot.providers.detector import get_detector_client, get_detector_model
 from cloakbot.utils.helpers import detect_image_mime
 
 _FAIL_MODE_ENV = "CLOAKBOT_VISUAL_FAIL_MODE"
@@ -537,10 +537,10 @@ async def _redact_image(
 
 
 async def _inspect_visual(raw: bytes, *, mime: str, image_size: tuple[int, int]) -> dict[str, Any]:
-    client = get_vllm_client()
+    client = get_detector_client()
     width, height = image_size
     response = await client.chat.completions.create(
-        model=get_vllm_model(),
+        model=get_detector_model(),
         messages=[
             {"role": "system", "content": _SYSTEM_PROMPT},
             {

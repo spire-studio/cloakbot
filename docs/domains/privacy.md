@@ -519,7 +519,7 @@ Environment variables that change runtime policy:
 Detector connection and the privacy switches live in the saved config's
 `privacy` section (`config.privacy.*`), set via `cloakbot onboard` → [D] Privacy
 Detector or the WebUI **Settings → Privacy** tab. There is no `.env` / `GEMMA_*`
-path — `config.privacy` is the single source of truth (`cloakbot/providers/vllm.py`):
+path — `config.privacy` is the single source of truth (`cloakbot/providers/detector.py`):
 
 | `config.privacy` field | Default | Effect |
 |---|---|---|

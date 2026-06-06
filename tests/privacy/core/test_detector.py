@@ -106,10 +106,10 @@ class TestJsonCompletionRunner:
 
         runner = JsonCompletionRunner()
         with patch(
-            "cloakbot.privacy.core.detection.llm_json.get_vllm_client",
+            "cloakbot.privacy.core.detection.llm_json.get_detector_client",
             return_value=client,
         ), patch(
-            "cloakbot.privacy.core.detection.llm_json.get_vllm_model",
+            "cloakbot.privacy.core.detection.llm_json.get_detector_model",
             return_value="test-model",
         ):
             raw_output, _latency_ms = await runner.complete("system", "prompt")
@@ -130,10 +130,10 @@ class TestJsonCompletionRunner:
 
         runner = JsonCompletionRunner()
         with patch(
-            "cloakbot.privacy.core.detection.llm_json.get_vllm_client",
+            "cloakbot.privacy.core.detection.llm_json.get_detector_client",
             return_value=client,
         ), patch(
-            "cloakbot.privacy.core.detection.llm_json.get_vllm_model",
+            "cloakbot.privacy.core.detection.llm_json.get_detector_model",
             return_value="test-model",
         ):
             await runner.complete("system", "prompt")

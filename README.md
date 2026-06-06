@@ -268,7 +268,7 @@ Then drag [`docs/demo/demo_onboarding_memo.md`](docs/demo/demo_onboarding_memo.m
 
 ## Credits & license
 
-CloakBot is built on [nanobot](https://github.com/HKUDS/nanobot) (MIT License) by HKUDS. The channel integrations, session management, memory system, and CLI come from the upstream framework. CloakBot's privacy-specific work lives primarily under [`cloakbot/privacy/`](cloakbot/privacy/) (detection, vaulting, egress gates, streaming restoration, and the WebUI privacy surface), the local-detector client [`cloakbot/providers/vllm.py`](cloakbot/providers/vllm.py), the detector config (`PrivacyDetectorConfig`) in [`cloakbot/config/schema.py`](cloakbot/config/schema.py), and the runtime seams in [`cloakbot/agent/loop.py`](cloakbot/agent/loop.py).
+CloakBot is built on [nanobot](https://github.com/HKUDS/nanobot) (MIT License) by HKUDS. The channel integrations, session management, memory system, and CLI come from the upstream framework. CloakBot's privacy-specific work lives primarily under [`cloakbot/privacy/`](cloakbot/privacy/) (detection, vaulting, egress gates, streaming restoration, and the WebUI privacy surface), the local-detector client [`cloakbot/providers/detector.py`](cloakbot/providers/detector.py), the detector config (`PrivacyDetectorConfig`) in [`cloakbot/config/schema.py`](cloakbot/config/schema.py), and the runtime seams in [`cloakbot/agent/loop.py`](cloakbot/agent/loop.py).
 
 Architecture, reliability, security, privacy-domain notes, and [design decisions](docs/design-docs/design-decisions.md) live under [`docs/`](docs/) — start with [`AGENTS.md`](AGENTS.md).
 

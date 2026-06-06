@@ -12,14 +12,14 @@ import pytest
 
 from cloakbot.config.loader import load_config, save_config
 from cloakbot.config.schema import Config, PrivacyDetectorConfig
-from cloakbot.providers import vllm
+from cloakbot.providers import detector
 
 
 @pytest.fixture(autouse=True)
 def _clear_detector_cache():
-    vllm._settings.cache_clear()
+    detector._settings.cache_clear()
     yield
-    vllm._settings.cache_clear()
+    detector._settings.cache_clear()
 
 
 def _patch_config(monkeypatch, cfg: Config) -> None:
@@ -33,11 +33,11 @@ def test_resolves_from_config(monkeypatch):
     )
     _patch_config(monkeypatch, cfg)
 
-    s = vllm._settings()
+    s = detector._settings()
     assert s.base_url == "http://127.0.0.1:11434/v1"
     assert s.api_key == "ollama"
     assert s.model == "gemma4:e2b"
-    assert vllm.get_vllm_model() == "gemma4:e2b"
+    assert detector.get_detector_model() == "gemma4:e2b"
 
 
 def test_default_model_when_config_model_empty(monkeypatch):
@@ -48,7 +48,7 @@ def test_default_model_when_config_model_empty(monkeypatch):
     )
     _patch_config(monkeypatch, cfg)
 
-    assert vllm.get_vllm_model() == "google/gemma-4-E2B-it"
+    assert detector.get_detector_model() == "google/gemma-4-E2B-it"
 
 
 def test_raises_when_unconfigured(monkeypatch):
@@ -56,7 +56,7 @@ def test_raises_when_unconfigured(monkeypatch):
     _patch_config(monkeypatch, Config())
 
     with pytest.raises(RuntimeError, match="not configured"):
-        vllm._settings()
+        detector._settings()
 
 
 def test_raises_when_api_key_missing(monkeypatch):
@@ -65,7 +65,7 @@ def test_raises_when_api_key_missing(monkeypatch):
     _patch_config(monkeypatch, cfg)
 
     with pytest.raises(RuntimeError, match="not configured"):
-        vllm._settings()
+        detector._settings()
 
 
 def test_onboard_config_privacy_section_roundtrips(tmp_path):

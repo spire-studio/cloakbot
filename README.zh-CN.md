@@ -268,7 +268,7 @@ cloakbot gateway      # 启动后打开它打印的 WebUI 地址（默认 http:/
 
 ## 致谢与许可证
 
-CloakBot 基于 HKUDS 的 [nanobot](https://github.com/HKUDS/nanobot)（MIT License）构建。频道接入、会话管理、记忆系统和 CLI 都来自上游框架。本仓库里 CloakBot 的隐私相关实现主要集中在 [`cloakbot/privacy/`](cloakbot/privacy/)（检测、Vault、出口闸、流式还原，以及 WebUI 隐私界面）、本地检测器客户端 [`cloakbot/providers/vllm.py`](cloakbot/providers/vllm.py)、检测器配置（`PrivacyDetectorConfig`，位于 [`cloakbot/config/schema.py`](cloakbot/config/schema.py)），以及 [`cloakbot/agent/loop.py`](cloakbot/agent/loop.py) 中的运行时接入点。
+CloakBot 基于 HKUDS 的 [nanobot](https://github.com/HKUDS/nanobot)（MIT License）构建。频道接入、会话管理、记忆系统和 CLI 都来自上游框架。本仓库里 CloakBot 的隐私相关实现主要集中在 [`cloakbot/privacy/`](cloakbot/privacy/)（检测、Vault、出口闸、流式还原，以及 WebUI 隐私界面）、本地检测器客户端 [`cloakbot/providers/detector.py`](cloakbot/providers/detector.py)、检测器配置（`PrivacyDetectorConfig`，位于 [`cloakbot/config/schema.py`](cloakbot/config/schema.py)），以及 [`cloakbot/agent/loop.py`](cloakbot/agent/loop.py) 中的运行时接入点。
 
 面向 agent 的架构、可靠性、安全、隐私域备注与[设计取舍](docs/design-docs/design-decisions.md)都在 [`docs/`](docs/) 下 —— 先看 [`AGENTS.md`](AGENTS.md)。
 

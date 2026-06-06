@@ -66,12 +66,12 @@ def _settings() -> DetectorSettings:
     )
 
 
-def get_vllm_client() -> AsyncOpenAI:
+def get_detector_client() -> AsyncOpenAI:
     """Return an AsyncOpenAI client pointed at the local detector backend."""
     s = _settings()
     return AsyncOpenAI(base_url=s.base_url, api_key=s.api_key)
 
 
-def get_vllm_model() -> str:
+def get_detector_model() -> str:
     """Return the model name to use for local detection."""
     return _settings().model

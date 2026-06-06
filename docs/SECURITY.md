@@ -33,7 +33,7 @@ approval. Tool outputs are sanitized before model reuse.
 The vLLM/Ollama detector service is trusted only when it runs locally or on a
 trusted private network. Do not document or implement a public detector endpoint
 as safe. Detector connection settings come solely from `config.privacy.*`
-(`cloakbot/providers/vllm.py`); there is no `.env` / `GEMMA_*` path.
+(`cloakbot/providers/detector.py`); there is no `.env` / `GEMMA_*` path.
 
 ## WebUI Privacy Side-Channel
 
@@ -59,4 +59,4 @@ Escalate security review for changes that touch:
 - `cloakbot/privacy/webui/side_channel.py` and `cloakbot/webui/privacy_routes.py`
   (side-channel egress projection + localhost gate)
 - `cloakbot/channels/websocket_privacy.py` (privacy-scoped WebUI channel)
-- `cloakbot/providers/vllm.py` detector endpoint resolution
+- `cloakbot/providers/detector.py` detector endpoint resolution
