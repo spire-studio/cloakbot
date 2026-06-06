@@ -79,6 +79,49 @@ Remote or untrusted zone:
   could match, the resolver returns `None` and a fresh placeholder is
   allocated, because over-merging silently corrupts restoration.
 
+## Vault Scopes (Cap B)
+
+`core/state/vault.py` keys placeholder state on a `VaultScope`, not a bare
+session-key string. A scope is `(root_session_key, scope_kind, scope_id,
+isolation)` with `isolation ∈ {shared, ephemeral}`:
+
+- `shared` — the persistent user vault. Its `storage_key` is the bare
+  `root_session_key`, so the on-disk file stays `privacy_vault/maps/{key}.json`
+  and every pre-Cap-B call site behaves byte-for-byte as before. This is the
+  default for ordinary user turns.
+- `ephemeral` — a memory-only child scope for autonomous / derived runs. Its map
+  is **never** written under any `maps/{key}.json` and is dropped at run end.
+
+The flat API (`get_map` / `save_map` / `clear_cache`) is unchanged; it now routes
+through the *active* scope. `use_ephemeral_scope(root_session_key, ...)` activates
+a memory-only child scope for the duration of a run (thread-local route, restored
+on exit so nested runs compose). `AgentLoop._process_message` wraps the turn
+state machine in `use_ephemeral_scope` whenever the turn is `ephemeral=True`, so
+every in-turn vault access (input sanitize, tool-IO interceptor, output restore)
+resolves to the child scope.
+
+Two isolation guarantees fall out and are asserted by the acceptance tests
+(`tests/privacy/core/test_vault_scopes.py`,
+`tests/agent/test_loop_privacy_seam.py::test_ephemeral_run_vault_never_lands_on_disk`):
+
+- An ephemeral run's placeholder map never lands on disk and cannot pollute the
+  user's persistent vault file.
+- Cross-scope restore is a no-op: an ephemeral scope starts empty, so a parent
+  placeholder it never minted resolves back to the placeholder text, not the raw
+  value. Distinct ephemeral scopes likewise cannot see each other's mappings.
+
+Per-path note (the plan's critique correction — verify each derived path
+individually, do not assume flat reuse): `spawn` already constructs its own
+`session_key` (`spawn_session_key`, default `cli:direct`); `dream` uses
+`dream:{timestamp}`; `cron` runs use `cron:{job.id}`; `heartbeat` uses
+`heartbeat`. None of those flatly reuse the parent file. Cap B still routes the
+autonomous ones through an ephemeral scope (they pass `ephemeral=True` to the
+loop) so even their own-keyed vault stays memory-only. `pairing` does not
+construct an agent run with its own session-key vault, so it is not a vault-bleed
+path today. The remaining shared-vault case is `/goal` (`long_task`), which runs
+inside the parent user turn and persists a placeholdered objective via the Cap C
+at-rest sanitizer against the shared vault.
+
 ## Math Privacy
 
 `MathAgent.prepare_input()` appends the privacy math instruction. The remote LLM
@@ -166,6 +209,93 @@ overhead on small outputs while unlocking concurrency for big ones.
 `TOOL_DETECTOR_VERSION` is exported on every chunk trace. Vault snapshots are
 per-session and should be recycled across major version bumps — the version
 string is the audit signal for callers that need to detect mismatches.
+
+## Streaming Tool Output (Cap A)
+
+`cloakbot/privacy/runtime/streaming_sanitizer.py` handles tools that deliver
+their output *incrementally* across multiple poll calls against one long-running
+stream — exec sessions (`exec` / `write_stdin`), `shell`, and `long_task`
+progress. Sanitizing each poll in isolation is unsafe: an entity (SSN, email,
+name) can straddle a poll boundary, so each half escapes detection and the raw
+bytes reach the remote model.
+
+`StreamingSanitizer` is keyed `(session_key, stream_id)` (the exec
+`session_id` argument is the identity stable across polls; the per-call
+`tool_call.id` is the fallback). It buffers the whole raw stream and, on each
+`feed(text)`, emits only the **longest common prefix** of `sanitize(raw)` and
+`sanitize(raw[:-window])`. `window = DEFAULT_CARRY_OVER_CHARS = 256`, which is
+≥ the longest detectable entity span. Reasoning: an entity wholly inside
+`raw[:-window]` tokenizes identically in both sanitizations and so falls inside
+the common prefix (safe to emit); an entity straddling the `-window` boundary
+tokenizes differently (raw/partial vs placeholder) so the common prefix stops
+*before* it and the partial is withheld until the next `feed` completes it.
+`finalize()` flushes the residual tail. Because entities are ≤ `window` chars,
+anything that could still grow lives within `window` of the live tail — so the
+common prefix is always safe.
+
+`StreamingSanitizerRegistry` holds one sanitizer per live stream (owned per
+turn by `ToolPrivacyInterceptor`); `finalize_stream`/`clear` release buffers so
+carry-over never bleeds across turns. `ToolPrivacyInterceptor.sanitize_tool_result`
+routes `_STREAMING_TOOLS` text results to `_sanitize_streaming_tool_result`,
+which first splits the exec status trailer off the process output
+(`_split_session_output_and_trailer`) so a locally-generated status line
+(`Exit code:`, `Process running. session_id:`, `Elapsed:`) can never bisect an
+entity across the held-back boundary; only the process output flows through the
+window, and the trailer is re-appended verbatim. A stream stays live (tail held
+back) only while an exec poll prints the "Process running" marker; finished,
+terminated, timed-out, or single-call (`long_task`) results finalize
+immediately so nothing is withheld from the model. `exec_session.py` is not
+edited — this is entirely additive inside `cloakbot/privacy/`.
+
+Egress class: `exec` / `write_stdin` / `shell` / `list_exec_sessions` /
+`long_task` are `SIDE_EFFECT` in `egress_policy.py` (they run locally; output is
+sanitized via the streaming window). `write_stdin` previously fell through to
+fail-closed `EXTERNAL` + approval, which would have blocked exec-session polling.
+
+## Placeholder-Stable Compaction (Cap D)
+
+`cloakbot/privacy/compaction.py` is a compaction-aware vault contract invoked at
+the autocompact / consolidation boundary (`agent/memory.py` `Consolidator`,
+`agent/autocompact.py` `AutoCompact`). It is an **additive bracket** around the
+summarizer call — neither `Consolidator` nor `AutoCompact` is forked. The seam is
+the consolidator's injected `provider`: `compaction_provider.CompactionGuardedProvider`
+transparently delegates every method to the wrapped provider except
+`chat_with_retry`, which it brackets with a `CompactionGuard`.
+`install_compaction_guard(consolidator)` is wired in `AgentLoop.__init__` and
+re-applied after every `set_provider` swap (mirrors the Cap C provider-factory
+gate). The compaction summarizer validates against the user's shared vault under
+a stable `"compaction"` session key, routed through the Cap B scope table.
+
+The guard runs two checks against the **scoped** (Cap B) vault:
+
+- **pre-summarize** (`assert_tokenized`): the window handed to the summarizer is
+  re-run through `sanitize_tool_output` (the same tool-boundary sanitizer), so it
+  is provably tokenized before the model sees it. This fails *closed* on detector
+  unavailability — the consolidator's own `try/except` then raw-archives the
+  chunk rather than shipping raw text.
+- **post-summarize** (`validate_placeholders`): every `<<TAG_N>>` in the summary
+  must be a member of the *pre-compaction* token set (the placeholders in the
+  sanitized input window). Diffing the summary's token set against the input's is
+  what forbids both **foreign** tokens (hallucinated — never minted by this
+  vault) and **renumbering** (a vault-known token that was not in the window, so
+  restoration would resolve to the wrong entity).
+
+Repair / fail-closed policy:
+
+- **Renumbering is unrepairable** → reject the whole summary (we cannot know
+  which valid token the model meant); `Consolidator.archive` sees a
+  `finish_reason="error"` and falls back to `raw_archive` (keeps the
+  un-summarized history).
+- **Foreign / hallucinated** tokens carry no attribution → their spans are
+  dropped and the rest of the summary is kept.
+- **Raw value** emitted into the summary → re-tokenized via `sanitize_tool_output`
+  (may mint a *new* placeholder); a raw value is never persisted at rest.
+- A foreign token surviving repair also fails closed.
+
+Two hard invariants, asserted by `tests/privacy/test_compaction.py`: **vault
+counters are never rewound** (a compaction pass may move a counter forward when
+re-tokenizing a leaked raw value, but nothing resets a counter or re-points an
+existing placeholder), and **no raw sensitive value is persisted** to history.
 
 ## Adversarial-Input Posture
 
@@ -258,6 +388,100 @@ accepts the user's attached images alongside the text input. When `media` is non
   them with `[visual content omitted; visual privacy pipeline unavailable:
   <ExceptionType>]`, then the turn proceeds with text only.
 
+## Outbound Visual Egress for Image-Gen (Cap E)
+
+The user-prompt media path above protects *inbound* images. The
+`generate_image` tool is the *outbound* counterpart: it sends a prompt and
+optional reference images to a remote image-generation endpoint
+(OpenRouter / AIHubMix / Gemini / …). Cap C already classifies `generate_image`
+`EXTERNAL` in the `EgressPolicy`, so the tool call is approval-gated, but
+classification alone does not scrub the bytes that leave.
+
+`cloakbot/privacy/visual_egress_gate.py` is the outbound-bytes half. It is a
+privacy-owned wrapper around an `ImageGenerationProvider` —
+`VisualEgressGatedImageProvider` — that transparently delegates every attribute
+to the wrapped provider (Cap D pattern) except `generate`, which it brackets:
+
+- **Reference images** are routed through the same
+  `process_visual_blocks` pipeline (detection + local OCR redaction,
+  fail-closed). Each reference is decoded to an `image_url` block, redacted
+  locally, and only the *redacted* PNG (written to the per-session vault) is
+  forwarded. An image the pipeline cannot confidently redact becomes a text
+  placeholder block with no forwardable image, so it is **omitted entirely** —
+  never shipped raw. An undecodable / non-image reference path is dropped
+  before redaction even runs.
+- **The prompt** is routed through `sanitize_input_with_detection` so a raw
+  entity the user typed is replaced by its vault placeholder. The prompt uses
+  `fail_open=True` (matching the user-input pre-hook contract — best-effort
+  placeholdering that degrades to pass-through on detector outage); the *hard*
+  fail-closed surface is the reference image, which the user cannot inspect
+  byte-for-byte.
+
+The gate is installed at **provider-factory time** in
+`ImageGenerationTool._provider_client()` via
+`wrap_image_provider_with_visual_egress_gate(...)` (idempotent; mirrors the
+Cap C `providers/factory.py` egress-gate install). `providers/image_generation.py`
+is **not** edited. Both pipeline entry points are imported into the gate's own
+module namespace so tests can patch them per-namespace (`conftest.py` adds the
+on-but-inert no-op for both). Verified by `tests/privacy/test_visual_egress_gate.py`
+(redacted reference + placeholdered prompt forwarded; fail-closed omission;
+undecodable-path omission; idempotent install; tool wires the gate).
+
+## WebUI Privacy Side-Channel + Localhost Gate (Cap F)
+
+The Privacy Inspector overlay shows the user the placeholder ↔ real-value diff,
+so the per-turn `WebUIPrivacyPayload` (`cloakbot/privacy/webui/builders.py`) ships
+**raw** sensitive values by design: `SessionEntityData.{value,canonical,aliases}`,
+`WebUIToolApproval.restoredArguments`, `WebUIUserAttachment.originalDataUrl`,
+`WebUIUserDocument.originalText`, and `RestoredTokenAnnotation.{text,value,
+canonical,formula}`. Upstream's WebSocket gateway (`channels/websocket.py`)
+supports remote, token-authed connections (`host=0.0.0.0`), so forwarding that
+payload to any authenticated client unmodified would egress the cleartext vault —
+strictly worse than the remote-LLM boundary this project protects.
+
+Three pieces re-home the bespoke `channels/webui.py` privacy emission onto the
+upstream gateway **additively**:
+
+- `cloakbot/privacy/webui/side_channel.py` — pure transformation. It folds the
+  payload under `metadata["_agent_ui"]["privacy"]` (`merge_privacy_into_agent_ui`,
+  forwarded by upstream's existing `agent_ui` passthrough inside `message` /
+  `assistant_done`, zero channel fork) and builds the standalone
+  `privacy_snapshot` / `privacy_trace` / `tool_approval` frames.
+- `cloakbot/channels/websocket_privacy.py` — `PrivacyWebSocketChannel(
+  WebSocketChannel)`. At send time it reads
+  `metadata[WEBUI_PRIVACY_METADATA_KEY]`; with no payload it delegates straight to
+  the parent (byte-identical to upstream). It is swapped in for the base channel
+  at construction time in `channels/manager.py` (`discover_enabled()` stays
+  upstream-pure).
+- `cloakbot/webui/privacy_routes.py` — additive `GET /api/sessions/{key}/privacy`
+  history rehydration, dispatched from the connection-aware misc router in
+  `webui/ws_http.py`.
+
+**Blocking localhost gate (the #1 rebase risk).** All raw-value egress funnels
+through one chokepoint, `project_payload_for_egress(payload, is_localhost=…)`:
+localhost connections get the payload verbatim; any non-localhost connection gets
+a **redacted projection** — placeholders + entity types/severities/counts only,
+with every raw value, original image, original document and restored argument
+stripped (replaced by a `[redacted: localhost-only]` sentinel or dropped). The
+gate is applied **per connection** in all three paths: the WS frame (the channel
+splits subscribers into a localhost group and a remote group and renders a
+group-appropriate blob for each), the HTTP route (gated on the request peer), and
+the standalone `tool_approval` frame. The already-placeholdered fields
+(`remotePrompt`, tool `sanitizedOutput`) are preserved for non-localhost because
+they are the point of the overlay and carry no cleartext.
+
+The transparency report no longer rides the message content (the loop calls
+`post_llm_hook(..., include_report=False)`); `_state_respond` attaches the payload
+to the outbound metadata only for webui turns (`metadata["webui"] is True`) and
+persists it for rehydration. Verified by `tests/privacy/webui/test_side_channel.py`
+(redaction projection for every raw field + round-trip),
+`tests/channels/test_websocket_privacy_channel.py` (per-connection gate;
+**blocking test: a non-localhost client receives zero raw values**; additive-ignore),
+`tests/webui/test_privacy_routes.py` (localhost rehydration vs redacted projection;
+fail-closed when no remote address), and
+`tests/agent/test_loop_privacy_seam.py` (webui turn attaches + persists the
+payload; non-webui turn does not).
+
 ## PDF Text-Layer Fast Path
 
 `cloakbot/agent/tools/filesystem.py:read_file` now tries the PDF's embedded
@@ -291,7 +515,18 @@ Environment variables that change runtime policy:
 |---|---|---|
 | `CLOAKBOT_VISUAL_FAIL_MODE` | `omit` | `omit` substitutes a text placeholder when visual detection fails closed; `pass` reinstates legacy permissive behaviour (debug only). |
 | `CLOAKBOT_APPROVAL_HIGH_SEVERITY_LOCAL` | `false` | When truthy, LOCAL tool calls whose restored arguments contain a `Severity.HIGH` entity raise `ToolApprovalRequiredError`. |
-| `GEMMA_BASE_URL` / `GEMMA_API_KEY` / `GEMMA_MODEL` | required | The local Gemma 4 visual + text detector endpoint (vLLM or Ollama; same three variables either way). **Must point at a host you control** — the visual inspector forwards original image bytes. |
+
+Detector connection and the privacy switches live in the saved config's
+`privacy` section (`config.privacy.*`), set via `cloakbot onboard` → [D] Privacy
+Detector or the WebUI **Settings → Privacy** tab. There is no `.env` / `GEMMA_*`
+path — `config.privacy` is the single source of truth (`cloakbot/providers/detector.py`):
+
+| `config.privacy` field | Default | Effect |
+|---|---|---|
+| `base_url` / `api_key` / `model` | unset | Local Gemma 4 visual + text detector endpoint (vLLM or Ollama). **Must point at a host you control** — the visual inspector forwards original image bytes; a remote endpoint is TEST-ONLY. Privacy stays inactive until `base_url` + `api_key` are set. |
+| `enabled` | `true` | Master switch for the whole privacy pipeline. Off ⇒ raw text + images reach the model (plain-assistant mode). |
+| `visual_enabled` | `false` | [alpha] Visual redaction for uploaded images (needs a reachable local visual detector). Nested under `enabled`: forced off when `enabled` is false (enforced by a `PrivacyDetectorConfig` model validator). |
+| `inject_system_prompt` | `true` | Inject the always-on privacy-mode system prompt that teaches the model to treat `<<TYPE_N>>` placeholders as real values. Off-switch only; disabling it does not change detection/redaction. |
 
 ## Telemetry Hygiene
 
@@ -334,6 +569,9 @@ When adding a tool, assign the least permissive accurate privacy class.
 
 - `uv run pytest -m "not integration" tests/privacy/`
 - `uv run pytest -m "not integration" tests/privacy/runtime/test_tool_interceptor.py`
+- `uv run pytest -m "not integration" tests/privacy/runtime/test_streaming_sanitizer.py`
+  — Cap A carry-over window: 4096-boundary straddle, residual-tail flush, and the
+  byte-offset fuzz over a 12KB stream (0 seam leaks).
 - `uv run pytest -m "not integration" tests/privacy/core/test_math_executer.py`
 - `uv run pytest -m "not integration" tests/privacy/test_chunking.py` —
   content-type sniffer + the four chunkers.
@@ -347,5 +585,7 @@ When adding a tool, assign the least permissive accurate privacy class.
   — ORG substring coalescing + NFKC / diacritic normalisation.
 - `uv run pytest -m "not integration" tests/privacy/test_pdf_text_layer.py`
   — `read_file` text-layer fast path vs. OCR fallback.
-- WebUI privacy changes should also run the relevant tests under
-  `webui/src/features/privacy/` and `webui/src/features/chat/`.
+- WebUI privacy changes should also run the WebUI test suite
+  (`cd webui && npx vitest run`), in particular the privacy overlay specs under
+  `webui/src/overlays/privacy/` and the chat/stream specs under
+  `webui/src/tests/`.

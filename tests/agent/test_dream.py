@@ -1,97 +1,403 @@
-"""Tests for the Dream class — two-phase memory consolidation via AgentRunner."""
-
-from unittest.mock import AsyncMock, MagicMock
+"""Tests for Dream memory consolidation — build_dream_prompt and cursor management."""
 
 import pytest
 
-from cloakbot.agent.memory import Dream, MemoryStore
-from cloakbot.agent.runner import AgentRunResult
+from cloakbot.agent.memory import MemoryStore
+from cloakbot.providers.base import LLMResponse
+from cloakbot.utils.prompt_templates import render_template
 
 
 @pytest.fixture
 def store(tmp_path):
     s = MemoryStore(tmp_path)
     s.write_soul("# Soul\n- Helpful")
-    s.write_user("# User\n- Developer")
     s.write_memory("# Memory\n- Project X active")
     return s
 
 
-@pytest.fixture
-def mock_provider():
-    p = MagicMock()
-    p.chat_with_retry = AsyncMock()
-    return p
+class TestBuildDreamPrompt:
+    def test_returns_none_when_no_history(self, store):
+        assert store.build_dream_prompt() is None
+
+    def test_returns_prompt_with_history(self, store):
+        store.append_history("hello")
+        result = store.build_dream_prompt()
+        assert result is not None
+        prompt, cursor = result
+        assert cursor > 0
+        assert "## Conversation History" in prompt
+        assert "hello" in prompt
+
+    def test_cursor_advances_only_new_entries(self, store):
+        store.append_history("first")
+        r1 = store.build_dream_prompt()
+        assert r1 is not None
+        _, c1 = r1
+
+        # Cursor not yet advanced — same entries are still available
+        assert store.build_dream_prompt() is not None
+
+        # Advance cursor
+        store.set_last_dream_cursor(c1)
+        # Now no new entries
+        assert store.build_dream_prompt() is None
+
+        # Add new entry
+        store.append_history("second")
+        r2 = store.build_dream_prompt()
+        assert r2 is not None
+        _, c2 = r2
+        assert c2 > c1
+
+    def test_prompt_includes_skill_creator_path(self, store):
+        store.append_history("test")
+        result = store.build_dream_prompt()
+        assert result is not None
+        prompt, _ = result
+        assert "skill-creator" in prompt
+
+    def test_truncates_long_entries(self, store):
+        long_content = "x" * 2000
+        store.append_history(long_content)
+        result = store.build_dream_prompt()
+        assert result is not None
+        prompt, _ = result
+        # The full 2000 chars should not appear — truncated to 500
+        assert long_content not in prompt
+        assert "x" * 500 in prompt
+
+    def test_batches_oldest_unprocessed_entries_first(self, store):
+        for i in range(25):
+            store.append_history(f"entry-{i + 1:02d}")
+
+        result = store.build_dream_prompt(max_entries=20)
+        assert result is not None
+        prompt, cursor = result
+
+        assert cursor == 20
+        assert "entry-01" in prompt
+        assert "entry-20" in prompt
+        assert "entry-21" not in prompt
+
+        store.set_last_dream_cursor(cursor)
+        next_result = store.build_dream_prompt(max_entries=20)
+        assert next_result is not None
+        next_prompt, next_cursor = next_result
+        assert next_cursor == 25
+        assert "entry-21" in next_prompt
+        assert "entry-25" in next_prompt
+
+    def test_dream_prompt_consumes_consolidator_attribute_tags(self):
+        prompt = render_template(
+            "agent/dream.md",
+            strip=True,
+            skill_creator_path="skills/skill-creator/SKILL.md",
+        )
+
+        assert "History attribute tags" in prompt
+        assert "[skip]: audit-only" in prompt
+        assert "[correction]: replace the older conflicting fact" in prompt
+        assert "Always strip these bracketed tags from saved memory content" in prompt
 
 
-@pytest.fixture
-def mock_runner():
-    return MagicMock()
+class TestDreamTools:
+    def test_dream_tools_are_restricted_to_file_edits(self, store):
+        tools = store.build_dream_tools()
+
+        assert set(tools.tool_names) == {
+            "apply_patch",
+            "edit_file",
+            "read_file",
+            "write_file",
+        }
 
 
-@pytest.fixture
-def dream(store, mock_provider, mock_runner):
-    d = Dream(store=store, provider=mock_provider, model="test-model", max_batch_size=5)
-    d._runner = mock_runner
-    return d
+class TestEphemeralDirect:
+    """Tests for the ephemeral flag that skips history.jsonl writes for Dream."""
+
+    @pytest.fixture
+    def _make_loop(self, tmp_path):
+        """Factory fixture that builds a minimal AgentLoop with mocked deps."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from cloakbot.agent.loop import AgentLoop
+        from cloakbot.agent.memory import MemoryStore
+        from cloakbot.bus.queue import MessageBus
+
+        store = MemoryStore(tmp_path)
+        store.write_soul("# Soul")
+        store.write_memory("# Memory")
+
+        bus = MessageBus()
+        provider = MagicMock()
+        provider.get_default_model.return_value = "test-model"
+        provider.supports_tools = True
+        provider.generation = MagicMock(max_tokens=4096)
+        provider.chat_with_retry = AsyncMock(
+            return_value=MagicMock(
+                content="done", finish_reason="stop", tool_calls=[], usage={},
+            )
+        )
+
+        with (
+            patch("cloakbot.agent.loop.SessionManager"),
+            patch("cloakbot.agent.loop.SubagentManager") as mock_sub,
+            patch("cloakbot.agent.loop.Consolidator") as mock_consolidator_cls,
+        ):
+            mock_sub.return_value.cancel_by_session = AsyncMock(return_value=0)
+            mock_consolidator_cls.return_value.maybe_consolidate_by_tokens = AsyncMock()
+            loop = AgentLoop(
+                bus=bus,
+                provider=provider,
+                workspace=tmp_path,
+                context_window_tokens=8000,
+            )
+
+        return loop, store
+
+    async def test_ephemeral_skips_raw_archive(self, tmp_path, _make_loop):
+        """When ephemeral=True, raw_archive must not be called."""
+        from unittest.mock import patch
+
+        loop, store = _make_loop
+
+        with patch.object(loop.context.memory, "raw_archive") as mock_archive:
+            await loop.process_direct(
+                "test", session_key="dream:test", ephemeral=True,
+            )
+            mock_archive.assert_not_called()
+
+    async def test_non_ephemeral_runs_normally(self, tmp_path, _make_loop):
+        """Without ephemeral, the normal path is untouched — no crash."""
+        loop, store = _make_loop
+        await loop.process_direct("test", session_key="cli:normal")
+
+    async def test_ephemeral_sets_ctx_flag(self, tmp_path, _make_loop):
+        """Verify that ephemeral=True is forwarded to TurnContext."""
+        from unittest.mock import patch
+
+        loop, store = _make_loop
+
+        captured = {}
+
+        original_save = loop._state_save
+
+        async def patched_save(ctx):
+            captured["ephemeral"] = ctx.ephemeral
+            return await original_save(ctx)
+
+        with patch.object(loop, "_state_save", side_effect=patched_save):
+            await loop.process_direct(
+                "test", session_key="dream:check", ephemeral=True,
+            )
+
+        assert captured.get("ephemeral") is True
+
+    async def test_default_ephemeral_is_false(self, tmp_path, _make_loop):
+        """By default ephemeral is False in TurnContext."""
+        from unittest.mock import patch
+
+        loop, store = _make_loop
+
+        captured = {}
+
+        original_save = loop._state_save
+
+        async def patched_save(ctx):
+            captured["ephemeral"] = ctx.ephemeral
+            return await original_save(ctx)
+
+        with patch.object(loop, "_state_save", side_effect=patched_save):
+            await loop.process_direct("test", session_key="cli:normal")
+
+        assert captured.get("ephemeral") is False
+
+    async def test_ephemeral_skips_consolidator(self, tmp_path, _make_loop):
+        """When ephemeral=True, consolidator.maybe_consolidate_by_tokens is not called."""
+        from unittest.mock import patch
+
+        loop, store = _make_loop
+
+        with patch.object(
+            loop.consolidator, "maybe_consolidate_by_tokens",
+        ) as mock_consolidate:
+            await loop.process_direct(
+                "test", session_key="dream:consolidate-test", ephemeral=True,
+            )
+            mock_consolidate.assert_not_called()
+
+    async def test_ephemeral_response_reports_stop_reason(self, tmp_path, _make_loop):
+        loop, store = _make_loop
+        loop.provider.chat_with_retry.return_value = LLMResponse(
+            content="provider error",
+            finish_reason="error",
+        )
+
+        resp = await loop.process_direct(
+            "test", session_key="dream:error", ephemeral=True,
+        )
+
+        assert resp is not None
+        assert resp.metadata["_stop_reason"] == "error"
+        assert MemoryStore.dream_run_completed(resp) is False
+
+    async def test_dream_turn_can_skip_unbatched_recent_history(self, tmp_path):
+        """Dream must only see the batch selected by build_dream_prompt."""
+        from unittest.mock import MagicMock
+
+        from cloakbot.agent.loop import AgentLoop
+        from cloakbot.bus.queue import MessageBus
+
+        store = MemoryStore(tmp_path)
+        for i in range(60):
+            store.append_history(f"entry-{i + 1:02d}")
+
+        result = store.build_dream_prompt(max_entries=20)
+        assert result is not None
+        prompt, cursor = result
+        assert cursor == 20
+
+        captured: dict[str, list[dict]] = {}
+        provider = MagicMock()
+        provider.get_default_model.return_value = "test-model"
+        provider.supports_tools = True
+        provider.generation = MagicMock(max_tokens=4096)
+
+        async def chat_with_retry(**kwargs):
+            captured["messages"] = kwargs["messages"]
+            return LLMResponse(content="done", finish_reason="stop")
+
+        provider.chat_with_retry = chat_with_retry
+        loop = AgentLoop(
+            bus=MessageBus(),
+            provider=provider,
+            workspace=tmp_path,
+            context_window_tokens=8000,
+        )
+
+        await loop.process_direct(
+            prompt,
+            session_key="dream:test",
+            ephemeral=True,
+            tools=store.build_dream_tools(),
+        )
+
+        messages = captured["messages"]
+        system_prompt = messages[0]["content"]
+        request_text = "\n".join(str(message.get("content", "")) for message in messages)
+        assert "# Recent History" not in system_prompt
+        assert "entry-01" in request_text
+        assert "entry-20" in request_text
+        assert "entry-21" not in request_text
+        assert "entry-60" not in request_text
 
 
-def _make_run_result(
-    stop_reason="completed",
-    final_content=None,
-    tool_events=None,
-    usage=None,
-):
-    return AgentRunResult(
-        final_content=final_content or stop_reason,
-        stop_reason=stop_reason,
-        messages=[],
-        tools_used=[],
-        usage={},
-        tool_events=tool_events or [],
-    )
+class TestEphemeralHooks:
+    """When ephemeral=True, extra hooks must not fire."""
+
+    @pytest.fixture
+    def _make_loop_with_spy(self, tmp_path):
+        """Build an AgentLoop with a spy hook to verify hook firing behavior."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from cloakbot.agent.hook import AgentHook
+        from cloakbot.agent.loop import AgentLoop
+        from cloakbot.bus.queue import MessageBus
+
+        bus = MessageBus()
+        provider = MagicMock()
+        provider.get_default_model.return_value = "test-model"
+        provider.supports_tools = True
+        provider.generation = MagicMock(max_tokens=4096)
+        provider.chat_with_retry = AsyncMock(
+            return_value=MagicMock(
+                content="done", finish_reason="stop", tool_calls=[], usage={},
+            )
+        )
+
+        spy = MagicMock(spec=AgentHook)
+        spy.wants_streaming.return_value = False
+        spy.before_iteration = AsyncMock()
+        spy.after_iteration = AsyncMock()
+
+        with (
+            patch("cloakbot.agent.loop.SessionManager"),
+            patch("cloakbot.agent.loop.SubagentManager") as mock_sub,
+            patch("cloakbot.agent.loop.Consolidator") as mock_consolidator_cls,
+        ):
+            mock_sub.return_value.cancel_by_session = AsyncMock(return_value=0)
+            mock_consolidator_cls.return_value.maybe_consolidate_by_tokens = AsyncMock()
+            loop = AgentLoop(
+                bus=bus,
+                provider=provider,
+                workspace=tmp_path,
+                context_window_tokens=8000,
+                hooks=[spy],
+            )
+
+        return loop, spy
+
+    async def test_extra_hooks_skipped_when_ephemeral(self, tmp_path, _make_loop_with_spy):
+        """When ephemeral=True, extra hooks must not fire."""
+        loop, spy = _make_loop_with_spy
+
+        await loop.process_direct(
+            "test", session_key="dream:hook-test", ephemeral=True,
+        )
+        spy.before_iteration.assert_not_called()
+        spy.after_iteration.assert_not_called()
+
+    async def test_extra_hooks_fire_for_normal_sessions(self, tmp_path, _make_loop_with_spy):
+        """Without ephemeral, extra hooks should fire normally."""
+        loop, spy = _make_loop_with_spy
+
+        await loop.process_direct("test", session_key="cli:normal")
+        spy.before_iteration.assert_called()
 
 
-class TestDreamRun:
-    async def test_noop_when_no_unprocessed_history(self, dream, mock_provider, mock_runner, store):
-        """Dream should not call LLM when there's nothing to process."""
-        result = await dream.run()
-        assert result is False
-        mock_provider.chat_with_retry.assert_not_called()
-        mock_runner.run.assert_not_called()
+class TestDreamCommitMessage:
+    async def test_commit_includes_response_summary(self, tmp_path):
+        """Git auto-commit after Dream should include the LLM response in the body."""
+        import subprocess
+        from unittest.mock import AsyncMock, MagicMock
 
-    async def test_calls_runner_for_unprocessed_entries(self, dream, mock_provider, mock_runner, store):
-        """Dream should call AgentRunner when there are unprocessed history entries."""
-        store.append_history("User prefers dark mode")
-        mock_provider.chat_with_retry.return_value = MagicMock(content="New fact")
-        mock_runner.run = AsyncMock(return_value=_make_run_result(
-            tool_events=[{"name": "edit_file", "status": "ok", "detail": "memory/MEMORY.md"}],
+        from cloakbot.agent.memory import MemoryStore
+
+        store = MemoryStore(tmp_path)
+        store.write_soul("# Soul")
+        store.write_memory("# Memory")
+        store.append_history("user discussed project goals")
+
+        provider = MagicMock()
+        provider.get_default_model.return_value = "test-model"
+        provider.supports_tools = True
+        provider.generation = MagicMock(max_tokens=4096)
+        provider.chat_with_retry = AsyncMock(return_value=MagicMock(
+            content="Identified 2 new facts about project goals",
+            finish_reason="stop",
+            tool_calls=[],
+            usage={},
         ))
-        result = await dream.run()
-        assert result is True
-        mock_runner.run.assert_called_once()
-        spec = mock_runner.run.call_args[0][0]
-        assert spec.max_iterations == 10
-        assert spec.fail_on_tool_error is False
 
-    async def test_advances_dream_cursor(self, dream, mock_provider, mock_runner, store):
-        """Dream should advance the cursor after processing."""
-        store.append_history("event 1")
-        store.append_history("event 2")
-        mock_provider.chat_with_retry.return_value = MagicMock(content="Nothing new")
-        mock_runner.run = AsyncMock(return_value=_make_run_result())
-        await dream.run()
-        assert store.get_last_dream_cursor() == 2
+        store.git.init()
+        store.git.auto_commit("initial state")
 
-    async def test_compacts_processed_history(self, dream, mock_provider, mock_runner, store):
-        """Dream should compact history after processing."""
-        store.append_history("event 1")
-        store.append_history("event 2")
-        store.append_history("event 3")
-        mock_provider.chat_with_retry.return_value = MagicMock(content="Nothing new")
-        mock_runner.run = AsyncMock(return_value=_make_run_result())
-        await dream.run()
-        # After Dream, cursor is advanced and 3, compact keeps last max_history_entries
-        entries = store.read_unprocessed_history(since_cursor=0)
-        assert all(e["cursor"] > 0 for e in entries)
+        # Simulate what the cron handler does: produce a resp with content,
+        # build the commit message via the actual function, then commit.
+        resp_content = "Identified 2 new facts about project goals"
+        resp = MagicMock(content=resp_content)
+        msg = MemoryStore.build_dream_commit_message(
+            "dream: periodic memory consolidation", resp,
+        )
 
+        # Write a change so auto_commit has something to commit
+        store.write_memory("# Memory\n- Updated by Dream")
+        sha = store.git.auto_commit(msg)
+        assert sha is not None
+
+        log = subprocess.check_output(
+            ["git", "log", "-1", "--format=%B"],
+            cwd=str(tmp_path), text=True,
+        ).strip()
+        assert "dream: periodic memory consolidation" in log
+        assert "Identified 2 new facts" in log

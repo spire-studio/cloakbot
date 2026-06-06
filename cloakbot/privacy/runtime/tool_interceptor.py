@@ -21,6 +21,7 @@ from cloakbot.privacy.core.state.vault import (
 )
 from cloakbot.privacy.core.types import Severity
 from cloakbot.privacy.hooks.context import TurnContext
+from cloakbot.privacy.runtime.streaming_sanitizer import StreamingSanitizerRegistry
 from cloakbot.privacy.tool_models import (
     ToolApprovalRequest,
     ToolApprovalRequiredError,
@@ -65,6 +66,152 @@ def _has_high_severity(entities: list[Any]) -> bool:
 
 _MAX_RECORDED_OUTPUT_CHARS = 4000
 
+# Tools whose text output arrives incrementally across multiple poll/write
+# calls against the same long-running stream (exec sessions, shell, long_task
+# progress). Their results are routed through the per-stream
+# :class:`StreamingSanitizer` so an entity straddling a poll boundary is still
+# detected as one unit and never leaks raw across the seam (Cap A).
+_STREAMING_TOOLS: frozenset[str] = frozenset(
+    {
+        "exec",
+        "write_stdin",
+        "shell",
+        "long_task",
+    }
+)
+
+
+# Terminal markers emitted by ``format_session_poll`` (exec_session.py) when the
+# underlying process has finished. Presence of any of these means no further
+# bytes will arrive on this stream, so the carry-over tail can be flushed.
+_STREAM_DONE_MARKERS: tuple[str, ...] = (
+    "Exit code:",
+    "Session terminated.",
+    "Command timed out; session was terminated.",
+)
+# The non-terminal marker: while present, the exec stream is still live and the
+# carry-over tail must be withheld for the next poll.
+_STREAM_RUNNING_MARKER = "Process running. session_id:"
+
+
+def _stream_is_live(result: str) -> bool:
+    """True when more bytes are still expected on this stream.
+
+    Only an exec-session poll that printed the "Process running" marker (and no
+    terminal marker) is treated as live; everything else is finalized at the end
+    of the current call so no settled output is withheld from the model.
+    """
+    if any(marker in result for marker in _STREAM_DONE_MARKERS):
+        return False
+    return _STREAM_RUNNING_MARKER in result
+
+
+# Status-trailer lines appended by ``format_session_poll`` after the process
+# output. They are generated locally and contain no user PII, so we split them
+# off, sanitize only the *output* region through the carry-over window, and
+# re-append the trailer verbatim. This keeps a status line from ever splitting
+# an entity across the held-back boundary.
+_TRAILER_LINE_PREFIXES: tuple[str, ...] = (
+    "(output truncated by ",
+    "Error: Command timed out; session was terminated.",
+    "Session terminated.",
+    "Stdin closed.",
+    "Exit code:",
+    "Process running. session_id:",
+    "Elapsed:",
+)
+
+
+def _split_session_output_and_trailer(result: str) -> tuple[str, str]:
+    """Split a formatted exec poll into ``(process_output, status_trailer)``.
+
+    The trailer is the maximal suffix of whole lines that are all recognized
+    status lines. Everything before it is the process's own output, which is the
+    only part that may carry PII and the only part fed through the stream.
+    """
+    lines = result.split("\n")
+    cut = len(lines)
+    for idx in range(len(lines) - 1, -1, -1):
+        if any(lines[idx].startswith(prefix) for prefix in _TRAILER_LINE_PREFIXES):
+            cut = idx
+        else:
+            break
+    if cut >= len(lines):
+        return result, ""
+    output = "\n".join(lines[:cut])
+    trailer = "\n".join(lines[cut:])
+    return output, trailer
+
+
+def _join_output_trailer(output: str, trailer: str) -> str:
+    """Recombine sanitized output with its status trailer."""
+    if not trailer:
+        return output
+    if not output:
+        return trailer
+    return output + "\n" + trailer
+
+
+# Matches the exec-session id printed in a "Process running. session_id: <id>"
+# trailer (format_session_poll, exec_session.py). The id is the only identity
+# shared across the ``exec`` call that *starts* the session and the successive
+# ``write_stdin`` polls that continue it.
+_SESSION_ID_RE = re.compile(r"session_id:\s*(\S+)")
+
+# Canonical stream key prefix for an exec session. Deliberately tool-NAME-agnostic
+# so the ``exec`` call that mints the session and every ``write_stdin``
+# continuation converge on ONE StreamingSanitizer (M1) and share its carry-over
+# tail across the exec-poll / first-write_stdin boundary.
+_EXEC_SESSION_STREAM_PREFIX = "exec_session"
+
+
+def _exec_session_id_from_result(result: str) -> str | None:
+    """Extract the exec-session id from a poll's "Process running" trailer.
+
+    The ``exec`` call that starts a session has no ``session_id`` argument — the
+    id is minted inside ``ExecSessionManager.start`` and only surfaced in the
+    result text ("Process running. session_id: <id>"). Parsing it lets us re-key
+    the exec stream onto the canonical exec-session key so a later
+    ``write_stdin`` poll re-attaches to the same StreamingSanitizer.
+    """
+    match = _SESSION_ID_RE.search(result)
+    if match is None:
+        return None
+    return match.group(1).strip() or None
+
+
+def _stream_id_for(tool_call: ToolCallRequest, result: str | None = None) -> str | None:
+    """Stable per-stream key for a streaming tool call.
+
+    Exec-session polls share a ``session_id``: for ``write_stdin`` it is an
+    argument; for the initiating ``exec`` call it is minted server-side and only
+    appears in *result* ("Process running. session_id: S1"). Both are keyed on
+    the SAME canonical ``exec_session:{id}`` so the carry-over tail survives the
+    exec-poll → first-write_stdin boundary (M1) — without this the held tail of
+    the exec poll would be stranded on a separate, per-call ``exec:{id}`` key and
+    an entity straddling that boundary could split.
+
+    Falls back to the (per-call, unstable) ``tool_call.id`` so a tool we have
+    flagged streaming but that lacks any session identity still gets carry-over
+    within a single call's finalize bracket.
+    """
+    args = tool_call.arguments
+    if isinstance(args, dict):
+        session_value = args.get("session_id")
+        if isinstance(session_value, str) and session_value.strip():
+            return f"{_EXEC_SESSION_STREAM_PREFIX}:{session_value.strip()}"
+        for key in ("stream_id", "task_id", "goal_id"):
+            value = args.get(key)
+            if isinstance(value, str) and value.strip():
+                return f"{tool_call.name}:{value.strip()}"
+    # exec start has no session arg — recover the canonical key from the result
+    # so the continuation re-attaches to this same stream.
+    if result is not None:
+        session_id = _exec_session_id_from_result(result)
+        if session_id is not None:
+            return f"{_EXEC_SESSION_STREAM_PREFIX}:{session_id}"
+    return f"{tool_call.name}:{tool_call.id}" if tool_call.id else None
+
 
 class ToolPrivacyInterceptor:
     """Restore local tool inputs and sanitize tool outputs before model reuse."""
@@ -72,6 +219,8 @@ class ToolPrivacyInterceptor:
     def __init__(self, ctx: TurnContext) -> None:
         self._ctx = ctx
         self._follow_up_messages: dict[str, list[dict[str, Any]]] = {}
+        # Per-(session_key, stream_id) carry-over windows for streaming tools.
+        self._stream_registry = StreamingSanitizerRegistry()
 
     async def prepare_tool_call(
         self,
@@ -154,6 +303,13 @@ class ToolPrivacyInterceptor:
         *,
         privacy_class: ToolPrivacyClass = ToolPrivacyClass.LOCAL,
     ) -> Any:
+        if tool_call.name in _STREAMING_TOOLS and isinstance(result, str):
+            return await self._sanitize_streaming_tool_result(
+                tool_call,
+                result,
+                privacy_class=privacy_class,
+            )
+
         vault_artifacts: list[ToolVaultArtifact] = []
         detection_failed = False
         if is_visual_content_blocks(result):
@@ -196,6 +352,107 @@ class ToolPrivacyInterceptor:
             )
         )
         return sanitized
+
+    async def _sanitize_streaming_tool_result(
+        self,
+        tool_call: ToolCallRequest,
+        result: str,
+        *,
+        privacy_class: ToolPrivacyClass,
+    ) -> str:
+        """Sanitize one poll of a streaming tool through its carry-over window.
+
+        Each poll's text is appended to the per-stream
+        :class:`StreamingSanitizer`; we emit only the **settled** portion (output
+        far enough behind the live tail that no future byte can extend an entity
+        into it). The residual tail is held back only for a still-running
+        ``write_stdin`` poll whose continuation reuses the same stream key; every
+        other call finalizes immediately, flushing and sanitizing the tail. This
+        guarantees an entity that straddles a poll boundary is detected as one
+        contiguous unit and tokenized once,
+        never partially emitted as raw characters.
+        """
+        stream_id = _stream_id_for(tool_call, result)
+        # Separate the process output (may carry PII) from the locally-generated
+        # status trailer (no PII). Only the output flows through the carry-over
+        # window; the trailer is re-appended verbatim so a status line can never
+        # split an entity across the held-back boundary.
+        output, trailer = _split_session_output_and_trailer(result)
+
+        if stream_id is None:
+            # No stable stream identity: fall back to one-shot sanitization so we
+            # still never feed raw output to the model.
+            sanitized, modified, entities = await sanitize_tool_output(
+                output,
+                self._ctx.session_key,
+                turn_id=self._ctx.turn_id,
+            )
+            final = _join_output_trailer(sanitized, trailer)
+            self._record_streaming_result(tool_call, final, modified, entities, privacy_class)
+            return final
+
+        sanitizer = self._stream_registry.get(
+            self._ctx.session_key,
+            stream_id,
+            turn_id=self._ctx.turn_id,
+        )
+        emitted = await sanitizer.feed(output)
+        # Hold the carry-over tail back for any exec-session poll whose
+        # continuation will arrive under the SAME canonical stream key
+        # (``exec_session:{session_id}``) and that is provably still live
+        # ("Process running"). Both the initiating ``exec`` call and every
+        # ``write_stdin`` continuation now share that key (M1), so a held exec
+        # tail is inherited by the first ``write_stdin`` poll — an entity
+        # straddling the exec-poll → first-write_stdin boundary is detected as one
+        # unit and never split. Finished / terminated / timed-out streams and
+        # single-call tools (``long_task``) finalize now, so nothing is ever
+        # withheld from the model indefinitely.
+        is_exec_session_stream = stream_id.startswith(f"{_EXEC_SESSION_STREAM_PREFIX}:")
+        hold_tail = (
+            tool_call.name in ("exec", "write_stdin")
+            and is_exec_session_stream
+            and _stream_is_live(result)
+        )
+        if not hold_tail:
+            emitted += await self._stream_registry.finalize_stream(
+                self._ctx.session_key,
+                stream_id,
+            )
+        final = _join_output_trailer(emitted, trailer)
+        self._record_streaming_result(
+            tool_call,
+            final,
+            sanitizer.modified,
+            sanitizer.entities,
+            privacy_class,
+        )
+        return final
+
+    def _record_streaming_result(
+        self,
+        tool_call: ToolCallRequest,
+        sanitized: str,
+        modified: bool,
+        entities: list[Any],
+        privacy_class: ToolPrivacyClass,
+    ) -> None:
+        self._ctx.tool_output_entities.extend(entities)
+        self._ctx.tool_results.append(
+            ToolPrivacyRecord(
+                tool_call_id=tool_call.id,
+                tool_name=tool_call.name,
+                privacy_class=privacy_class,
+                remote_arguments=dict(tool_call.arguments),
+                sanitized_output=_recorded_output_text(sanitized),
+                was_sanitized=modified,
+                visual_redactions=[],
+                vaultArtifacts=[],
+            )
+        )
+
+    def finalize_streams(self) -> None:
+        """Drop any still-open stream buffers (turn teardown)."""
+        self._stream_registry.clear()
 
     def take_follow_up_messages(self, tool_call_id: str) -> list[dict[str, Any]]:
         return self._follow_up_messages.pop(tool_call_id, [])

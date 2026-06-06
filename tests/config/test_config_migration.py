@@ -85,7 +85,6 @@ def test_onboard_does_not_crash_with_legacy_memory_window(tmp_path, monkeypatch)
     monkeypatch.setattr("cloakbot.cli.commands.get_workspace_path", lambda _workspace=None: workspace)
 
     from typer.testing import CliRunner
-
     from cloakbot.cli.commands import app
     runner = CliRunner()
     result = runner.invoke(app, ["onboard"], input="n\n")
@@ -132,7 +131,6 @@ def test_onboard_refresh_backfills_missing_channel_fields(tmp_path, monkeypatch)
     )
 
     from typer.testing import CliRunner
-
     from cloakbot.cli.commands import app
     runner = CliRunner()
     result = runner.invoke(app, ["onboard"], input="n\n")
@@ -140,6 +138,71 @@ def test_onboard_refresh_backfills_missing_channel_fields(tmp_path, monkeypatch)
     assert result.exit_code == 0
     saved = json.loads(config_path.read_text(encoding="utf-8"))
     assert saved["channels"]["qq"]["msgFormat"] == "plain"
+
+
+def test_load_config_migrates_legacy_my_tool_keys(tmp_path) -> None:
+    config_path = tmp_path / "config.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "tools": {
+                    "myEnabled": False,
+                    "mySet": True,
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    config = load_config(config_path)
+
+    assert config.tools.my.enable is False
+    assert config.tools.my.allow_set is True
+
+
+def test_save_config_rewrites_legacy_my_tool_keys(tmp_path) -> None:
+    config_path = tmp_path / "config.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "tools": {
+                    "myEnabled": False,
+                    "mySet": True,
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    config = load_config(config_path)
+    save_config(config, config_path)
+    saved = json.loads(config_path.read_text(encoding="utf-8"))
+
+    tools = saved["tools"]
+    assert "myEnabled" not in tools
+    assert "mySet" not in tools
+    assert tools["my"] == {"enable": False, "allowSet": True}
+
+
+def test_new_my_tool_keys_take_precedence_over_legacy(tmp_path) -> None:
+    config_path = tmp_path / "config.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "tools": {
+                    "myEnabled": False,
+                    "mySet": False,
+                    "my": {"enable": True, "allowSet": True},
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    config = load_config(config_path)
+
+    assert config.tools.my.enable is True
+    assert config.tools.my.allow_set is True
 
 
 def test_load_config_resets_ssrf_whitelist_when_next_config_is_empty(tmp_path) -> None:
@@ -160,3 +223,24 @@ def test_load_config_resets_ssrf_whitelist_when_next_config_is_empty(tmp_path) -
     with patch("cloakbot.security.network.socket.getaddrinfo", _fake_resolve("ts.local", ["100.100.1.1"])):
         ok, _ = validate_url_target("http://ts.local/api")
         assert not ok
+
+
+def test_load_config_defaults_local_service_access_to_enabled(tmp_path) -> None:
+    config_path = tmp_path / "config.json"
+    config_path.write_text(json.dumps({"tools": {}}), encoding="utf-8")
+
+    config = load_config(config_path)
+
+    assert config.tools.webui_allow_local_service_access is True
+
+
+def test_load_config_accepts_legacy_local_preview_access(tmp_path) -> None:
+    config_path = tmp_path / "config.json"
+    config_path.write_text(
+        json.dumps({"tools": {"allowLocalPreviewAccess": False}}),
+        encoding="utf-8",
+    )
+
+    config = load_config(config_path)
+
+    assert config.tools.webui_allow_local_service_access is False

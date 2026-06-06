@@ -97,6 +97,48 @@ def _media_fingerprint(reference: str) -> str:
     return f"<{tail}>"
 
 
+def _visual_privacy_enabled() -> bool:
+    """Whether the alpha visual-redaction pipeline is enabled (config; default OFF).
+
+    ON: uploaded images are run through local visual redaction before the model
+    sees them. OFF (default): images are sent to the model as-is (no redaction) —
+    the user has opted out of visual privacy for images. Read fresh (only on media
+    turns) so a Settings toggle applies to the next message without a gateway
+    restart. Any failure — no config file, parse error — resolves to the OFF
+    default.
+    """
+    try:
+        from cloakbot.config.loader import get_config_path, load_config
+
+        if not get_config_path().exists():
+            return False
+        return bool(load_config().privacy.visual_enabled)
+    except Exception:
+        return False
+
+
+def privacy_mode_active() -> bool:
+    """Master switch for the whole privacy pipeline (config ``privacy.enabled``).
+
+    When this returns False the loop bypasses sanitization/restoration entirely —
+    raw text and images reach the model, like a plain assistant. Defaults to
+    ACTIVE (True) whenever the config is unreadable (fresh install, tests, parse
+    error) so privacy is NEVER silently disabled; only an explicit
+    ``privacy.enabled = false`` bypasses it. (Whether privacy is *effectively* on
+    also depends on a detector being configured — that gating is surfaced to the
+    UI via the settings ``active`` flag, while the pipeline itself fail-opens with
+    no detector.)
+    """
+    try:
+        from cloakbot.config.loader import get_config_path, load_config
+
+        if not get_config_path().exists():
+            return True
+        return bool(load_config().privacy.enabled)
+    except Exception:
+        return True
+
+
 class PrivacyRuntime:
     def __init__(self, *, channel: str = "cli") -> None:
         self.channel = channel
@@ -231,7 +273,15 @@ class PrivacyRuntime:
         ctx.remote_prompt = prepared
 
         if media:
-            image_blocks = await self._prepare_media(media, ctx)
+            if _visual_privacy_enabled():
+                image_blocks = await self._prepare_media(media, ctx)
+            else:
+                # [visual privacy — alpha] OFF (default): do NOT run the visual
+                # redaction pipeline. Attach the RAW image blocks so the model sees
+                # the image as-is (normal multimodal behaviour) — the user has
+                # opted out of visual privacy for images. Typed text is still
+                # placeholdered, and documents still go through the text pipeline.
+                image_blocks = self._build_image_blocks_from_media(media) or None
             document_blocks = await self._prepare_user_documents(media, ctx)
             if image_blocks or document_blocks:
                 # LLM-facing layout: images first (multimodal convention),

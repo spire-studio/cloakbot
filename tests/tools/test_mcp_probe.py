@@ -1,0 +1,128 @@
+"""Tests for MCP HTTP probe guard (prevents event-loop crash on unreachable servers)."""
+from __future__ import annotations
+
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+from cloakbot.agent.tools.mcp import _probe_http_url, connect_mcp_servers
+from cloakbot.agent.tools.registry import ToolRegistry
+
+# ---------------------------------------------------------------------------
+# _probe_http_url unit tests
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_probe_returns_true_for_open_port():
+    """A reachable endpoint -> probe returns True.
+
+    The socket layer is mocked so the test is hermetic: no real server, DNS, or
+    default-executor dependency (a real ``start_server`` + ``getaddrinfo`` can
+    block under a saturated event loop when run late in the full suite).
+    """
+    async def _fake_wait_closed():
+        return None
+
+    writer = MagicMock()
+    writer.close = MagicMock()
+    writer.wait_closed = _fake_wait_closed
+
+    async def _fake_open_connection(host, port):
+        return MagicMock(), writer
+
+    with patch("asyncio.open_connection", _fake_open_connection):
+        assert await _probe_http_url("http://127.0.0.1:12345/mcp") is True
+
+    writer.close.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_probe_returns_false_for_closed_port():
+    """Port 19999 is almost certainly not listening."""
+    assert await _probe_http_url("http://127.0.0.1:19999/mcp") is False
+
+
+@pytest.mark.asyncio
+async def test_probe_uses_default_port_for_http():
+    """No port in the URL -> probe defaults to 80 (http scheme).
+
+    The socket layer is mocked, so the test never performs real DNS / network
+    I/O (a real lookup of a bogus host can block for a long time on restricted
+    networks). We assert both the default-port derivation and the False result
+    when the endpoint is unreachable.
+    """
+    captured: dict[str, object] = {}
+
+    async def _fake_open_connection(host, port):
+        captured["host"] = host
+        captured["port"] = port
+        raise OSError("unreachable")  # simulate a closed/unreachable endpoint
+
+    with patch("asyncio.open_connection", _fake_open_connection):
+        assert await _probe_http_url("http://unreachable-host.test/mcp") is False
+
+    assert captured["port"] == 80  # derived from the missing port + http scheme
+
+
+# ---------------------------------------------------------------------------
+# connect_mcp_servers skips unreachable HTTP servers
+# ---------------------------------------------------------------------------
+
+def _make_http_cfg(url: str, transport: str = "streamableHttp"):
+    cfg = MagicMock()
+    cfg.type = transport
+    cfg.url = url
+    cfg.command = None
+    cfg.args = []
+    cfg.env = {}
+    cfg.headers = None
+    cfg.tool_timeout = 30
+    cfg.enabled_tools = ["*"]
+    return cfg
+
+
+@pytest.mark.asyncio
+async def test_connect_skips_unreachable_streamable_http():
+    """Unreachable streamableHttp server should be skipped with a warning, no crash."""
+    registry = ToolRegistry()
+    servers = {"dead": _make_http_cfg("http://127.0.0.1:19999/mcp")}
+    stacks = await connect_mcp_servers(servers, registry)
+    assert stacks == {}
+    assert len(registry._tools) == 0
+
+
+@pytest.mark.asyncio
+async def test_connect_skips_unreachable_sse():
+    """Unreachable SSE server should be skipped with a warning, no crash."""
+    registry = ToolRegistry()
+    servers = {"dead": _make_http_cfg("http://127.0.0.1:19999/sse", transport="sse")}
+    stacks = await connect_mcp_servers(servers, registry)
+    assert stacks == {}
+    assert len(registry._tools) == 0
+
+
+@pytest.mark.asyncio
+async def test_probe_not_called_for_stdio():
+    """stdio transport should not be probed — it spawns a local process."""
+    called = False
+    original_probe = _probe_http_url
+
+    async def _spy_probe(url, **kw):
+        nonlocal called
+        called = True
+        return await original_probe(url, **kw)
+
+    with patch("cloakbot.agent.tools.mcp._probe_http_url", _spy_probe):
+        cfg = MagicMock()
+        cfg.type = "stdio"
+        cfg.url = None
+        cfg.command = "nonexistent-command-xyz"
+        cfg.args = []
+        cfg.env = None
+        cfg.headers = None
+        cfg.tool_timeout = 30
+        cfg.enabled_tools = ["*"]
+        registry = ToolRegistry()
+        await connect_mcp_servers({"s": cfg}, registry)
+
+    assert not called, "probe should not be called for stdio transport"

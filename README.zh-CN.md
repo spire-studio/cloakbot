@@ -151,85 +151,94 @@
 
 ## 🛠️ 安装与启动
 
-### 最快路径 —— 一条命令
+### 安装
+
+**从 PyPI 安装（推荐）** —— WebUI 已打包内置，无需构建前端：
 
 ```bash
-# 一次性: 装 Ollama + Node ≥24 + 依赖
-curl -fsSL https://ollama.com/install.sh | sh
-uv sync && cd webui && npm install && cd ..
-
-bash scripts/quickstart_demo.sh
+pip install --pre cloakbot      # 0.2.1 beta（隐私内核）；0.2.1 正式版发布后去掉 --pre
 ```
 
-脚本会拉起 `gemma4:e2b` 的 Ollama 实例、生成 `.env`、启动 WebUI（网关 `:8000`、前端 `:5173`）并打开浏览器。把 [`docs/demo/demo_onboarding_memo.md`](docs/demo/demo_onboarding_memo.md) 拖进 Composer，就能看到 20 条 PII 实体从头到尾被脱敏；点任意气泡上的 **Diff** 看「本地 ↔ 远端」对比。
+想要隔离的 CLI 安装？用 `uv tool install --prerelease allow cloakbot` 或 `pipx install --pip-args=--pre cloakbot`。可选聊天渠道：`pip install --pre 'cloakbot[matrix,discord,msteams]'`。
 
-### 手动安装
+**从源码安装**（最新 `main` / 开发）—— 需 Node ≥24 构建 WebUI：
 
 ```bash
 git clone https://github.com/spire-studio/cloakbot.git && cd cloakbot
 uv sync
-cd webui && npm install && cd ..        # WebUI 前端要 Node ≥24
-cp .env.example .env                     # 里面有两个 profile —— 二选一
+cd webui && npm install && npm run build && cd ..
 ```
 
-把远端 LLM（Claude / GPT / Gemini）写进 `~/.cloakbot/config.json`，或直接跑 `uv run python -m cloakbot onboard`；然后启动本地 Gemma 4 后端 —— **二选一**：
+> 源码安装时，下面的 `cloakbot` 命令前请加 `uv run`。
 
-**方案 A —— vLLM（GPU 机器）：** 快、可复现，A1/A2/A3 三份 eval 就是这条路径跑出来的。
+### 1. 自带本地 Gemma 4 检测器
+
+CloakBot 的隐私保证依赖于 PII 检测器跑在**你自己掌控的机器**上。任何 OpenAI 兼容服务都行（vLLM、Ollama、llama.cpp……），推荐 **Gemma 4 E2B**。把检测器指向**远端**端点（例如 OpenRouter）会把未脱敏的原始输入发过去做检测 —— 那是**仅供测试**、会破坏边界。
+
+**Ollama（macOS / Linux / WSL，无需 GPU）：**
+
+```bash
+curl -fsSL https://ollama.com/install.sh | sh
+ollama pull gemma4:e2b        # 一条命令同时拉起模型和 OpenAI 兼容接口
+# → base URL http://127.0.0.1:11434/v1 · API key "ollama"（随便填）· model gemma4:e2b
+```
+
+**vLLM（GPU 机器 —— 快、可复现，A1/A2/A3 eval 路径）：**
 
 ```bash
 uv sync --extra vllm
-uv run huggingface-cli login            # 在 hf.co/google/gemma-4-E2B-it 接受 Gemma 协议
-bash scripts/start_vllm.sh
+uv run huggingface-cli login   # 在 hf.co/google/gemma-4-E2B-it 接受 Gemma 协议
+vllm serve google/gemma-4-E2B-it --port 8000 --dtype bfloat16 --api-key <你的-token>
+# → base URL http://127.0.0.1:8000/v1 · API key <你的-token> · model google/gemma-4-E2B-it
 ```
 
-**方案 B —— Ollama（macOS / Linux / WSL）：** 无需 GPU，面向真实部署推荐这条。
+### 2. 配置与启动
 
 ```bash
-bash scripts/start_ollama.sh            # 拉取 gemma4:e2b（约 5 GB）并预热
-# 然后在 .env 里：
-#   GEMMA_BASE_URL=http://127.0.0.1:11434/v1
-#   GEMMA_API_KEY=ollama        # Ollama 不强制鉴权，随便填
-#   GEMMA_MODEL=gemma4:e2b
+cloakbot onboard      # 配置远端 LLM + [D] Privacy Detector
+cloakbot gateway      # 启动后打开它打印的 WebUI 地址（默认 http://127.0.0.1:8765/）
 ```
 
-两个后端暴露的都是同样的 OpenAI 兼容接口，只用于本地 PII 检测——远端 LLM 调用完全是另一条路径。最后启动 WebUI：
+在 `onboard` → **[D] Privacy Detector** 里填检测器的 **base URL / API key / model**（或之后在 WebUI 的 **Settings → Privacy** 里配），远端 LLM（Claude / GPT / Gemini）在同一流程里配（或 **Settings → Models**）。检测器暴露的 OpenAI 兼容接口**只**用于本地 PII 检测 —— 远端 LLM 调用完全是另一条路径。
 
-```bash
-uv run python -m cloakbot webui        # 网关 :8000 · 前端 :5173
-```
+然后把 [`docs/demo/demo_onboarding_memo.md`](docs/demo/demo_onboarding_memo.md) 拖进 Composer，就能看到 20 条 PII 实体从头到尾被脱敏；点任意气泡上的 **Diff** 看「本地 ↔ 远端」对比。
 
 ---
 
 ## 🗺️ 路线图
 
-### ✅ 已发货（2026 年 4 月 – 5 月）
+### ✅ 已发货 —— 隐私内核（`0.2.1b1`，2026）
 
-**核心隐私运行时（v0.1）** —— 4 月
+**核心隐私运行时** —— 4 月
 - 基于 Gemma 4 E2B 的拆分本地检测器（general + digit）
 - JSON 落盘的 Session Vault + 跨轮别名复用
 - 数学片段契约 + 本地 AST 校验的算术执行器
 - IntentAnalyzer + chat / math 路由
 - `ToolPrivacyInterceptor`：工具 I/O 脱敏 + 按敏感度审批
 
-**信任边界扩展（v0.2）** —— 5 月
+**信任边界扩展** —— 5 月
 - ✓ 长文档 chunker 通道（`ToolPrivacyDetector` + 4 个内容感知 chunker：纯文本 / JSON / HTML / Markdown）
 - ✓ 视觉流水线：OCR + bbox 涂黑 + 占位符叠加 + 跨模态召回桥
 - ✓ WebUI 文档上传（text/plain、text/markdown ≤ 64 KB）走同一条 chunker 脱敏路径
 - ✓ 「本地 ↔ 远端」diff 对话框，每个文档独立高亮实体
-- ✓ Ollama 升级为一等公民后端（无需 GPU）+ 一键 demo 启动器
+- ✓ Ollama 升级为一等公民后端（无需 GPU）—— `ollama pull gemma4:e2b` 一条命令拉起模型 + 接口
 
-**以测量建立信任（v0.3）** —— 5 月
+**以测量建立信任** —— 5 月
 - ✓ 端到端泄漏 eval 框架（`tests/eval/runners/`）
 - ✓ A1 / A2 / A3 三层 —— **2,872 条实体级回归测试**作为存证
 - ✓ 类型驱动的检测器 prompt（MEDICAL 召回 20% → 95%）
 - ✓ 自己抓出来并修掉的 eval bug（token 级打分；全值出现匹配收紧）
+
+**流式还原** —— 6 月
+- ✓ 带 carry-over 窗口的 `StreamingSanitizer` —— 流式工具输出（exec / shell / long-task）增量脱敏，不再整段缓冲
+- ✓ 远端回复流式返回时实时把占位符还原成原值，WebUI 里高亮 / 悬停 / diff
 
 ### 🚀 接下来
 
 - **领域专用 LoRA adapter** —— 在垂直语料（医疗、法律、金融）上微调 Gemma 4 E2B，提升领域短语的召回，解锁带策略的垂直部署。一套内核 + 三个 adapter：按租户挑。
 - **短 ORG / 连字符名召回**（71.67% → 90% 目标）—— A1 当前最大缺口，可借上面的 LoRA 路径修
 - **双语覆盖** —— 中文 eval 模板 + zh-CN 检测器 prompt 迭代
-- **流式 + 每轮 batch** —— 目标把医疗 p95 从 6.2 秒压到 2 秒以下
+- **每轮检测器 batch** —— 目标把医疗 p95 从 6.2 秒压到 2 秒以下
 - **Vault 加密落盘** —— 面向共享设备部署
 - **策略驱动的敏感度分级** —— 超越当前注册表默认值（目前全部 `high`）
 - **面向数据集 / 表格的结构化 chunker**（CSV / Parquet）—— 用于分析工具输出
@@ -239,7 +248,9 @@ uv run python -m cloakbot webui        # 网关 :8000 · 前端 :5173
 ## Hackathon 赛道
 
 - **主赛道 —— Gemma 4 Good（Safety & Trust 方向）** —— Gemma 4 E2B 作为本地隐私内核，在任何字节抵达远端 LLM 之前就执行一道「上线前」边界。背后是 A1（文本）、A2（视觉）、A3（长文档）三层泄漏 eval、共 2,872 条实体级回归测试作为存证 —— 详见 [`docs/HACKATHON_WRITEUP.md`](docs/HACKATHON_WRITEUP.md)。
-- **Ollama 特别技术赛道** —— `bash scripts/start_ollama.sh` 一条命令同时拉起模型和 OpenAI 兼容接口 —— 不用折腾 GGUF，也不用按操作系统分叉 Metal / CUDA。**Gemma 4 是信任层，Ollama 是部署层。** 试一下：`bash scripts/quickstart_demo.sh`。
+- **Ollama 特别技术赛道** —— `ollama pull gemma4:e2b` 一条命令同时拉起模型和 OpenAI 兼容接口，再把检测器指向 `http://127.0.0.1:11434/v1` —— 不用折腾 GGUF，也不用按操作系统分叉 Metal / CUDA。**Gemma 4 是信任层，Ollama 是部署层。**
+
+*想看 hackathon 提交时一模一样的代码？`main` 此后已 rebase 到上游 nanobot —— 提交快照请查看 [`hackathon-gemma4-2026-05`](https://github.com/spire-studio/cloakbot/tree/hackathon-gemma4-2026-05) tag。*
 
 ---
 
@@ -257,7 +268,7 @@ uv run python -m cloakbot webui        # 网关 :8000 · 前端 :5173
 
 ## 致谢与许可证
 
-CloakBot 基于 HKUDS 的 [nanobot](https://github.com/HKUDS/nanobot)（MIT License）构建。频道接入、会话管理、记忆系统和 CLI 都来自上游框架。本仓库里 CloakBot 的隐私相关实现主要集中在 [`cloakbot/privacy/`](cloakbot/privacy/)、[`cloakbot/providers/vllm.py`](cloakbot/providers/vllm.py)，以及 [`cloakbot/agent/loop.py`](cloakbot/agent/loop.py) 中的 hook 接入点。
+CloakBot 基于 HKUDS 的 [nanobot](https://github.com/HKUDS/nanobot)（MIT License）构建。频道接入、会话管理、记忆系统和 CLI 都来自上游框架。本仓库里 CloakBot 的隐私相关实现主要集中在 [`cloakbot/privacy/`](cloakbot/privacy/)（检测、Vault、出口闸、流式还原，以及 WebUI 隐私界面）、本地检测器客户端 [`cloakbot/providers/detector.py`](cloakbot/providers/detector.py)、检测器配置（`PrivacyDetectorConfig`，位于 [`cloakbot/config/schema.py`](cloakbot/config/schema.py)），以及 [`cloakbot/agent/loop.py`](cloakbot/agent/loop.py) 中的运行时接入点。
 
 面向 agent 的架构、可靠性、安全、隐私域备注与[设计取舍](docs/design-docs/design-decisions.md)都在 [`docs/`](docs/) 下 —— 先看 [`AGENTS.md`](AGENTS.md)。
 

@@ -151,85 +151,94 @@ Full per-template breakdown, methodology, and self-caught eval bugs in [`docs/HA
 
 ## 🛠️ Setup
 
-### Fastest path — one command
+### Install
+
+**From PyPI (recommended)** — the WebUI is bundled, so no Node build is needed:
 
 ```bash
-# One-time: install Ollama + Node ≥24 + deps
-curl -fsSL https://ollama.com/install.sh | sh
-uv sync && cd webui && npm install && cd ..
-
-bash scripts/quickstart_demo.sh
+pip install --pre cloakbot      # 0.2.1 beta (privacy kernel); drop --pre once 0.2.1 is stable
 ```
 
-Starts Ollama with `gemma4:e2b`, bootstraps `.env`, launches the WebUI (gateway `:8000`, frontend `:5173`), and opens your browser. Drag [`docs/demo/demo_onboarding_memo.md`](docs/demo/demo_onboarding_memo.md) into the Composer to watch 20 PII entities masked end-to-end — click **Diff** on any bubble for the Local↔Remote view.
+Prefer an isolated CLI install? `uv tool install --prerelease allow cloakbot` or `pipx install --pip-args=--pre cloakbot`. Optional chat channels: `pip install --pre 'cloakbot[matrix,discord,msteams]'`.
 
-### Manual setup
+**From source** (latest `main` / development) — needs Node ≥24 to build the WebUI:
 
 ```bash
 git clone https://github.com/spire-studio/cloakbot.git && cd cloakbot
 uv sync
-cd webui && npm install && cd ..        # WebUI frontend needs Node ≥24
-cp .env.example .env                     # two profiles inside — pick ONE
+cd webui && npm install && npm run build && cd ..
 ```
 
-Configure the remote LLM (Claude / GPT / Gemini) with `uv run python -m cloakbot onboard` (or edit `~/.cloakbot/config.json`), then start the local Gemma 4 backend — **pick one**:
+> From a source checkout, prefix the `cloakbot` commands below with `uv run`.
 
-**Option A — vLLM (GPU machine):** fast, reproducible; the path behind the A1/A2/A3 evals.
+### 1. Bring your own local Gemma 4 detector
+
+CloakBot's privacy guarantee depends on the PII detector running **on a host you control**. Any OpenAI-compatible server works (vLLM, Ollama, llama.cpp, …); we recommend **Gemma 4 E2B**. Pointing the detector at a *remote* endpoint (e.g. OpenRouter) ships raw, unsanitised input there for detection — that's **TEST-ONLY** and defeats the boundary.
+
+**Ollama (macOS / Linux / WSL, no GPU):**
+
+```bash
+curl -fsSL https://ollama.com/install.sh | sh
+ollama pull gemma4:e2b        # ships the model + an OpenAI-compatible endpoint in one tool
+# → base URL http://127.0.0.1:11434/v1 · API key "ollama" (any value) · model gemma4:e2b
+```
+
+**vLLM (GPU machine — fast, reproducible; the A1/A2/A3 eval path):**
 
 ```bash
 uv sync --extra vllm
-uv run huggingface-cli login            # accept the Gemma license at hf.co/google/gemma-4-E2B-it
-bash scripts/start_vllm.sh
+uv run huggingface-cli login   # accept the Gemma license at hf.co/google/gemma-4-E2B-it
+vllm serve google/gemma-4-E2B-it --port 8000 --dtype bfloat16 --api-key <your-token>
+# → base URL http://127.0.0.1:8000/v1 · API key <your-token> · model google/gemma-4-E2B-it
 ```
 
-**Option B — Ollama (macOS / Linux / WSL):** no GPU; the recommended real-world path.
+### 2. Configure & launch
 
 ```bash
-bash scripts/start_ollama.sh            # pulls gemma4:e2b (~5 GB), warms the model
-# then in .env:
-#   GEMMA_BASE_URL=http://127.0.0.1:11434/v1
-#   GEMMA_API_KEY=ollama        # Ollama doesn't enforce auth; any value works
-#   GEMMA_MODEL=gemma4:e2b
+cloakbot onboard      # set the remote LLM + [D] Privacy Detector
+cloakbot gateway      # serves the WebUI — open the URL it prints (default http://127.0.0.1:8765/)
 ```
 
-Both backends expose the same OpenAI-compatible surface, used **only** for local PII detection — the remote LLM call is entirely separate. Then launch the WebUI:
+Set the detector's **base URL / API key / model** under `onboard` → **[D] Privacy Detector** (or later in the WebUI under **Settings → Privacy**), and the remote LLM (Claude / GPT / Gemini) in the same flow (or **Settings → Models**). The detector exposes an OpenAI-compatible surface used **only** for local PII detection — the remote LLM call is entirely separate.
 
-```bash
-uv run python -m cloakbot webui        # gateway :8000 · frontend :5173
-```
+Then drag [`docs/demo/demo_onboarding_memo.md`](docs/demo/demo_onboarding_memo.md) into the Composer to watch 20 PII entities masked end-to-end — click **Diff** on any bubble for the Local↔Remote view.
 
 ---
 
 ## 🗺️ Roadmap
 
-### ✅ Shipped (April – May 2026)
+### ✅ Shipped — privacy kernel (`0.2.1b1`, 2026)
 
-**Core privacy runtime (v0.1)** — April
+**Core privacy runtime** — April
 - Split local detectors (general + digit) via Gemma 4 E2B
 - Session Vault with JSON persistence + cross-turn alias reuse
 - Math snippet contract + local AST-validated arithmetic executor
 - IntentAnalyzer + chat/math routing
 - `ToolPrivacyInterceptor` for tool I/O sanitisation + severity-gated approval
 
-**Trust boundary expansion (v0.2)** — May
+**Trust boundary expansion** — May
 - ✓ Long-document chunker path (`ToolPrivacyDetector` + 4 content-aware chunkers: plaintext / JSON / HTML / Markdown)
 - ✓ Visual pipeline: OCR + bbox redaction + placeholder overlay + cross-modal recall bridge
 - ✓ WebUI document upload (text/plain, text/markdown ≤ 64 KB) via the same chunker-backed sanitizer
 - ✓ Local↔Remote diff dialog with per-document entity highlighting
-- ✓ Ollama as a first-class backend (no GPU required) + one-command demo launcher
+- ✓ Ollama as a first-class backend (no GPU required) — `ollama pull gemma4:e2b` ships the model + endpoint in one tool
 
-**Trust by measurement (v0.3)** — May
+**Trust by measurement** — May
 - ✓ End-to-end leak eval harness (`tests/eval/runners/`)
 - ✓ A1 / A2 / A3 layers — **2,872 entity-test instances** of receipts
 - ✓ Type-driven detector prompts (MEDICAL recall 20% → 95%)
 - ✓ Self-caught eval bugs surfaced and fixed (token-level scoring; full-value appearance tightening)
+
+**Streaming restoration** — June
+- ✓ `StreamingSanitizer` with a carry-over window — streamed tool output (exec / shell / long-task) is sanitised incrementally, never buffered whole
+- ✓ Live placeholder→original restoration as the remote reply streams, with highlight / hover / diff in the WebUI
 
 ### 🚀 Future
 
 - **Domain-specific LoRA adapters** — fine-tune Gemma 4 E2B on vertical corpora (healthcare, legal, finance) to lift recall on domain-specific phrases. The same kernel, three adapters: pick by tenant.
 - **ORG short / hyphenated name recall** (71.67% → 90% target) — the largest remaining A1 gap, addressable with the LoRA path above
 - **Bilingual coverage** — Chinese-language eval templates + zh-CN detector prompt iteration
-- **Streaming + per-turn batching** — Medical p95 6.2 s → < 2 s target
+- **Per-turn detector batching** — Medical p95 6.2 s → < 2 s target
 - **Encrypted Vault persistence** option for shared-machine deployments
 - **Policy-driven severity tiers** beyond the current registry defaults (all `high` today)
 - **Dataset / table-specific structured chunker** (CSV / Parquet) for analytics tool outputs
@@ -239,7 +248,9 @@ uv run python -m cloakbot webui        # gateway :8000 · frontend :5173
 ## Hackathon tracks
 
 - **Main Track — Gemma 4 Good (Safety & Trust direction)** — Gemma 4 E2B as a local privacy kernel that enforces a pre-wire boundary before any byte reaches the remote LLM. Backed by 2,872 entity-test instances across A1 (text), A2 (visual), and A3 (long-document) leak evals — see [`docs/HACKATHON_WRITEUP.md`](docs/HACKATHON_WRITEUP.md).
-- **Ollama Special Technology** — `bash scripts/start_ollama.sh` ships the model + the OpenAI-compatible endpoint in one tool. **Gemma 4 is the trust layer; Ollama is the deployment layer.** Try it: `bash scripts/quickstart_demo.sh`.
+- **Ollama Special Technology** — `ollama pull gemma4:e2b` ships the model + the OpenAI-compatible endpoint in one tool, then point the detector at `http://127.0.0.1:11434/v1`. **Gemma 4 is the trust layer; Ollama is the deployment layer.**
+
+*Looking for the code exactly as submitted to the hackathon? `main` has since been rebased onto upstream nanobot — browse the [`hackathon-gemma4-2026-05`](https://github.com/spire-studio/cloakbot/tree/hackathon-gemma4-2026-05) tag for the submission snapshot.*
 
 ---
 
@@ -257,7 +268,7 @@ uv run python -m cloakbot webui        # gateway :8000 · frontend :5173
 
 ## Credits & license
 
-CloakBot is built on [nanobot](https://github.com/HKUDS/nanobot) (MIT License) by HKUDS. The channel integrations, session management, memory system, and CLI come from the upstream framework. CloakBot's privacy-specific work lives primarily under [`cloakbot/privacy/`](cloakbot/privacy/), [`cloakbot/providers/vllm.py`](cloakbot/providers/vllm.py), and the hook integration points in [`cloakbot/agent/loop.py`](cloakbot/agent/loop.py).
+CloakBot is built on [nanobot](https://github.com/HKUDS/nanobot) (MIT License) by HKUDS. The channel integrations, session management, memory system, and CLI come from the upstream framework. CloakBot's privacy-specific work lives primarily under [`cloakbot/privacy/`](cloakbot/privacy/) (detection, vaulting, egress gates, streaming restoration, and the WebUI privacy surface), the local-detector client [`cloakbot/providers/detector.py`](cloakbot/providers/detector.py), the detector config (`PrivacyDetectorConfig`) in [`cloakbot/config/schema.py`](cloakbot/config/schema.py), and the runtime seams in [`cloakbot/agent/loop.py`](cloakbot/agent/loop.py).
 
 Architecture, reliability, security, privacy-domain notes, and [design decisions](docs/design-docs/design-decisions.md) live under [`docs/`](docs/) — start with [`AGENTS.md`](AGENTS.md).
 

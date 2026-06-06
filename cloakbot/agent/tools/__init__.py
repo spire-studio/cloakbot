@@ -1,6 +1,8 @@
 """Agent tools module."""
 
 from cloakbot.agent.tools.base import Schema, Tool, tool_parameters
+from cloakbot.agent.tools.context import ToolContext
+from cloakbot.agent.tools.loader import ToolLoader
 from cloakbot.agent.tools.registry import ToolRegistry
 from cloakbot.agent.tools.schema import (
     ArraySchema,
@@ -21,6 +23,8 @@ __all__ = [
     "ObjectSchema",
     "StringSchema",
     "Tool",
+    "ToolContext",
+    "ToolLoader",
     "ToolRegistry",
     "tool_parameters",
     "tool_parameters_schema",

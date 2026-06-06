@@ -2,16 +2,185 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
-    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
-    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
-    <link rel="manifest" href="/site.webmanifest" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#161f31" />
-    <title>Cloakbot WebUI</title>
+    <meta name="color-scheme" content="light dark" />
+    <meta
+      name="description"
+      content="CloakBot web UI — chat with your CloakBot workspace."
+      data-i18n-meta="description"
+    />
+    <meta name="theme-color" content="#fafaf9" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#161618" media="(prefers-color-scheme: dark)" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/brand/cloakbot_favicon_32.png" />
+    <link rel="icon" type="image/png" sizes="73x75" href="/brand/cloakbot_icon.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/brand/cloakbot_apple_touch.png" />
+    <style>
+      html,
+      body,
+      #root {
+        height: 100%;
+      }
+
+      body {
+        margin: 0;
+        background: #ffffff;
+        color: #0a0a0a;
+        font-family:
+          system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          "Helvetica Neue", Arial, "Noto Sans", "Noto Sans SC",
+          "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
+          sans-serif;
+      }
+
+      html.dark body {
+        background: #1a1a1a;
+        color: #fafafa;
+      }
+
+      .boot-splash {
+        display: flex;
+        height: 100%;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .boot-splash-inner {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        color: rgba(255, 255, 255, 0.74);
+        font-size: 14px;
+      }
+
+      html:not(.dark) .boot-splash-inner {
+        color: rgba(10, 10, 10, 0.64);
+      }
+
+      .boot-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 9999px;
+        background: currentColor;
+        opacity: 0.75;
+        animation: boot-pulse 1s ease-in-out infinite;
+      }
+
+      @keyframes boot-pulse {
+        0%,
+        100% {
+          transform: scale(0.9);
+          opacity: 0.45;
+        }
+        50% {
+          transform: scale(1);
+          opacity: 0.85;
+        }
+      }
+    </style>
+    <script>
+      (function () {
+        try {
+          var stored = localStorage.getItem("nanobot-webui.theme");
+          var dark =
+            stored === "dark" ||
+            (!stored &&
+              window.matchMedia &&
+              window.matchMedia("(prefers-color-scheme: dark)").matches);
+          if (dark) document.documentElement.classList.add("dark");
+        } catch {}
+      })();
+    </script>
+    <script>
+      (function () {
+        var localeKey = "nanobot.locale";
+        var copy = {
+          en: {
+            boot: "Loading CloakBot…",
+            description: "CloakBot web UI — chat with your CloakBot workspace."
+          },
+          "zh-CN": {
+            boot: "正在加载 CloakBot…",
+            description: "CloakBot Web UI —— 与你的 CloakBot 工作区对话。"
+          },
+          "zh-TW": {
+            boot: "正在載入 CloakBot…",
+            description: "CloakBot Web UI —— 與你的 CloakBot 工作區對話。"
+          },
+          fr: {
+            boot: "Chargement de CloakBot…",
+            description: "Interface web CloakBot — discutez avec votre espace de travail CloakBot."
+          },
+          ja: {
+            boot: "CloakBot を読み込み中…",
+            description: "CloakBot Web UI — CloakBot ワークスペースと会話します。"
+          },
+          ko: {
+            boot: "CloakBot 불러오는 중…",
+            description: "CloakBot 웹 UI — CloakBot 작업공간과 대화하세요."
+          },
+          es: {
+            boot: "Cargando CloakBot…",
+            description: "Interfaz web de CloakBot: conversa con tu espacio de trabajo de CloakBot."
+          },
+          vi: {
+            boot: "Đang tải CloakBot…",
+            description: "Giao diện web CloakBot — trò chuyện với workspace CloakBot của bạn."
+          },
+          id: {
+            boot: "Memuat CloakBot…",
+            description: "UI web CloakBot — ngobrol dengan workspace CloakBot Anda."
+          }
+        };
+
+        function normalizeLocale(input) {
+          if (!input) return "en";
+          var raw = String(input).trim();
+          if (!raw) return "en";
+          if (copy[raw]) return raw;
+          var lower = raw.toLowerCase();
+          if (lower === "zh" || lower.indexOf("zh-cn") === 0 || lower.indexOf("zh-sg") === 0) {
+            return "zh-CN";
+          }
+          if (
+            lower.indexOf("zh-tw") === 0 ||
+            lower.indexOf("zh-hk") === 0 ||
+            lower.indexOf("zh-mo") === 0 ||
+            lower.indexOf("zh-hant") === 0
+          ) {
+            return "zh-TW";
+          }
+          var base = lower.split("-")[0];
+          return copy[base] ? base : "en";
+        }
+
+        try {
+          var stored = localStorage.getItem(localeKey);
+          var detected =
+            stored ||
+            (navigator.languages && navigator.languages[0]) ||
+            navigator.language ||
+            "en";
+          var locale = normalizeLocale(detected);
+          var localized = copy[locale] || copy.en;
+          document.documentElement.lang = locale;
+          var description = document.querySelector('[data-i18n-meta=\"description\"]');
+          if (description) description.setAttribute("content", localized.description);
+          var boot = document.querySelector("[data-boot-copy]");
+          if (boot) boot.textContent = localized.boot;
+        } catch {}
+      })();
+    </script>
+    <title>CloakBot</title>
   </head>
-  <body>
-    <div id="root"></div>
+  <body class="bg-background text-foreground antialiased">
+    <div id="root">
+      <div class="boot-splash">
+        <div class="boot-splash-inner">
+          <span class="boot-dot" aria-hidden="true"></span>
+          <span data-boot-copy>Loading CloakBot…</span>
+        </div>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

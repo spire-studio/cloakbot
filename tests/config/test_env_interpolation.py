@@ -80,3 +80,46 @@ class TestResolveConfig:
 
         saved = json.loads(config_path.read_text(encoding="utf-8"))
         assert saved["channels"]["telegram"]["token"] == "${MY_TOKEN}"
+
+    def test_preserves_excluded_fields_when_no_env_refs(self, tmp_path):
+        """Regression: fields with ``exclude=True`` (e.g. ProviderConfig.openai_codex)
+        must survive ``resolve_config_env_vars`` when the config has no
+        ``${VAR}`` references. Previously the unconditional dump→revalidate
+        roundtrip silently dropped them."""
+        config_path = tmp_path / "config.json"
+        config_path.write_text(
+            json.dumps(
+                {"providers": {"openaiCodex": {"apiKey": "secret"}}}
+            ),
+            encoding="utf-8",
+        )
+
+        raw = load_config(config_path)
+        assert raw.providers.openai_codex.api_key == "secret"
+
+        resolved = resolve_config_env_vars(raw)
+        assert resolved.providers.openai_codex.api_key == "secret"
+
+    def test_preserves_excluded_fields_with_env_refs(self, tmp_path, monkeypatch):
+        """Excluded fields must also survive when the config contains
+        ``${VAR}`` refs elsewhere. An in-place walk preserves the excluded
+        field even as unrelated string fields are substituted."""
+        monkeypatch.setenv("TEST_API_KEY", "resolved-key")
+        config_path = tmp_path / "config.json"
+        config_path.write_text(
+            json.dumps(
+                {
+                    "providers": {
+                        "openaiCodex": {"apiKey": "secret"},
+                        "groq": {"apiKey": "${TEST_API_KEY}"},
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        raw = load_config(config_path)
+        resolved = resolve_config_env_vars(raw)
+
+        assert resolved.providers.groq.api_key == "resolved-key"
+        assert resolved.providers.openai_codex.api_key == "secret"

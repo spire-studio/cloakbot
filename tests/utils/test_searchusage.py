@@ -2,16 +2,16 @@
 
 from __future__ import annotations
 
+import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
-
-from cloakbot.utils.helpers import build_status_content
 from cloakbot.utils.searchusage import (
     SearchUsageInfo,
     _parse_tavily_usage,
     fetch_search_usage,
 )
+from cloakbot.utils.helpers import build_status_content
+
 
 # ---------------------------------------------------------------------------
 # SearchUsageInfo.format() tests

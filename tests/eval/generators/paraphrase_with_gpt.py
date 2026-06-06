@@ -1,7 +1,7 @@
 """Paraphrase multi-turn eval templates with GPT while preserving slot tokens.
 
-Reads ``OPENAI_API_KEY`` and ``OPENAI_API_BASE`` from ``.env`` at the repo
-root. GPT only sees the template's natural-language turns; it is forbidden
+Reads ``OPENAI_API_KEY`` and ``OPENAI_API_BASE`` from the environment.
+GPT only sees the template's natural-language turns; it is forbidden
 from inventing or dropping any ``{slot}`` token (it MAY move tokens across
 turns, which is good — it widens the alias-consistency test surface).
 
@@ -23,11 +23,9 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from dotenv import load_dotenv
 from openai import OpenAI, RateLimitError
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-load_dotenv(REPO_ROOT / ".env")
 
 _SLOT_RE = re.compile(r"\{(\w+)\}")
 
@@ -196,7 +194,7 @@ def main() -> None:
 
     if "OPENAI_API_KEY" not in os.environ:
         print(
-            "OPENAI_API_KEY not set. Put it in .env at the repo root or export it.",
+            "OPENAI_API_KEY not set. Export it, e.g. `export OPENAI_API_KEY=...`.",
             file=sys.stderr,
         )
         sys.exit(2)

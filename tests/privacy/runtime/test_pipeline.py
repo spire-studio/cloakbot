@@ -324,6 +324,9 @@ async def test_runtime_prepare_turn_routes_user_attached_images_through_visual_p
         "cloakbot.privacy.runtime.pipeline.analyze_user_intent",
         new=AsyncMock(return_value=Intent.CHAT),
     ), patch(
+        "cloakbot.privacy.runtime.pipeline._visual_privacy_enabled",
+        return_value=True,
+    ), patch(
         "cloakbot.privacy.runtime.pipeline.process_visual_blocks",
         new=AsyncMock(side_effect=fake_process),
     ):
@@ -372,6 +375,9 @@ async def test_runtime_prepare_turn_fails_closed_when_visual_pipeline_raises(
     ), patch(
         "cloakbot.privacy.runtime.pipeline.analyze_user_intent",
         new=AsyncMock(return_value=Intent.CHAT),
+    ), patch(
+        "cloakbot.privacy.runtime.pipeline._visual_privacy_enabled",
+        return_value=True,
     ), patch(
         "cloakbot.privacy.runtime.pipeline.process_visual_blocks",
         new=AsyncMock(side_effect=RuntimeError("vllm down")),

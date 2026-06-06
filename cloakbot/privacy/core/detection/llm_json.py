@@ -7,7 +7,7 @@ from typing import Any
 
 from loguru import logger
 
-from cloakbot.providers.vllm import get_vllm_client, get_vllm_model
+from cloakbot.providers.detector import get_detector_client, get_detector_model
 
 
 class JsonCompletionRunner:
@@ -17,7 +17,7 @@ class JsonCompletionRunner:
         self._temperature = temperature
 
     async def complete(self, system_prompt: str, prompt: str) -> tuple[str, float]:
-        client = get_vllm_client()
+        client = get_detector_client()
         messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": prompt},
@@ -42,7 +42,7 @@ class JsonCompletionRunner:
         messages: list[dict[str, str]],
     ) -> str:
         response = await client.chat.completions.create(
-            model=get_vllm_model(),
+            model=get_detector_model(),
             messages=messages,  # type: ignore[arg-type]
             temperature=self._temperature,
             stream=False,

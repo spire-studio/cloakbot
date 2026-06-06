@@ -13,6 +13,7 @@ def test_importing_providers_package_is_lazy(monkeypatch) -> None:
     monkeypatch.delitem(sys.modules, "cloakbot.providers.openai_codex_provider", raising=False)
     monkeypatch.delitem(sys.modules, "cloakbot.providers.github_copilot_provider", raising=False)
     monkeypatch.delitem(sys.modules, "cloakbot.providers.azure_openai_provider", raising=False)
+    monkeypatch.delitem(sys.modules, "cloakbot.providers.bedrock_provider", raising=False)
 
     providers = importlib.import_module("cloakbot.providers")
 
@@ -21,6 +22,7 @@ def test_importing_providers_package_is_lazy(monkeypatch) -> None:
     assert "cloakbot.providers.openai_codex_provider" not in sys.modules
     assert "cloakbot.providers.github_copilot_provider" not in sys.modules
     assert "cloakbot.providers.azure_openai_provider" not in sys.modules
+    assert "cloakbot.providers.bedrock_provider" not in sys.modules
     assert providers.__all__ == [
         "LLMProvider",
         "LLMResponse",
@@ -29,6 +31,7 @@ def test_importing_providers_package_is_lazy(monkeypatch) -> None:
         "OpenAICodexProvider",
         "GitHubCopilotProvider",
         "AzureOpenAIProvider",
+        "BedrockProvider",
     ]
 
 
@@ -41,3 +44,9 @@ def test_explicit_provider_import_still_works(monkeypatch) -> None:
 
     assert namespace["AnthropicProvider"].__name__ == "AnthropicProvider"
     assert "cloakbot.providers.anthropic_provider" in sys.modules
+
+
+def test_openai_codex_supports_progress_deltas() -> None:
+    from cloakbot.providers.openai_codex_provider import OpenAICodexProvider
+
+    assert OpenAICodexProvider.supports_progress_deltas is True
