@@ -5,6 +5,7 @@ import time
 from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
+import dulwich.porcelain as dulwich_porcelain
 import pytest
 
 from cloakbot.utils.gitstore import GitStore
@@ -214,3 +215,43 @@ class TestNestedRepoProtection:
 
         assert result is False
         assert not (workspace / ".git").exists()
+
+
+class TestCommitSigning:
+    """Regression: the internal memory store must never sign its commits.
+
+    A user with a global ``commit.gpgsign = true`` (e.g. 1Password SSH signing)
+    would otherwise have dulwich invoke their signer on the synthetic
+    ``cloakbot@dream`` commit, which crashes onboarding. Both init() and
+    auto_commit() must pass ``sign=False`` to dulwich.
+    """
+
+    def test_init_passes_sign_false(self, tmp_path):
+        captured = []
+        real_commit = dulwich_porcelain.commit
+
+        def spy(*args, **kwargs):
+            captured.append(kwargs)
+            return real_commit(*args, **kwargs)
+
+        g = GitStore(tmp_path, tracked_files=["MEMORY.md"])
+        with patch.object(dulwich_porcelain, "commit", side_effect=spy):
+            assert g.init() is True
+
+        assert captured, "init() did not commit"
+        assert all(kw.get("sign") is False for kw in captured)
+
+    def test_auto_commit_passes_sign_false(self, git, tmp_path):
+        captured = []
+        real_commit = dulwich_porcelain.commit
+
+        def spy(*args, **kwargs):
+            captured.append(kwargs)
+            return real_commit(*args, **kwargs)
+
+        (tmp_path / "MEMORY.md").write_text("## A\n- x\n", encoding="utf-8")
+        with patch.object(dulwich_porcelain, "commit", side_effect=spy):
+            assert git.auto_commit("change") is not None
+
+        assert captured, "auto_commit() did not commit"
+        assert all(kw.get("sign") is False for kw in captured)

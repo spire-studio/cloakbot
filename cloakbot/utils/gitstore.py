@@ -109,6 +109,9 @@ class GitStore:
                 message=b"init: cloakbot memory store",
                 author=b"cloakbot <cloakbot@dream>",
                 committer=b"cloakbot <cloakbot@dream>",
+                # Internal memory store: never sign with the user's global
+                # commit.gpgsign config (would invoke their GPG/SSH signer).
+                sign=False,
             )
             logger.info("Git store initialized at {}", self._workspace)
             return True
@@ -142,6 +145,7 @@ class GitStore:
                 message=msg_bytes,
                 author=b"cloakbot <cloakbot@dream>",
                 committer=b"cloakbot <cloakbot@dream>",
+                sign=False,  # internal store; never use the user's commit.gpgsign
             )
             if sha_bytes is None:
                 return None
