@@ -10,13 +10,13 @@ from typing import Any
 from cloakbot.agent.tools.base import Tool, tool_parameters
 from cloakbot.agent.tools.file_state import FileStates, _hash_file, current_file_states
 from cloakbot.agent.tools.path_utils import resolve_workspace_path
-from cloakbot.security.workspace_access import current_tool_workspace
 from cloakbot.agent.tools.schema import (
     BooleanSchema,
     IntegerSchema,
     StringSchema,
     tool_parameters_schema,
 )
+from cloakbot.security.workspace_access import current_tool_workspace
 from cloakbot.utils.helpers import build_image_content_blocks, detect_image_mime
 
 
@@ -318,7 +318,12 @@ class ReadFileTool(_FsTool):
         except Exception as e:
             return f"Error reading file: {e}"
 
-    def _read_pdf(self, fp: Path, pages: str | None) -> str:
+    # DPI used when rasterizing image-only / scanned PDF pages. Ported from
+    # main's read_file visual handoff (W3): 200 DPI is enough for downstream
+    # OCR / visual redaction without producing oversized PNGs.
+    _PDF_RENDER_DPI = 200
+
+    def _read_pdf(self, fp: Path, pages: str | None) -> Any:
         try:
             import fitz  # pymupdf
         except ImportError:
@@ -346,23 +351,42 @@ class ReadFileTool(_FsTool):
         if end - start + 1 > self._MAX_PDF_PAGES:
             end = start + self._MAX_PDF_PAGES - 1
 
+        # Fast path: try the PDF's embedded text layer first. Digitally-issued
+        # documents (most invoices, contracts, web-exported reports) ship with a
+        # selectable text layer that is far cheaper and more accurate than OCR.
         parts: list[str] = []
-        for i in range(start, end + 1):
-            page = doc[i]
-            text = page.get_text().strip()
-            if text:
-                parts.append(f"--- Page {i + 1} ---\n{text}")
-        doc.close()
+        try:
+            for i in range(start, end + 1):
+                page = doc[i]
+                text = page.get_text().strip()
+                if text:
+                    parts.append(f"--- Page {i + 1} ---\n{text}")
 
-        if not parts:
-            return f"(PDF has no extractable text: {fp})"
+            if parts:
+                result = f"(PDF text layer extracted from: {fp})\n\n" + "\n\n".join(parts)
+                if end < total_pages - 1:
+                    result += f"\n\n(Showing pages {start + 1}-{end + 1} of {total_pages}. Use pages='{end + 2}-{min(end + 1 + self._MAX_PDF_PAGES, total_pages)}' to continue.)"
+                if len(result) > self._MAX_CHARS:
+                    result = result[:self._MAX_CHARS] + "\n\n(PDF text truncated at ~128K chars)"
+                return result
 
-        result = "\n\n".join(parts)
-        if end < total_pages - 1:
-            result += f"\n\n(Showing pages {start + 1}-{end + 1} of {total_pages}. Use pages='{end + 2}-{min(end + 1 + self._MAX_PDF_PAGES, total_pages)}' to continue.)"
-        if len(result) > self._MAX_CHARS:
-            result = result[:self._MAX_CHARS] + "\n\n(PDF text truncated at ~128K chars)"
-        return result
+            # No extractable text (scanned / image-only PDF): rasterize the
+            # first in-range page to PNG and hand it to the SAME image content
+            # block builder used for uploaded image files, so the page routes
+            # through the downstream visual-redaction pipeline.
+            zoom = self._PDF_RENDER_DPI / 72
+            page = doc[start]
+            pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom), alpha=False)
+            png = pix.tobytes("png")
+        finally:
+            doc.close()
+
+        return build_image_content_blocks(
+            png,
+            "image/png",
+            str(fp),
+            f"(PDF file rendered as page {start + 1} image: {fp})",
+        )
 
     def _read_office_doc(self, fp: Path) -> str:
         from cloakbot.utils.document import extract_text

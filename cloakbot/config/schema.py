@@ -321,10 +321,21 @@ class PrivacyDetectorConfig(Base):
     Detection runs on a LOCAL model so raw input never leaves the machine.
     Pointing this at a REMOTE endpoint (e.g. OpenRouter) is TEST-ONLY: it sends
     raw, unsanitized input to that endpoint for detection, which defeats the
-    privacy guarantee. The ``GEMMA_BASE_URL`` / ``GEMMA_API_KEY`` / ``GEMMA_MODEL``
-    env vars (``.env``) override these when set, for back-compat.
+    privacy guarantee. This section is the single source of truth for the
+    detector connection — set it via ``cloakbot onboard`` -> [D] Privacy Detector
+    or the WebUI Settings -> Privacy tab.
     """
 
+    enabled: bool = Field(
+        default=True,
+        description="Master switch for the whole privacy pipeline (local PII "
+        "detection -> placeholder sanitization -> local restoration). ON (default) "
+        "but only ACTIVE once a detector (base_url + api_key) is configured — with "
+        "no detector there is nothing to detect, so the UI shows privacy OFF and "
+        "text passes through. Set false to bypass privacy entirely (raw text + "
+        "images reach the model, like a plain assistant). Image privacy "
+        "(visual_enabled) is nested under this — it does nothing when this is off.",
+    )
     base_url: str | None = Field(
         default=None,
         description="Detector endpoint — OpenAI-compatible base URL "
@@ -338,6 +349,33 @@ class PrivacyDetectorConfig(Base):
         default="google/gemma-4-E2B-it",
         description="Detector model id (e.g. gemma4:e2b for Ollama)",
     )
+    inject_system_prompt: bool = Field(
+        default=True,
+        description="Inject the always-on privacy-mode system prompt that teaches "
+        "the model to use <<TYPE_N>> placeholders as real values. Off-switch only; "
+        "disabling it does NOT change detection/redaction — raw data is still "
+        "never sent to the remote path.",
+    )
+    visual_enabled: bool = Field(
+        default=False,
+        description="[alpha] Visual redaction for uploaded IMAGES. ON: run the local "
+        "visual pipeline (vLLM detect + OCR pixel-redaction) so a REDACTED image + "
+        "placeholder map reach the model (needs a reachable local visual detector). "
+        "OFF (default): images are sent to the model AS-IS — no visual redaction "
+        "(typed text is still placeholdered). Turn ON to redact PII in images before "
+        "they leave the machine.",
+    )
+
+    @model_validator(mode="after")
+    def _nest_visual_under_master(self) -> "PrivacyDetectorConfig":
+        # Image privacy is nested under the master switch: with the whole privacy
+        # pipeline off there is nothing to redact, so visual_enabled can never be
+        # on. Enforced at the schema layer so every surface stays consistent — the
+        # webui Privacy tab, the TUI onboard wizard, hand-edited config, and env
+        # overrides — not just the webui settings API.
+        if not self.enabled and self.visual_enabled:
+            self.visual_enabled = False
+        return self
 
 
 class Config(BaseSettings):

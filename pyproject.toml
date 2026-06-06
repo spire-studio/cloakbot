@@ -134,6 +134,7 @@ include = [
     "webui/**/*.py",
     "webui/dist/**/*",
     "cloakbot/templates/**/*.md",
+    "cloakbot/privacy/**/*.md",
     "cloakbot/skills/**/*.md",
     "cloakbot/skills/**/*.sh",
 ]

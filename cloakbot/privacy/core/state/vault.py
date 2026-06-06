@@ -6,6 +6,7 @@ import contextlib
 import json
 import os
 import re
+import shutil
 import tempfile
 import threading
 import unicodedata
@@ -803,3 +804,35 @@ def clear_cache(session_key: str) -> None:
         _ephemeral_cache.pop(scope.storage_key, None)
         return
     _cache.pop(scope.storage_key, None)
+
+
+def delete_session_vault(session_key: str) -> bool:
+    """Cascade-delete all on-disk privacy state for *session_key*.
+
+    Removes the placeholder map (``maps/{key}.json``), the per-turn WebUI privacy
+    log (``turns/{key}.jsonl``), and any tool artifacts minted under this session
+    (``artifacts/{key}/``), then evicts the in-memory cache. Called when a WebUI
+    chat is deleted so the local vault never outlives the conversation it mirrors
+    (the vault holds raw placeholder↔value mappings at rest).
+
+    Best-effort and idempotent: missing files are ignored. Returns ``True`` if
+    anything was removed.
+    """
+    clear_cache(session_key)
+    safe = _safe_key(session_key)
+    vault_dir = get_privacy_vault_dir(_workspace)
+    removed = False
+    for path in (
+        vault_dir / "maps" / f"{safe}.json",
+        vault_dir / "turns" / f"{safe}.jsonl",
+    ):
+        if path.is_file():
+            with contextlib.suppress(OSError):
+                path.unlink()
+                removed = True
+    artifacts_dir = vault_dir / "artifacts" / safe
+    if artifacts_dir.is_dir():
+        with contextlib.suppress(OSError):
+            shutil.rmtree(artifacts_dir)
+            removed = True
+    return removed

@@ -129,3 +129,52 @@ def test_build_local_computation_annotations_marks_visible_result_span() -> None
     assert annotations[0].start == 33
     assert annotations[0].end == 42
     assert annotations[0].formula == "205000000 * 1.23"
+
+
+def test_restore_with_annotations_uses_utf16_offsets_past_astral_chars() -> None:
+    """Annotation offsets index UTF-16 code units (what the WebUI / JS uses), not
+    Python code points. An emoji (astral char = one code point but two UTF-16
+    units) before an entity must NOT shift the highlight. Regression for the visual
+    offset bug where ``📄``/``💳`` in a reply pushed every later highlight left.
+    """
+    smap = _SessionMap(
+        original_to_placeholder={"Alice Chen": "<<PERSON_1>>"},
+        placeholder_to_original={"<<PERSON_1>>": "Alice Chen"},
+        counters={"PERSON": 1},
+    )
+
+    restored, annotations = restore_tokens_with_annotations("📄 <<PERSON_1>>", smap)
+
+    assert restored == "📄 Alice Chen"
+    assert len(annotations) == 1
+    # Code-point index of the entity is 2 (📄, space); the UTF-16 index is 3
+    # because 📄 occupies two UTF-16 code units.
+    assert annotations[0].start == 3
+    assert annotations[0].end == 3 + len("Alice Chen")
+    # The UTF-16 slice (what the browser does) lands exactly on the entity.
+    u16 = restored.encode("utf-16-le")
+    sliced = u16[annotations[0].start * 2 : annotations[0].end * 2].decode("utf-16-le")
+    assert sliced == "Alice Chen"
+
+
+def test_local_computation_annotations_use_utf16_offsets_past_astral_chars() -> None:
+    """Local-computation result spans use UTF-16 offsets too (same emoji shift)."""
+    text = "💳 total 42 ok"  # 💳 is astral; the visible result is "42"
+
+    annotations = build_local_computation_annotations(
+        text,
+        [
+            LocalComputationRecord(
+                snippet_index=1,
+                expression="x",
+                resolved_expression="40 + 2",
+                result=42,
+                formatted_result="42",
+            )
+        ],
+    )
+
+    assert len(annotations) == 1
+    u16 = text.encode("utf-16-le")
+    sliced = u16[annotations[0].start * 2 : annotations[0].end * 2].decode("utf-16-le")
+    assert sliced == "42"

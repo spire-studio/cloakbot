@@ -151,17 +151,6 @@ _REBASE_XFAIL: dict[str, tuple[str, set[str]]] = {
         "stale fork test: SDK facade _make_provider replaced by providers/factory.py upstream",
         {"test_from_config_default_path", "test_sdk_make_provider_uses_github_copilot_backend"},
     ),
-    "tests/privacy/test_pdf_text_layer.py": (
-        "deferred to W3: read_file PDF/visual privacy not yet re-applied on upstream read_file",
-        {
-            "test_read_file_uses_text_layer_when_pdf_is_selectable",
-            "test_read_file_falls_back_to_image_render_for_image_only_pdf",
-        },
-    ),
-    "tests/security/test_security_network.py": (
-        "sandbox-limited: needs outbound network; xpasses in a real environment",
-        {"test_allows_normal_https"},
-    ),
     "tests/tools/test_mcp_probe.py": (
         "sandbox-limited: needs a real listening socket; xpasses in a real environment",
         {"test_probe_returns_true_for_open_port", "test_probe_uses_default_port_for_http"},

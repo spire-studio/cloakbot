@@ -355,6 +355,7 @@ class SubagentManager:
         """Build a focused system prompt for the subagent."""
         from cloakbot.agent.context import ContextBuilder
         from cloakbot.agent.skills import SkillsLoader
+        from cloakbot.privacy.prompting import build_privacy_system_section
 
         time_ctx = ContextBuilder._build_runtime_context(None, None)
         root = workspace or self.workspace
@@ -362,12 +363,20 @@ class SubagentManager:
             root,
             disabled_skills=self.disabled_skills,
         ).build_skills_summary()
-        return render_template(
+        prompt = render_template(
             "agent/subagent_system.md",
             time_ctx=time_ctx,
             workspace=str(root),
             skills_summary=skills_summary or "",
         )
+        # [seam:privacy] Subagents share the session vault and also see <<TYPE_N>>
+        # placeholders, so they get the same deployment-level privacy-mode banner.
+        # Appended (not prepended) so the subagent's own identity stays first; None
+        # when disabled via config, leaving the prompt identical to upstream.
+        privacy_section = build_privacy_system_section()
+        if privacy_section:
+            prompt = f"{prompt}\n\n---\n\n{privacy_section}"
+        return prompt
 
     async def cancel_by_session(self, session_key: str) -> int:
         """Cancel all subagents for the given session. Returns count cancelled."""

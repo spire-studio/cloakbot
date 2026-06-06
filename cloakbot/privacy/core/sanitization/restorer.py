@@ -25,6 +25,32 @@ class RestoredTokenAnnotation(BaseModel):
     formula: str | None = None
 
 
+def _reindex_annotations_utf16(text: str, annotations: list[RestoredTokenAnnotation]) -> None:
+    """Rewrite annotation ``start``/``end`` from Python code-point indices into
+    UTF-16 code-unit indices (in place).
+
+    Offsets are computed here in Python, where ``len()``/slicing count Unicode
+    code points, but they are consumed by the WebUI (JavaScript), whose strings
+    are indexed by UTF-16 code units. An astral character — e.g. an emoji such as
+    ``📄``/``💳`` (one code point but two UTF-16 units) — therefore shifts every
+    following highlight LEFT in the browser by one unit per emoji. Remapping to
+    UTF-16 here keeps the rendered highlight aligned with the restored text and
+    keeps ``content.slice(start, end) === text`` valid on the client (live + on
+    refresh). For BMP-only text the mapping is the identity.
+    """
+    if not annotations:
+        return
+    # prefix[i] = number of UTF-16 code units in text[:i]
+    prefix = [0] * (len(text) + 1)
+    for i, ch in enumerate(text):
+        prefix[i + 1] = prefix[i] + (2 if ord(ch) > 0xFFFF else 1)
+    n = len(text)
+    for annotation in annotations:
+        if 0 <= annotation.start <= annotation.end <= n:
+            annotation.start = prefix[annotation.start]
+            annotation.end = prefix[annotation.end]
+
+
 def restore_tokens(text: str, smap: _SessionMap) -> str:
     """
     Replace every ``<<TOKEN>>`` placeholder in *text* with its original value
@@ -91,7 +117,9 @@ def restore_tokens_with_annotations(
     if cursor < len(text):
         parts.append(text[cursor:])
 
-    return "".join(parts), annotations
+    restored_text = "".join(parts)
+    _reindex_annotations_utf16(restored_text, annotations)
+    return restored_text, annotations
 
 
 def build_local_computation_annotations(
@@ -129,6 +157,7 @@ def build_local_computation_annotations(
         )
         cursor = end
 
+    _reindex_annotations_utf16(text, annotations)
     return annotations
 
 

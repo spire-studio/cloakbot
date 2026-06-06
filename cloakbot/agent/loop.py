@@ -42,7 +42,11 @@ from cloakbot.privacy import post_llm_hook, pre_llm_hook
 from cloakbot.privacy.compaction_provider import install_compaction_guard
 from cloakbot.privacy.core.state.vault import set_vault_workspace, use_ephemeral_scope
 from cloakbot.privacy.hooks.context import TurnContext as PrivacyTurnContext
+from cloakbot.privacy.prompting import build_privacy_system_section
+from cloakbot.privacy.runtime.pipeline import privacy_mode_active
+from cloakbot.privacy.runtime.streaming_restorer import StreamingRestorer
 from cloakbot.privacy.runtime.tool_interceptor import ToolPrivacyInterceptor
+from cloakbot.privacy.tool_models import ToolApprovalRequiredError
 from cloakbot.providers.base import LLMProvider
 from cloakbot.providers.factory import ProviderSnapshot
 from cloakbot.security.workspace_access import (
@@ -133,6 +137,12 @@ class TurnContext:
     tools: ToolRegistry | None = None
 
     privacy_ctx: PrivacyTurnContext | None = None
+    # [seam:privacy] When the user attaches images, pre_llm_hook returns a list
+    # of OpenAI-style content blocks with each image already run through the
+    # visual-redaction pipeline. That payload is threaded here so
+    # _build_initial_messages can send it to the LLM, while msg.content/msg.media
+    # stay local-only for history/persistence (the raw originals never egress).
+    llm_content: str | list[dict[str, Any]] | None = None
 
     turn_wall_started_at: float = field(default_factory=time.time)
     visible_run_started_at: float | None = None
@@ -611,13 +621,35 @@ class AgentLoop:
         history: list[dict[str, Any]],
         pending_summary: str | None,
         include_memory_recent_history: bool = True,
+        current_message: str | list[dict[str, Any]] | None = None,
     ) -> list[dict[str, Any]]:
-        """Build the initial message list for the LLM turn."""
+        """Build the initial message list for the LLM turn.
+
+        ``current_message`` overrides the user-content payload — privacy passes
+        the visual-redaction-woven content blocks (``ctx.llm_content``) here. When
+        ``None`` (text-only turn) the typed prompt is used, decorated for WebUI
+        image-generation mode.
+        """
         scope = self.workspace_scopes.for_message(msg, session.metadata)
+        # [seam:privacy] Privacy-mode banner, owned entirely by cloakbot/privacy/.
+        # It teaches the model to treat <<TYPE_N>> placeholders as the real,
+        # locally-restored values instead of refusing them as fake. Deployment-level
+        # always-on; returns None when disabled via config
+        # (privacy.inject_system_prompt = false), leaving the prompt identical to
+        # upstream. The context builder receives it as opaque text only.
+        privacy_section = build_privacy_system_section()
+        # When privacy wove the LLM payload (``current_message`` provided as
+        # ctx.llm_content), it owns the media — the redacted/raw image blocks are
+        # already inside it, so do NOT re-attach. When it did not (master privacy
+        # OFF, or a plain text turn), let the context builder attach the raw media
+        # so uploaded images still reach the model.
+        privacy_owns_media = current_message is not None
+        if current_message is None:
+            current_message = image_generation_prompt(msg.content, msg.metadata)
         return self.context.build_messages(
             history=history,
-            current_message=image_generation_prompt(msg.content, msg.metadata),
-            media=msg.media if msg.media else None,
+            current_message=current_message,
+            media=None if privacy_owns_media else (msg.media if msg.media else None),
             channel=msg.channel,
             chat_id=self._runtime_chat_id(msg),
             sender_id=msg.sender_id,
@@ -627,6 +659,7 @@ class AgentLoop:
             runtime_state=self,
             inbound_message=msg,
             include_memory_recent_history=include_memory_recent_history,
+            extra_system_sections=[privacy_section] if privacy_section else None,
         )
 
     async def _dispatch_command_inline(
@@ -956,22 +989,43 @@ class AgentLoop:
                         # Split one answer into distinct stream segments.
                         stream_base_id = f"{msg.session_key}:{time.time_ns()}"
                         stream_segment = 0
+                        # [seam:privacy] Restore <<TAG_N>> placeholders in the live
+                        # delta stream so the webui shows real values, matching the
+                        # already-restored final message (which is sent ungated to
+                        # every connection anyway). One restorer per segment; its
+                        # carry-over tail keeps a token split across chunks
+                        # (<<PER | SON_1>>) intact. See privacy/runtime/streaming_restorer.py.
+                        stream_restorer: StreamingRestorer | None = None
 
                         def _current_stream_id() -> str:
                             return f"{stream_base_id}:{stream_segment}"
 
-                        async def on_stream(delta: str) -> None:
+                        async def _publish_delta(text: str) -> None:
+                            if not text:
+                                return
                             meta = dict(msg.metadata or {})
                             meta["_stream_delta"] = True
                             meta["_stream_id"] = _current_stream_id()
                             await self.bus.publish_outbound(OutboundMessage(
                                 channel=msg.channel, chat_id=msg.chat_id,
-                                content=delta,
+                                content=text,
                                 metadata=meta,
                             ))
 
+                        async def on_stream(delta: str) -> None:
+                            nonlocal stream_restorer
+                            if stream_restorer is None:
+                                stream_restorer = StreamingRestorer(session_key)
+                            await _publish_delta(stream_restorer.feed(delta))
+
                         async def on_stream_end(*, resuming: bool = False) -> None:
-                            nonlocal stream_segment
+                            nonlocal stream_segment, stream_restorer
+                            # Flush the carry-over tail as a final delta of THIS
+                            # segment (same stream id) before the end frame, then
+                            # reset so the next segment starts clean.
+                            if stream_restorer is not None:
+                                await _publish_delta(stream_restorer.finalize())
+                                stream_restorer = None
                             meta = dict(msg.metadata or {})
                             meta["_stream_end"] = True
                             meta["_resuming"] = resuming
@@ -1032,6 +1086,38 @@ class AgentLoop:
                             exc_info=True,
                         )
                     raise
+                except ToolApprovalRequiredError as approval:
+                    # [#2 bounded] A non-LOCAL tool was about to send sensitive data
+                    # externally. Interactive approval (PendingToolApproval
+                    # store->resume) is not wired yet, so fail closed with a clear,
+                    # specific notice instead of the generic error below — nothing
+                    # left the machine. Full HITL approval is a tracked follow-up.
+                    request = approval.request
+                    entity_types = sorted(
+                        {getattr(e, "entity_type", "") for e in request.detected_entities} - {""}
+                    )
+                    types_label = ", ".join(entity_types) if entity_types else "sensitive data"
+                    logger.info(
+                        "tool approval required (fail-closed, HITL not wired): tool={} session={} types={}",
+                        request.tool_name, session_key, types_label,
+                    )
+                    await self.bus.publish_outbound(OutboundMessage(
+                        channel=msg.channel, chat_id=msg.chat_id,
+                        content=(
+                            f"🔒 Held the “{request.tool_name}” action to protect your data: it would "
+                            f"have sent {types_label} to an external (non-local) tool, which requires your "
+                            f"approval. Interactive approval isn't available yet, so it was blocked fail-closed "
+                            f"— nothing left your machine. Rephrase to avoid sending that data externally, "
+                            f"or run the tool on local / non-sensitive input."
+                        ),
+                    ))
+                    if not turn_continuation.internal_continuation_pending(msg.metadata):
+                        await self._runtime_events().turn_completed(
+                            channel=msg.channel,
+                            chat_id=msg.chat_id,
+                            session_key=session_key,
+                            metadata=msg.metadata,
+                        )
                 except Exception:
                     logger.exception("Error processing message for session {}", session_key)
                     await self.bus.publish_outbound(OutboundMessage(
@@ -1408,20 +1494,40 @@ class AgentLoop:
 
     async def _state_build(self, ctx: TurnContext) -> str:
         # --- [seam:2] privacy: sanitize the user turn before it enters the
-        # prompt OR the persisted session. Only mutate the turn when the
-        # detector actually redacted something, so non-sensitive turns stay
-        # byte-for-byte identical to upstream (streaming is suppressed only then,
-        # to keep placeholders off the wire mid-stream). Media/visual privacy is
-        # deferred to W3 — attachments currently pass through unchanged; the text
-        # path is the guaranteed boundary here.
-        if ctx.privacy_ctx is None:
+        # prompt OR the persisted session. Text is placeholdered; attached images
+        # are run through the visual-redaction pipeline (fail-closed) and the
+        # redacted blocks become the remote payload via ctx.llm_content. Gated on
+        # the master privacy switch (privacy_mode_active): when OFF the block is
+        # skipped — privacy_ctx stays None, so text/media reach the model raw
+        # (_build_initial_messages re-attaches the raw media) and outbound
+        # restoration / the WebUI side-channel are skipped downstream.
+        if ctx.privacy_ctx is None and privacy_mode_active():
             prepared, ctx.privacy_ctx = await pre_llm_hook(
-                ctx.msg.content, ctx.session_key, media=None, fail_open=True,
+                ctx.msg.content,
+                ctx.session_key,
+                media=ctx.msg.media or None,
+                fail_open=True,
             )
-            if ctx.privacy_ctx.was_sanitized:
+            if isinstance(prepared, list):
+                # Images attached: pre_llm_hook wove visual-redaction output into
+                # `prepared`. Route those blocks to the LLM; keep msg.content as
+                # the sanitized text and msg.media intact so local history is
+                # unchanged. _build_initial_messages sends media=None, so the raw
+                # originals never reach the remote request.
+                ctx.llm_content = prepared
+                if ctx.privacy_ctx.was_sanitized:
+                    ctx.msg = dataclasses.replace(
+                        ctx.msg, content=ctx.privacy_ctx.sanitized_input
+                    )
+            elif ctx.privacy_ctx.was_sanitized:
                 new_content = prepared if isinstance(prepared, str) else ctx.msg.content
                 ctx.msg = dataclasses.replace(ctx.msg, content=new_content)
-                ctx.on_stream = None
+            # Streaming stays ON for redacted turns: the StreamingRestorer (see
+            # run()) restores <<TAG_N>> placeholders in each delta so nothing raw
+            # is on the wire, and the buffering-PrivacyHook settle frame (a final
+            # ``_streamed`` frame carrying agent_ui.privacy, delivered by the
+            # privacy channel) carries the per-message restoration annotations so
+            # the WebUI binds highlights/hover/diff onto the streamed message.
         if not ctx.ephemeral:
             await self.consolidator.maybe_consolidate_by_tokens(
                 ctx.session,
@@ -1455,6 +1561,7 @@ class AgentLoop:
             ctx.history,
             ctx.pending_summary,
             include_memory_recent_history=not ctx.ephemeral,
+            current_message=ctx.llm_content,
         )
         ctx.user_persisted_early = self._persist_user_message_early(
             ctx.msg, ctx.session

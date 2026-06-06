@@ -70,10 +70,18 @@ class ContextBuilder:
         session_summary: str | None = None,
         workspace: Path | None = None,
         include_memory_recent_history: bool = True,
+        extra_sections: Sequence[str] | None = None,
     ) -> str:
         """Build the system prompt from identity, bootstrap files, memory, and skills."""
         root = workspace or self.workspace
         parts = [self._get_identity(channel=channel, workspace=root)]
+
+        # Overlay seam: callers may inject extra high-priority system sections
+        # (e.g. the privacy-mode banner). They sit right after identity so they
+        # carry weight and keep the cached prefix stable. This builder treats them
+        # as opaque text and has no knowledge of their source.
+        if extra_sections:
+            parts.extend(section for section in extra_sections if section)
 
         bootstrap = self._load_bootstrap_files(root)
         if bootstrap:
@@ -196,6 +204,7 @@ class ContextBuilder:
         inbound_message: Any | None = None,
         skip_runtime_lines: bool = False,
         include_memory_recent_history: bool = True,
+        extra_system_sections: Sequence[str] | None = None,
     ) -> list[dict[str, Any]]:
         """Build the complete message list for an LLM call."""
         root = workspace or self.workspace
@@ -232,6 +241,7 @@ class ContextBuilder:
                     session_summary=session_summary,
                     workspace=root,
                     include_memory_recent_history=include_memory_recent_history,
+                    extra_sections=extra_system_sections,
                 ),
             },
             *history,
