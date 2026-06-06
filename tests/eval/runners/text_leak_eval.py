@@ -26,7 +26,6 @@ import argparse
 import asyncio
 import datetime as dt
 import json
-import os
 import re
 import sys
 import time
@@ -36,16 +35,18 @@ from statistics import median
 from typing import Any
 
 import yaml
-from dotenv import load_dotenv
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-load_dotenv(REPO_ROOT / ".env")
 
-# Late import so .env is in place before CloakBot config reads it.
+# cloakbot imports follow the REPO_ROOT constant above.
 from loguru import logger  # noqa: E402
 
-from cloakbot.config.paths import get_privacy_vault_dir  # noqa: E402
-from cloakbot.privacy.core.state.vault import clear_cache, get_map  # noqa: E402
+from cloakbot.config.loader import load_config  # noqa: E402
+from cloakbot.privacy.core.state.vault import (  # noqa: E402
+    clear_cache,
+    get_map,
+    get_privacy_vault_dir,
+)
 from cloakbot.privacy.runtime.pipeline import PrivacyRuntime  # noqa: E402
 from tests.eval.generators.faker_filler import (  # noqa: E402
     Session,
@@ -548,13 +549,15 @@ def main() -> None:
         logger.remove()
         logger.add(sys.stderr, level="WARNING")
 
-    base = os.environ.get("GEMMA_BASE_URL", "unset")
-    model = os.environ.get("GEMMA_MODEL", "google/gemma-4-E2B-it")
+    detector = load_config().privacy
+    base = detector.base_url or "unset"
+    model = detector.model or "google/gemma-4-E2B-it"
     print(f"Gemma detector target: {base} ({model})", file=sys.stderr)
-    if base == "unset":
+    if not (detector.base_url and detector.api_key):
         print(
-            "⚠ GEMMA_BASE_URL not set; detector will run in fail-open mode and "
-            "all sessions will report 100% leaks.",
+            "⚠ Privacy detector not configured (cloakbot onboard -> [D] Privacy "
+            "Detector, or WebUI Settings -> Privacy); detector will run in "
+            "fail-open mode and all sessions will report 100% leaks.",
             file=sys.stderr,
         )
 

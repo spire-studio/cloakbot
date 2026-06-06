@@ -1,8 +1,9 @@
-"""Privacy-detector endpoint resolution: env (.env) overrides onboard config.
+"""Privacy-detector endpoint resolution from the saved config.
 
-The local PII detector reads GEMMA_* env vars first (back-compat with .env),
-then falls back to the saved config's ``privacy`` section (written by
-``cloakbot onboard`` → [D] Privacy Detector), and otherwise errors clearly.
+The local PII detector resolves its connection settings solely from the saved
+config's ``privacy`` section (written by ``cloakbot onboard`` -> [D] Privacy
+Detector, or the WebUI Settings -> Privacy tab). There is no ``.env`` / ``GEMMA_*``
+path anymore — ``config.privacy`` is the single source of truth.
 """
 
 from __future__ import annotations
@@ -21,88 +22,54 @@ def _clear_detector_cache():
     vllm._settings.cache_clear()
 
 
-def _clear_gemma_env(monkeypatch):
-    for key in ("GEMMA_BASE_URL", "GEMMA_API_KEY", "GEMMA_MODEL"):
-        monkeypatch.delenv(key, raising=False)
+def _patch_config(monkeypatch, cfg: Config) -> None:
+    monkeypatch.setattr("cloakbot.config.loader.load_config", lambda *a, **k: cfg)
 
 
-def test_env_vars_take_precedence(monkeypatch, tmp_path):
-    monkeypatch.chdir(tmp_path)  # no stray .env
-    monkeypatch.setenv("GEMMA_BASE_URL", "http://env:8000/v1")
-    monkeypatch.setenv("GEMMA_API_KEY", "env-key")
-    monkeypatch.setenv("GEMMA_MODEL", "env-model")
-
-    s = vllm._settings()
-    assert s.base_url == "http://env:8000/v1"
-    assert s.api_key == "env-key"
-    assert s.model == "env-model"
-    assert vllm.get_vllm_model() == "env-model"
-
-
-def test_falls_back_to_onboard_config(monkeypatch, tmp_path):
-    monkeypatch.chdir(tmp_path)
-    _clear_gemma_env(monkeypatch)
-
+def test_resolves_from_config(monkeypatch):
     cfg = Config()
     cfg.privacy = PrivacyDetectorConfig(
         base_url="http://127.0.0.1:11434/v1", api_key="ollama", model="gemma4:e2b"
     )
-    cfg_path = tmp_path / "config.json"
-    monkeypatch.setattr("cloakbot.config.loader.get_config_path", lambda: cfg_path)
-    monkeypatch.setattr("cloakbot.config.loader.load_config", lambda *a, **k: cfg)
-    cfg_path.write_text("{}", encoding="utf-8")  # so .exists() is True
+    _patch_config(monkeypatch, cfg)
 
     s = vllm._settings()
     assert s.base_url == "http://127.0.0.1:11434/v1"
     assert s.api_key == "ollama"
     assert s.model == "gemma4:e2b"
+    assert vllm.get_vllm_model() == "gemma4:e2b"
 
 
-def test_env_base_url_wins_over_config(monkeypatch, tmp_path):
-    """A partial env (only base_url) still triggers the config fallback for the
-    missing api_key, but the env base_url is kept."""
-    monkeypatch.chdir(tmp_path)
-    _clear_gemma_env(monkeypatch)
-    monkeypatch.setenv("GEMMA_BASE_URL", "http://env-only:8000/v1")
-
+def test_default_model_when_config_model_empty(monkeypatch):
     cfg = Config()
+    # base_url + api_key set, but model cleared -> falls back to the default tag.
     cfg.privacy = PrivacyDetectorConfig(
-        base_url="http://config:11434/v1", api_key="cfg-key", model="cfg-model"
+        base_url="http://127.0.0.1:8000/v1", api_key="tok", model=""
     )
-    cfg_path = tmp_path / "config.json"
-    monkeypatch.setattr("cloakbot.config.loader.get_config_path", lambda: cfg_path)
-    monkeypatch.setattr("cloakbot.config.loader.load_config", lambda *a, **k: cfg)
-    cfg_path.write_text("{}", encoding="utf-8")
+    _patch_config(monkeypatch, cfg)
 
-    s = vllm._settings()
-    assert s.base_url == "http://env-only:8000/v1"  # env kept
-    assert s.api_key == "cfg-key"  # filled from config
-    assert s.model == "cfg-model"
+    assert vllm.get_vllm_model() == "google/gemma-4-E2B-it"
 
 
-def test_raises_when_unconfigured(monkeypatch, tmp_path):
-    monkeypatch.chdir(tmp_path)
-    _clear_gemma_env(monkeypatch)
-    monkeypatch.setattr(
-        "cloakbot.config.loader.get_config_path", lambda: tmp_path / "nope.json"
-    )
+def test_raises_when_unconfigured(monkeypatch):
+    # Default config has no detector base_url / api_key.
+    _patch_config(monkeypatch, Config())
 
     with pytest.raises(RuntimeError, match="not configured"):
         vllm._settings()
 
 
-def test_default_model_when_unset(monkeypatch, tmp_path):
-    monkeypatch.chdir(tmp_path)
-    _clear_gemma_env(monkeypatch)
-    monkeypatch.setenv("GEMMA_BASE_URL", "http://env:8000/v1")
-    monkeypatch.setenv("GEMMA_API_KEY", "env-key")
-    # no GEMMA_MODEL
+def test_raises_when_api_key_missing(monkeypatch):
+    cfg = Config()
+    cfg.privacy = PrivacyDetectorConfig(base_url="http://127.0.0.1:11434/v1", api_key=None)
+    _patch_config(monkeypatch, cfg)
 
-    assert vllm.get_vllm_model() == "google/gemma-4-E2B-it"
+    with pytest.raises(RuntimeError, match="not configured"):
+        vllm._settings()
 
 
 def test_onboard_config_privacy_section_roundtrips(tmp_path):
-    """The new config.privacy section persists through save/load (so onboard's
+    """The config.privacy section persists through save/load (so onboard's
     Privacy Detector edits survive)."""
     path = tmp_path / "config.json"
     cfg = Config()
