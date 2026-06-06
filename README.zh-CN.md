@@ -151,11 +151,25 @@
 
 ## 🛠️ 安装与启动
 
+### 安装
+
+**从 PyPI 安装（推荐）** —— WebUI 已打包内置，无需构建前端：
+
+```bash
+pip install --pre cloakbot      # 0.2.1 beta（隐私内核）；0.2.1 正式版发布后去掉 --pre
+```
+
+想要隔离的 CLI 安装？用 `uv tool install --prerelease allow cloakbot` 或 `pipx install --pip-args=--pre cloakbot`。可选聊天渠道：`pip install --pre 'cloakbot[matrix,discord,msteams]'`。
+
+**从源码安装**（最新 `main` / 开发）—— 需 Node ≥24 构建 WebUI：
+
 ```bash
 git clone https://github.com/spire-studio/cloakbot.git && cd cloakbot
 uv sync
-cd webui && npm install && npm run build && cd ..   # 构建 WebUI（需 Node ≥24）
+cd webui && npm install && npm run build && cd ..
 ```
+
+> 源码安装时，下面的 `cloakbot` 命令前请加 `uv run`。
 
 ### 1. 自带本地 Gemma 4 检测器
 
@@ -181,8 +195,8 @@ vllm serve google/gemma-4-E2B-it --port 8000 --dtype bfloat16 --api-key <你的-
 ### 2. 配置与启动
 
 ```bash
-uv run cloakbot onboard      # 配置远端 LLM + [D] Privacy Detector
-uv run cloakbot gateway      # 启动后打开它打印的 WebUI 地址（默认 http://127.0.0.1:8765/）
+cloakbot onboard      # 配置远端 LLM + [D] Privacy Detector
+cloakbot gateway      # 启动后打开它打印的 WebUI 地址（默认 http://127.0.0.1:8765/）
 ```
 
 在 `onboard` → **[D] Privacy Detector** 里填检测器的 **base URL / API key / model**（或之后在 WebUI 的 **Settings → Privacy** 里配），远端 LLM（Claude / GPT / Gemini）在同一流程里配（或 **Settings → Models**）。检测器暴露的 OpenAI 兼容接口**只**用于本地 PII 检测 —— 远端 LLM 调用完全是另一条路径。

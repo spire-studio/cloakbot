@@ -151,11 +151,25 @@ Full per-template breakdown, methodology, and self-caught eval bugs in [`docs/HA
 
 ## 🛠️ Setup
 
+### Install
+
+**From PyPI (recommended)** — the WebUI is bundled, so no Node build is needed:
+
+```bash
+pip install --pre cloakbot      # 0.2.1 beta (privacy kernel); drop --pre once 0.2.1 is stable
+```
+
+Prefer an isolated CLI install? `uv tool install --prerelease allow cloakbot` or `pipx install --pip-args=--pre cloakbot`. Optional chat channels: `pip install --pre 'cloakbot[matrix,discord,msteams]'`.
+
+**From source** (latest `main` / development) — needs Node ≥24 to build the WebUI:
+
 ```bash
 git clone https://github.com/spire-studio/cloakbot.git && cd cloakbot
 uv sync
-cd webui && npm install && npm run build && cd ..   # builds the WebUI (needs Node ≥24)
+cd webui && npm install && npm run build && cd ..
 ```
+
+> From a source checkout, prefix the `cloakbot` commands below with `uv run`.
 
 ### 1. Bring your own local Gemma 4 detector
 
@@ -181,8 +195,8 @@ vllm serve google/gemma-4-E2B-it --port 8000 --dtype bfloat16 --api-key <your-to
 ### 2. Configure & launch
 
 ```bash
-uv run cloakbot onboard      # set the remote LLM + [D] Privacy Detector
-uv run cloakbot gateway      # serves the WebUI — open the URL it prints (default http://127.0.0.1:8765/)
+cloakbot onboard      # set the remote LLM + [D] Privacy Detector
+cloakbot gateway      # serves the WebUI — open the URL it prints (default http://127.0.0.1:8765/)
 ```
 
 Set the detector's **base URL / API key / model** under `onboard` → **[D] Privacy Detector** (or later in the WebUI under **Settings → Privacy**), and the remote LLM (Claude / GPT / Gemini) in the same flow (or **Settings → Models**). The detector exposes an OpenAI-compatible surface used **only** for local PII detection — the remote LLM call is entirely separate.
