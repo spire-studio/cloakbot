@@ -3,6 +3,10 @@ name: Label sync
 # Keep repository labels in sync with .github/labels.yml.
 # Runs when the label file changes on main, or on manual dispatch.
 
+# Force JavaScript-based actions (label-sync) to run on Node 24.
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 on:
   push:
     branches: [ main ]

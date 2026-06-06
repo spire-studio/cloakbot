@@ -3,6 +3,10 @@ name: PR labeler
 # Auto-apply "area: *" labels to PRs based on the files they touch.
 # Rules live in .github/labeler.yml.
 
+# Force JavaScript-based actions (labeler) to run on Node 24.
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 on:
   pull_request_target:
     types: [ opened, synchronize, reopened ]

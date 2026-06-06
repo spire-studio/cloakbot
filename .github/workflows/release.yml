@@ -4,6 +4,10 @@ name: Release
 #   git tag v0.2.0 && git push origin v0.2.0
 # The tag should match the version in pyproject.toml.
 
+# Force JavaScript-based actions (checkout / gh-release) to run on Node 24.
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 on:
   push:
     tags:

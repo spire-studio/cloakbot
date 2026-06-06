@@ -11,6 +11,9 @@
     "test:watch": "vitest",
     "lint": "eslint src --max-warnings 0"
   },
+  "engines": {
+    "node": ">=24.0.0"
+  },
   "dependencies": {
     "@radix-ui/react-alert-dialog": "^1.1.4",
     "@radix-ui/react-dialog": "^1.1.4",
@@ -39,7 +42,7 @@
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.1.0",
     "@testing-library/user-event": "^14.5.2",
-    "@types/node": "^22.10.5",
+    "@types/node": "^24.0.0",
     "@types/react": "^18.3.18",
     "@types/react-dom": "^18.3.5",
     "@types/react-syntax-highlighter": "^15.5.13",
