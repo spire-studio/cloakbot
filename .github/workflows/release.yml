@@ -65,7 +65,11 @@ jobs:
           generate_release_notes: true
           # aN/bN/rcN tags (PEP 440 pre-releases) -> mark the Release as pre-release.
           prerelease: ${{ contains(github.ref_name, 'a') || contains(github.ref_name, 'b') || contains(github.ref_name, 'rc') }}
-          files: dist/*
+          # Only the real artifacts — `dist/*` also matches uv's dist/.gitignore,
+          # which GitHub uploads as a stray `default.gitignore` asset.
+          files: |
+            dist/*.whl
+            dist/*.tar.gz
 
   # Publish to PyPI via Trusted Publishing (OIDC — no API token or secret needed).
   # This publishes the SAME artifacts built above (including the bundled WebUI);
