@@ -5,9 +5,11 @@ import i18n from "@/i18n";
 import {
   ApiError,
   deleteSession as apiDeleteSession,
+  fetchPrivacyHistory,
   fetchWebuiThread,
   listSessions,
 } from "@/lib/api";
+import { bindPrivacyAnnotations } from "@/overlays/privacy/lib/rehydrate";
 import { deriveTitle } from "@/lib/format";
 import type { ChatSummary, UIMessage, WorkspaceScopePayload } from "@/lib/types";
 
@@ -21,6 +23,10 @@ export function useSessions(): {
   refresh: () => Promise<void>;
   createChat: (workspaceScope?: WorkspaceScopePayload | null) => Promise<string>;
   deleteChat: (key: string) => Promise<void>;
+  /** True while *key* is a just-created chat the server hasn't persisted yet
+   * (still optimistic). Backed by a ref, so it is correct synchronously — even
+   * in the render before the optimistic row lands in the `sessions` state. */
+  isPendingChatKey: (key: string | null) => boolean;
 } {
   const { client, token } = useClient();
   const [sessions, setSessions] = useState<ChatSummary[]>([]);
@@ -97,7 +103,12 @@ export function useSessions(): {
     [],
   );
 
-  return { sessions, loading, error, refresh, createChat, deleteChat };
+  const isPendingChatKey = useCallback(
+    (key: string | null) => !!key && optimisticKeysRef.current.has(key),
+    [],
+  );
+
+  return { sessions, loading, error, refresh, createChat, deleteChat, isPendingChatKey };
 }
 
 /** Lazy-load a session's on-disk messages the first time the UI displays it. */
@@ -176,11 +187,23 @@ export function useSessionHistory(key: string | null): {
           id: m.id ?? `hist-${idx}`,
           createdAt: typeof m.createdAt === "number" ? m.createdAt : Date.now(),
         }));
-        const last = ui[ui.length - 1];
+        // CloakBot privacy overlay: the transcript replays restored text but no
+        // restoration annotations (the raw side-channel blob is never persisted
+        // there). Re-bind per-message highlights from the gated per-turn log so
+        // a refresh keeps the placeholder ↔ real-value spans. Best-effort.
+        let withPrivacy = ui;
+        try {
+          const { turns } = await fetchPrivacyHistory(token, key);
+          if (cancelled) return;
+          if (turns.length) withPrivacy = bindPrivacyAnnotations(ui, turns);
+        } catch {
+          /* highlights degrade to none on fetch failure */
+        }
+        const last = withPrivacy[withPrivacy.length - 1];
         const hasPending = last?.kind === "trace";
         setState((prev) => ({
           key,
-          messages: ui,
+          messages: withPrivacy,
           loading: false,
           error: null,
           hasPendingToolCalls: hasPending,

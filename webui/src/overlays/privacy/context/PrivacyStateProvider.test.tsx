@@ -1,14 +1,14 @@
-import { act, render, screen } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 
 import {
   PrivacyStateProvider,
-  usePrivacyAnnotations,
   usePrivacyState,
 } from '@/overlays/privacy/context/PrivacyStateProvider'
 import type { PrivacyEvent, PrivacyLaneClient } from '@/overlays/privacy/lib/privacy-client-lane'
 import { classifyPrivacyFrame } from '@/overlays/privacy/lib/privacy-client-lane'
 import { makeApproval, makePayload, makeSnapshot } from '@/overlays/privacy/lib/__fixtures__'
+import type { PrivacyPayload } from '@/overlays/privacy/types'
 
 /** A controllable fake client whose onChat sink we can drive frame-by-frame. */
 function makeFakeClient() {
@@ -116,25 +116,46 @@ describe('PrivacyStateProvider', () => {
     expect(screen.getByTestId('approvals').textContent).toBe('1')
   })
 
-  it('exposes restoration annotations keyed by the reply_to message id', () => {
+  it('rehydrates inspector state from the persisted privacy log on mount', async () => {
     const fake = makeFakeClient()
-    function AnnotationProbe() {
-      const annotations = usePrivacyAnnotations('m1')
-      return <span data-testid="annotations">{annotations.length}</span>
-    }
+    const loadHistory = () => Promise.resolve([makePayload()])
     render(
-      <PrivacyStateProvider client={fake.client} chatId="c1">
-        <AnnotationProbe />
+      <PrivacyStateProvider client={fake.client} chatId="c1" loadHistory={loadHistory}>
+        <StatsProbe />
       </PrivacyStateProvider>,
     )
+    await waitFor(() => expect(screen.getByTestId('turns').textContent).toBe('1'))
+    expect(screen.getByTestId('total').textContent).toBe('2')
+    expect(screen.getByTestId('entities').textContent).toBe('2')
+  })
+
+  it('does not let stale persisted history clobber a fresher live turn', async () => {
+    const fake = makeFakeClient()
+    let resolveHistory: (payloads: PrivacyPayload[]) => void = () => {}
+    const loadHistory = () =>
+      new Promise<PrivacyPayload[]>((resolve) => {
+        resolveHistory = resolve
+      })
+    render(
+      <PrivacyStateProvider client={fake.client} chatId="c1" loadHistory={loadHistory}>
+        <StatsProbe />
+      </PrivacyStateProvider>,
+    )
+    // A live turn lands before the async history fetch resolves.
     fake.emit('c1', {
       event: 'message',
       chat_id: 'c1',
       text: 'done',
       reply_to: 'm1',
-      agent_ui: { kind: 'privacy', privacy: makePayload() },
+      agent_ui: { kind: 'privacy', privacy: makePayload({ privacy: makeSnapshot({ total_entities: 7 }) }) },
     })
-    expect(screen.getByTestId('annotations').textContent).toBe('1')
+    expect(screen.getByTestId('total').textContent).toBe('7')
+    // History resolves with the SAME turnId but a stale snapshot -> skipped.
+    await act(async () => {
+      resolveHistory([makePayload({ privacy: makeSnapshot({ total_entities: 2 }) })])
+    })
+    expect(screen.getByTestId('total').textContent).toBe('7')
+    expect(screen.getByTestId('turns').textContent).toBe('1')
   })
 
   it('falls back to empty state outside a provider', () => {

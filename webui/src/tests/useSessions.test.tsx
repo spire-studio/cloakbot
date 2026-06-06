@@ -188,6 +188,9 @@ describe("useSessions", () => {
 
     expect(client.newChat).toHaveBeenCalledWith(5000, undefined);
     expect(result.current.sessions.map((s) => s.key)).toEqual(["websocket:chat-new"]);
+    // The redirect guard relies on this staying true while the server hasn't
+    // persisted the chat, so a brand-new chat is never bounced back to #/new.
+    expect(result.current.isPendingChatKey("websocket:chat-new")).toBe(true);
 
     await act(async () => {
       await result.current.refresh();
@@ -203,6 +206,8 @@ describe("useSessions", () => {
     expect(result.current.sessions.map((s) => s.key)).toEqual(["websocket:chat-new"]);
     expect(result.current.sessions[0]?.preview).toBe("First message");
     expect(result.current.sessions[0]?.title).toBe("Generated title");
+    // Once the server persists it, it is a real row — no longer "pending".
+    expect(result.current.isPendingChatKey("websocket:chat-new")).toBe(false);
   });
 
   it("stores optimistic workspace scope when creating a chat", async () => {

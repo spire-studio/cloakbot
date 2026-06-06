@@ -1,4 +1,4 @@
-import { ArrowLeftRight, ChevronLeft, ChevronRight, Download, Send, Shield, Terminal } from 'lucide-react'
+import { ArrowLeftRight, ChevronLeft, ChevronRight, Send, Shield, Terminal } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useState } from 'react'
 
@@ -7,13 +7,11 @@ import { GhostButton, ScrollArea, Tabs, TabsContent, TabsList, TabsTrigger } fro
 import { ComputationLog } from '@/overlays/privacy/components/ComputationLog'
 import { EntitySummary } from '@/overlays/privacy/components/EntitySummary'
 import { PromptLog } from '@/overlays/privacy/components/PromptLog'
-import { buildAuditRecords, downloadAuditJsonl } from '@/overlays/privacy/lib/export-audit'
 import { usePrivacyState } from '@/overlays/privacy/context/PrivacyStateProvider'
 
 type PrivacyPanelProps = {
   open: boolean
   onToggle: () => void
-  sessionId?: string
 }
 
 type PanelSectionProps = {
@@ -47,25 +45,13 @@ function PanelSection({ title, description, children }: PanelSectionProps) {
  * client lane), so App.tsx only has to mount it and toggle ``open``. Docks in
  * ``<main>`` beside the thread.
  */
-export function PrivacyPanel({ open, onToggle, sessionId }: PrivacyPanelProps) {
-  const { snapshot, turns, timelinesByTurnId } = usePrivacyState()
+export function PrivacyPanel({ open, onToggle }: PrivacyPanelProps) {
+  const { snapshot, turns } = usePrivacyState()
   const [activeTab, setActiveTab] = useState<(typeof inspectorTabs)[number]['value']>('entities')
   const totalComputations = turns.reduce((sum, turn) => sum + turn.localComputations.length, 0)
   const totalToolResults = turns.reduce((sum, turn) => sum + (turn.toolResults?.length ?? 0), 0)
   const highSeverityCount = snapshot.entities.filter((entity) => entity.severity === 'high').length
   const mathTurnCount = turns.filter((turn) => turn.intent === 'math').length
-
-  const canExport = snapshot.total_entities > 0 || turns.length > 0
-  const handleExportAudit = () => {
-    const records = buildAuditRecords({
-      sessionId: sessionId ?? 'unknown-session',
-      snapshot,
-      turns,
-      timelinesByTurnId,
-    })
-    if (records.length === 0) return
-    downloadAuditJsonl(records, { sessionId: sessionId ?? 'session' })
-  }
 
   return (
     <aside
@@ -125,21 +111,6 @@ export function PrivacyPanel({ open, onToggle, sessionId }: PrivacyPanelProps) {
                 <Stat label="Local computations" value={totalComputations} bare />
                 <Stat label="Tool results" value={totalToolResults} bare />
               </div>
-            </div>
-            <div className="mt-2 flex items-center justify-between gap-2 rounded-md border border-border/70 bg-card/70 px-2 py-1.5">
-              <div className="min-w-0">
-                <div className="text-[11px] text-muted-foreground">Audit trail</div>
-                <div className="mt-0.5 text-[11.5px] text-muted-foreground">Types + placeholders only — no raw values.</div>
-              </div>
-              <GhostButton
-                onClick={handleExportAudit}
-                disabled={!canExport}
-                aria-label="Export audit log as JSONL"
-                className="border border-border"
-              >
-                <Download className="h-3 w-3" />
-                <span>Export JSONL</span>
-              </GhostButton>
             </div>
           </div>
 

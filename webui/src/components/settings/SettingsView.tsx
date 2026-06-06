@@ -29,6 +29,7 @@ import {
   ImageIcon,
   Layers,
   Loader2,
+  Lock,
   LogOut,
   Moon,
   PlayCircle,
@@ -72,6 +73,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
   createModelConfiguration,
+  fetchPrivacyModels,
   fetchSettings,
   fetchCliApps,
   fetchMcpPresets,
@@ -86,6 +88,7 @@ import {
   updateMcpServerTools,
   updateModelConfiguration,
   updateNetworkSafetySettings,
+  updatePrivacySettings,
   updateProviderSettings,
   updateSettings,
   updateWebSearchSettings,
@@ -107,6 +110,7 @@ import type {
   McpPresetInfo,
   McpPresetsPayload,
   NetworkSafetySettingsUpdate,
+  PrivacyDetectorDraft,
   ProviderModelsPayload,
   SettingsPayload,
   WebSearchSettingsUpdate,
@@ -117,6 +121,7 @@ export type SettingsSectionKey =
   | "overview"
   | "appearance"
   | "models"
+  | "privacy"
   | "image"
   | "browser"
   | "apps"
@@ -167,7 +172,7 @@ type ProviderApiType = "auto" | "chat_completions" | "responses";
 type ProviderForm = { apiKey: string; apiBase: string; apiType: ProviderApiType };
 type CustomMcpTransport = "stdio" | "streamableHttp" | "sse";
 
-const NANOBOT_ICON_SRC = "/brand/nanobot_icon.png";
+const NANOBOT_ICON_SRC = "/brand/cloakbot_icon.png";
 const CONTEXT_WINDOW_TOKEN_OPTIONS = [65_536, 262_144] as const;
 const DEFERRED_MODEL_LIST_PROVIDERS = new Set([
   "aihubmix",
@@ -222,7 +227,7 @@ interface CustomMcpForm {
   toolTimeout: string;
 }
 
-const LOCAL_PREFS_STORAGE_KEY = "nanobot-webui.settings-preferences";
+const LOCAL_PREFS_STORAGE_KEY = "CloakBot-webui.settings-preferences";
 
 const DEFAULT_LOCAL_PREFS: LocalPreferences = {
   density: "comfortable",
@@ -348,6 +353,10 @@ export function SettingsView({
   const [webSearchSaving, setWebSearchSaving] = useState(false);
   const [imageGenerationSaving, setImageGenerationSaving] = useState(false);
   const [networkSafetySaving, setNetworkSafetySaving] = useState(false);
+  const [privacyToggleSaving, setPrivacyToggleSaving] = useState(false);
+  const [privacyDetectorSaving, setPrivacyDetectorSaving] = useState(false);
+  const [privacyKeyVisible, setPrivacyKeyVisible] = useState(false);
+  const [privacyKeyEditing, setPrivacyKeyEditing] = useState(false);
   const [hostEngineApplying, setHostEngineApplying] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeSection, setActiveSection] = useState<SettingsSectionKey>(initialSection);
@@ -390,6 +399,11 @@ export function SettingsView({
     webuiAllowLocalServiceAccess: true,
     webuiDefaultAccessMode: "default",
   });
+  const [privacyDetectorForm, setPrivacyDetectorForm] = useState<PrivacyDetectorDraft>({
+    baseUrl: "",
+    apiKey: "",
+    model: "",
+  });
 
   useEffect(() => {
     setActiveSection(initialSection);
@@ -411,7 +425,7 @@ export function SettingsView({
     presetLabel: "Default",
     contextWindowTokens: 65_536,
     timezone: "UTC",
-    botName: "nanobot",
+    botName: "CloakBot",
     botIcon: "",
     toolHintMaxLength: 40,
   });
@@ -462,6 +476,11 @@ export function SettingsView({
     setNetworkSafetyForm({
       webuiAllowLocalServiceAccess: payload.advanced.webui_allow_local_service_access ?? payload.advanced.allow_local_preview_access ?? true,
       webuiDefaultAccessMode: visibleWebuiDefaultAccessMode(payload.advanced.webui_default_access_mode),
+    });
+    setPrivacyDetectorForm({
+      baseUrl: payload.privacy?.base_url ?? "",
+      apiKey: "",
+      model: payload.privacy?.model ?? "",
     });
     if (payload.restart_required_sections) {
       setPendingRestartSections({
@@ -609,6 +628,18 @@ export function SettingsView({
       networkSafetyForm.webuiDefaultAccessMode !== currentDefaultAccess
     );
   }, [networkSafetyForm, settings]);
+
+  const privacyDetectorDirty = useMemo(() => {
+    if (!settings) return false;
+    const baseUrl = privacyDetectorForm.baseUrl.trim();
+    const apiKey = privacyDetectorForm.apiKey.trim();
+    const model = privacyDetectorForm.model.trim();
+    return (
+      baseUrl !== (settings.privacy?.base_url ?? "") ||
+      model !== (settings.privacy?.model ?? "") ||
+      apiKey.length > 0
+    );
+  }, [privacyDetectorForm, settings]);
 
   const configuredModelProviderOptions = useMemo(
     () =>
@@ -811,6 +842,64 @@ export function SettingsView({
       setNetworkSafetySaving(false);
     }
   };
+
+  const savePrivacyToggle = async (
+    params: { enabled?: boolean; visualEnabled?: boolean },
+  ) => {
+    if (!settings || privacyToggleSaving) return;
+    setPrivacyToggleSaving(true);
+    try {
+      const payload = await updatePrivacySettings(token, params);
+      applyPayload(payload);
+      setError(null);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setPrivacyToggleSaving(false);
+    }
+  };
+
+  const savePrivacyDetector = async () => {
+    if (!settings || privacyDetectorSaving) return;
+    const baseUrl = privacyDetectorForm.baseUrl.trim();
+    const apiKey = privacyDetectorForm.apiKey.trim();
+    const model = privacyDetectorForm.model.trim();
+    const hasExistingSecret = !!settings.privacy?.api_key_hint;
+    const update: {
+      baseUrl?: string;
+      apiKey?: string;
+      model?: string;
+    } = {};
+    if (baseUrl !== (settings.privacy?.base_url ?? "")) update.baseUrl = baseUrl;
+    if (model !== (settings.privacy?.model ?? "")) update.model = model;
+    if (privacyKeyEditing || (!hasExistingSecret && apiKey)) update.apiKey = apiKey;
+    if (update.baseUrl === undefined && update.model === undefined && update.apiKey === undefined) {
+      return;
+    }
+    setPrivacyDetectorSaving(true);
+    try {
+      const payload = await updatePrivacySettings(token, update);
+      applyPayload(payload);
+      setPrivacyKeyVisible(false);
+      setPrivacyKeyEditing(false);
+      setError(null);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setPrivacyDetectorSaving(false);
+    }
+  };
+
+  const resetPrivacyDetectorDraft = useCallback(() => {
+    if (!settings) return;
+    setPrivacyDetectorForm({
+      baseUrl: settings.privacy?.base_url ?? "",
+      apiKey: "",
+      model: settings.privacy?.model ?? "",
+    });
+    setPrivacyKeyVisible(false);
+    setPrivacyKeyEditing(false);
+  }, [settings]);
 
   const saveProvider = async (providerName: string) => {
     if (providerSaving) return;
@@ -1200,6 +1289,31 @@ export function SettingsView({
             />
           </div>
         );
+      case "privacy":
+        return (
+          <PrivacySettings
+            token={token}
+            settings={settings}
+            detectorForm={privacyDetectorForm}
+            detectorDirty={privacyDetectorDirty}
+            detectorSaving={privacyDetectorSaving}
+            keyVisible={privacyKeyVisible}
+            keyEditing={privacyKeyEditing}
+            toggleSaving={privacyToggleSaving}
+            showBrandLogos={localPrefs.brandLogos}
+            onChangeDetectorForm={setPrivacyDetectorForm}
+            onToggleKey={() => setPrivacyKeyVisible((visible) => !visible)}
+            onToggleKeyEditing={() => {
+              setPrivacyKeyEditing((editing) => !editing);
+              setPrivacyKeyVisible(false);
+              setPrivacyDetectorForm((prev) => ({ ...prev, apiKey: "" }));
+            }}
+            onSaveDetector={savePrivacyDetector}
+            onResetDetector={resetPrivacyDetectorDraft}
+            onToggleEnabled={(enabled) => savePrivacyToggle({ enabled })}
+            onToggleVisual={(visualEnabled) => savePrivacyToggle({ visualEnabled })}
+          />
+        );
       case "image":
         return (
           <ImageGenerationSettings
@@ -1397,6 +1511,7 @@ const SETTINGS_NAV_ITEMS: Array<{ key: SettingsSectionKey; icon: LucideIcon; fal
   { key: "browser", icon: Globe2, fallback: "Web" },
   { key: "runtime", icon: Server, fallback: "System" },
   { key: "advanced", icon: ShieldCheck, fallback: "Security" },
+  { key: "privacy", icon: Lock, fallback: "Privacy" },
 ];
 
 function visibleWebuiDefaultAccessMode(mode: string | null | undefined): WebuiDefaultAccessMode {
@@ -1523,7 +1638,7 @@ function OverviewSettings({
             <div className="flex min-w-0 items-center gap-3">
               <NanobotBrandLogo size="lg" testId="overview-nanobot-logo" />
               <div className="min-w-0">
-                <div className="text-[12px] font-medium text-muted-foreground">nanobot</div>
+                <div className="text-[12px] font-medium text-muted-foreground">CloakBot</div>
                 <div className="mt-0.5 truncate text-[18px] font-semibold leading-6 text-foreground">
                   {settings.agent.model}
                 </div>
@@ -2776,6 +2891,488 @@ function WebSettings({
   );
 }
 
+function PrivacySettings({
+  token,
+  settings,
+  detectorForm,
+  detectorDirty,
+  detectorSaving,
+  keyVisible,
+  keyEditing,
+  toggleSaving,
+  showBrandLogos,
+  onChangeDetectorForm,
+  onToggleKey,
+  onToggleKeyEditing,
+  onSaveDetector,
+  onResetDetector,
+  onToggleEnabled,
+  onToggleVisual,
+}: {
+  token: string;
+  settings: SettingsPayload;
+  detectorForm: PrivacyDetectorDraft;
+  detectorDirty: boolean;
+  detectorSaving: boolean;
+  keyVisible: boolean;
+  keyEditing: boolean;
+  toggleSaving: boolean;
+  showBrandLogos: boolean;
+  onChangeDetectorForm: Dispatch<SetStateAction<PrivacyDetectorDraft>>;
+  onToggleKey: () => void;
+  onToggleKeyEditing: () => void;
+  onSaveDetector: () => void;
+  onResetDetector: () => void;
+  onToggleEnabled: (enabled: boolean) => void;
+  onToggleVisual: (enabled: boolean) => void;
+}) {
+  const { t } = useTranslation();
+  const tx = (key: string, fallback: string) => t(key, { defaultValue: fallback });
+  const privacyEnabled = settings.privacy?.enabled ?? true;
+  const visualEnabled = settings.privacy?.visual_enabled ?? false;
+  const configured = settings.privacy?.configured ?? false;
+  const active = settings.privacy?.active ?? false;
+  const hasExistingSecret = !!settings.privacy?.api_key_hint;
+  const showKeyInput = !hasExistingSecret || keyEditing;
+
+  return (
+    <div className="space-y-7">
+      <section>
+        <SettingsSectionTitle>
+          {tx("settings.privacy.detectorTitle", "Detector model")}
+        </SettingsSectionTitle>
+        <SettingsGroup>
+          <SettingsRow
+            title={tx("settings.privacy.detectorBaseUrl", "Base URL")}
+            description={tx(
+              "settings.privacy.detectorBaseUrlHelp",
+              "OpenAI-compatible endpoint for the local privacy detector (e.g. http://127.0.0.1:11434/v1).",
+            )}
+          >
+            <Input
+              value={detectorForm.baseUrl}
+              onChange={(event) =>
+                onChangeDetectorForm((prev) => ({ ...prev, baseUrl: event.target.value }))
+              }
+              placeholder={tx("settings.privacy.detectorBaseUrlPlaceholder", "http://127.0.0.1:11434/v1")}
+              className="h-9 w-[280px] max-w-full rounded-full text-[13px]"
+            />
+          </SettingsRow>
+
+          <SettingsRow
+            title={tx("settings.byok.apiKey", "API key")}
+            description={tx(
+              "settings.privacy.detectorApiKeyHelp",
+              "Credential for the detector endpoint. Use any value for local servers that don't require one.",
+            )}
+          >
+            <div className="relative w-[280px] max-w-full">
+              {showKeyInput ? (
+                <>
+                  <Input
+                    type={keyVisible ? "text" : "password"}
+                    value={detectorForm.apiKey}
+                    onChange={(event) =>
+                      onChangeDetectorForm((prev) => ({ ...prev, apiKey: event.target.value }))
+                    }
+                    placeholder={
+                      hasExistingSecret
+                        ? tx("settings.byok.apiKeyConfiguredPlaceholder", "Enter a new key to replace")
+                        : tx("settings.byok.apiKeyPlaceholder", "Enter API key")
+                    }
+                    className="h-9 rounded-full pr-11 text-[13px]"
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    onClick={onToggleKey}
+                    aria-label={
+                      keyVisible
+                        ? tx("settings.byok.hideApiKey", "Hide API key")
+                        : tx("settings.byok.showApiKey", "Show API key")
+                    }
+                    className="absolute right-1 top-1/2 h-7 w-7 -translate-y-1/2 rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"
+                  >
+                    {keyVisible ? (
+                      <EyeOff className="h-3.5 w-3.5" aria-hidden />
+                    ) : (
+                      <Eye className="h-3.5 w-3.5" aria-hidden />
+                    )}
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <div className="flex h-9 items-center rounded-full border border-input bg-background px-3 pr-11 text-[13px] text-muted-foreground">
+                    {settings.privacy?.api_key_hint ?? tx("settings.byok.configuredKeyHint", "Configured")}
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    onClick={onToggleKeyEditing}
+                    aria-label={t("settings.actions.edit")}
+                    className="absolute right-1 top-1/2 h-7 w-7 -translate-y-1/2 rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"
+                  >
+                    <Pencil className="h-3.5 w-3.5" aria-hidden />
+                  </Button>
+                </>
+              )}
+            </div>
+          </SettingsRow>
+
+          <SettingsRow
+            title={tx("settings.privacy.detectorModel", "Model")}
+            description={tx(
+              "settings.privacy.detectorModelHelp",
+              "Detector model id. Type it directly (Enter to apply), or browse the endpoint catalog.",
+            )}
+          >
+            <div className="flex w-[min(360px,70vw)] items-center gap-2">
+              <Input
+                value={detectorForm.model}
+                onChange={(event) =>
+                  onChangeDetectorForm((prev) => ({ ...prev, model: event.target.value }))
+                }
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    event.currentTarget.blur();
+                  }
+                }}
+                placeholder={tx(
+                  "settings.privacy.detectorModelPlaceholder",
+                  "e.g. qwen/qwen3-8b",
+                )}
+                spellCheck={false}
+                autoComplete="off"
+                className="h-9 flex-1 rounded-full border-input bg-background px-3.5 text-[12px] shadow-none"
+              />
+              <PrivacyModelPicker
+                token={token}
+                value={detectorForm.model}
+                baseUrl={detectorForm.baseUrl}
+                apiKey={detectorForm.apiKey}
+                hasSavedDetector={configured}
+                showBrandLogos={showBrandLogos}
+                onChange={(model) => onChangeDetectorForm((prev) => ({ ...prev, model }))}
+                compact
+              />
+            </div>
+          </SettingsRow>
+
+          <SettingsRow
+            title={tx("settings.privacy.detectorStatus", "Detector status")}
+            description={tx(
+              "settings.privacy.detectorStatusHelp",
+              "Privacy stays inactive until a base URL and API key are saved.",
+            )}
+          >
+            <StatusPill tone={configured ? "success" : "neutral"}>
+              {configured
+                ? tx("settings.values.configured", "Configured")
+                : tx("settings.values.notConfigured", "Not configured")}
+            </StatusPill>
+          </SettingsRow>
+
+          <RestartSettingsFooter
+            dirty={detectorDirty}
+            saving={detectorSaving}
+            pendingRestart={false}
+            onSave={onSaveDetector}
+            onReset={onResetDetector}
+          />
+        </SettingsGroup>
+      </section>
+
+      <section>
+        <SettingsSectionTitle>
+          {tx("settings.sections.privacy", "Privacy")}
+        </SettingsSectionTitle>
+        <SettingsGroup>
+          <div className="flex min-h-[62px] flex-col gap-3 px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+            <div className="min-w-0">
+              <div className="text-[14px] font-medium leading-5 text-foreground">
+                {tx("settings.privacy.overallTitle", "Overall privacy")}
+              </div>
+              <div className="mt-0.5 max-w-[28rem] text-[12px] leading-5 text-muted-foreground">
+                {configured
+                  ? tx(
+                      "settings.privacy.overallHelp",
+                      "Detect and replace sensitive values locally before any prompt reaches the remote model.",
+                    )
+                  : tx(
+                      "settings.privacy.overallInactiveHelp",
+                      "Configure a detector model above to activate privacy.",
+                    )}
+              </div>
+            </div>
+            <div className="flex shrink-0 items-center gap-2 sm:ml-6">
+              {privacyEnabled && !active ? (
+                <StatusPill tone="neutral">
+                  {tx("settings.privacy.inactive", "Inactive")}
+                </StatusPill>
+              ) : null}
+              <ToggleButton
+                checked={privacyEnabled}
+                onChange={(next) => {
+                  if (!toggleSaving) onToggleEnabled(next);
+                }}
+                ariaLabel={tx("settings.privacy.overallTitle", "Overall privacy")}
+                label={
+                  privacyEnabled ? tx("settings.values.on", "On") : tx("settings.values.off", "Off")
+                }
+              />
+            </div>
+          </div>
+
+          <div
+            className={cn(
+              "flex min-h-[62px] flex-col gap-3 border-l-2 border-border/45 px-4 py-3.5 pl-6 sm:flex-row sm:items-center sm:justify-between sm:px-5 sm:pl-7",
+              !privacyEnabled && "opacity-55",
+            )}
+          >
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="text-[14px] font-medium leading-5 text-foreground">
+                  {tx("settings.privacy.visualTitle", "Image privacy")}
+                </span>
+                <AlphaBadge>{tx("settings.privacy.alphaBadge", "alpha")}</AlphaBadge>
+              </div>
+              <div className="mt-0.5 max-w-[28rem] text-[12px] leading-5 text-muted-foreground">
+                {tx(
+                  "settings.privacy.visualHelp",
+                  "Redact uploaded images locally (OCR + pixel redaction) before the model sees them. Off: images are sent to the model as-is — no redaction (typed text is still protected). On requires a reachable local visual detector.",
+                )}
+              </div>
+            </div>
+            <div className="shrink-0 sm:ml-6">
+              <ToggleButton
+                checked={privacyEnabled && visualEnabled}
+                disabled={!privacyEnabled}
+                onChange={(next) => {
+                  if (privacyEnabled && !toggleSaving) onToggleVisual(next);
+                }}
+                ariaLabel={tx("settings.privacy.visualTitle", "Image privacy")}
+                label={
+                  privacyEnabled && visualEnabled
+                    ? tx("settings.values.on", "On")
+                    : tx("settings.values.off", "Off")
+                }
+              />
+            </div>
+          </div>
+        </SettingsGroup>
+      </section>
+    </div>
+  );
+}
+
+function PrivacyModelPicker({
+  token,
+  value,
+  baseUrl,
+  apiKey,
+  hasSavedDetector,
+  showBrandLogos,
+  onChange,
+  compact = false,
+}: {
+  token: string;
+  value: string;
+  baseUrl: string;
+  apiKey: string;
+  hasSavedDetector: boolean;
+  showBrandLogos: boolean;
+  onChange: (model: string) => void;
+  compact?: boolean;
+}) {
+  const { t } = useTranslation();
+  const tx = (key: string, fallback: string) => t(key, { defaultValue: fallback });
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [payload, setPayload] = useState<ProviderModelsPayload | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const trimmedBaseUrl = baseUrl.trim();
+  const trimmedApiKey = apiKey.trim();
+  // Refresh against the in-progress draft when present, otherwise the saved
+  // detector creds. Only fetch when we have something to ask.
+  const canFetchModels = Boolean(trimmedBaseUrl) || hasSavedDetector;
+  const normalizedQuery = query.trim().toLowerCase();
+  const providerModels = payload?.models ?? [];
+  const visibleModels = providerModels
+    .filter((model) => {
+      if (!normalizedQuery) return true;
+      return [model.id, model.label ?? "", model.owned_by ?? ""]
+        .some((field) => field.toLowerCase().includes(normalizedQuery));
+    })
+    .slice(0, 80);
+  const hasModelList = payload?.status === "available";
+  const customCandidate = query.trim();
+  const exactQueryMatch = providerModels.some((model) => model.id === customCandidate);
+
+  useEffect(() => {
+    if (!open) return;
+    setQuery("");
+  }, [open]);
+
+  useEffect(() => {
+    if (!open || !canFetchModels) {
+      setPayload(null);
+      setError(null);
+      setLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setPayload(null);
+    setError(null);
+    setLoading(true);
+    const overrides: { baseUrl?: string; apiKey?: string } = {};
+    if (trimmedBaseUrl) overrides.baseUrl = trimmedBaseUrl;
+    if (trimmedApiKey) overrides.apiKey = trimmedApiKey;
+    fetchPrivacyModels(token, overrides)
+      .then((nextPayload) => {
+        if (!cancelled) setPayload(nextPayload);
+      })
+      .catch((err) => {
+        if (!cancelled) setError((err as Error).message);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, canFetchModels, trimmedBaseUrl, trimmedApiKey, token]);
+
+  const selectModel = (model: string) => {
+    onChange(model);
+    setOpen(false);
+  };
+
+  return (
+    <DropdownMenu open={open} onOpenChange={setOpen}>
+      <DropdownMenuTrigger asChild>
+        {compact ? (
+          <Button
+            type="button"
+            variant="outline"
+            aria-label={tx("settings.privacy.browseCatalog", "Browse detector catalog")}
+            title={tx("settings.privacy.browseCatalog", "Browse detector catalog")}
+            className="h-9 w-9 shrink-0 rounded-full border-input bg-background p-0 shadow-none hover:bg-accent/55 focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <Layers className="h-4 w-4 text-muted-foreground" aria-hidden />
+          </Button>
+        ) : (
+          <Button
+            type="button"
+            variant="outline"
+            className={cn(
+              "h-9 w-[min(360px,70vw)] justify-between rounded-full border-input bg-background px-3 text-[12px] font-normal shadow-none",
+              "hover:bg-accent/55 focus-visible:ring-2 focus-visible:ring-ring",
+            )}
+          >
+            <span
+              className={cn(
+                "min-w-0 truncate font-medium",
+                value ? "text-foreground" : "text-muted-foreground",
+              )}
+            >
+              {value || tx("settings.models.selectModel", "Select model")}
+            </span>
+            <ChevronDown className="ml-2 h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
+          </Button>
+        )}
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-[360px] max-w-[calc(100vw-2rem)] p-1.5">
+        <div className="p-1 pb-1.5">
+          <div className="relative">
+            <Search
+              className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground"
+              aria-hidden
+            />
+            <Input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              onKeyDown={(event) => event.stopPropagation()}
+              placeholder={tx("settings.models.searchModels", "Search or type model ID")}
+              className="h-8 rounded-full pl-8 pr-3 text-[12px]"
+            />
+          </div>
+        </div>
+
+        {!canFetchModels ? (
+          <div className="px-2 py-1.5 text-[11px] leading-4 text-muted-foreground">
+            {tx("settings.privacy.detectorModelHint", "Enter a base URL to load the detector catalog, or type a model id.")}
+          </div>
+        ) : loading ? (
+          <div className="flex items-center gap-2 px-2 py-1.5 text-[11px] text-muted-foreground">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+            {tx("settings.models.loadingModels", "Loading models...")}
+          </div>
+        ) : error || payload?.status === "error" ? (
+          <div className="px-2 py-1.5 text-[11px] leading-4 text-muted-foreground">
+            {payload?.message || error || tx("settings.models.loadFailed", "Model list unavailable.")}
+          </div>
+        ) : payload?.status === "not_configured" || payload?.status === "missing_api_base" ? (
+          <div className="px-2 py-1.5 text-[11px] leading-4 text-muted-foreground">
+            {payload.message || tx("settings.models.unsupportedModelList", "Type a model ID manually.")}
+          </div>
+        ) : null}
+
+        {hasModelList && visibleModels.length ? (
+          <div className="max-h-[16rem] overflow-y-auto pr-0.5 scrollbar-thin scrollbar-track-transparent">
+            {visibleModels.map((model) => (
+              <DropdownMenuItem
+                key={model.id}
+                onSelect={() => selectModel(model.id)}
+                className={cn(
+                  "flex cursor-default items-center justify-between gap-2 rounded-[12px] px-2 py-1.5 text-[12px]",
+                  "focus:bg-muted/85 focus:text-foreground",
+                  model.id === value && "bg-muted/80 text-foreground focus:bg-muted",
+                )}
+              >
+                <span className="flex min-w-0 items-center gap-2">
+                  <ProviderPickerIcon provider="local" showBrandLogos={showBrandLogos} />
+                  <span className="min-w-0 truncate font-medium text-foreground">
+                    {model.label ?? model.id}
+                  </span>
+                </span>
+                {model.id === value ? (
+                  <Check className="h-3.5 w-3.5 shrink-0 text-foreground" aria-hidden />
+                ) : null}
+              </DropdownMenuItem>
+            ))}
+          </div>
+        ) : hasModelList ? (
+          <div className="px-2 py-1.5 text-[11px] text-muted-foreground">
+            {tx("settings.models.noModelResults", "No matching models.")}
+          </div>
+        ) : null}
+
+        {customCandidate && !exactQueryMatch && customCandidate !== value ? (
+          <>
+            {hasModelList ? <DropdownMenuSeparator /> : null}
+            <DropdownMenuItem
+              onSelect={() => selectModel(customCandidate)}
+              className="flex cursor-default items-center gap-2 rounded-[12px] px-2 py-1.5 text-[12px] focus:bg-muted/85"
+            >
+              <span className="grid h-5 w-5 shrink-0 place-items-center rounded-md bg-muted/80 text-muted-foreground">
+                <Pencil className="h-3 w-3" aria-hidden />
+              </span>
+              <span className="min-w-0 truncate">
+                {tx("settings.models.useCustomModel", "Use")}{" "}
+                <span className="font-medium text-foreground">“{customCandidate}”</span>
+              </span>
+            </DropdownMenuItem>
+          </>
+        ) : null}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 function AppsCatalogSettings({
   cliApps,
   mcpPresets,
@@ -2882,7 +3479,7 @@ function AppsCatalogSettings({
           <p className="max-w-[680px] text-[13px] leading-5 text-muted-foreground">
             {tx(
               "settings.apps.description",
-              "Add local app adapters and connected tool servers that nanobot can use from chat.",
+              "Add local app adapters and connected tool servers that CloakBot can use from chat.",
             )}
           </p>
           <span className="text-[12px] font-medium text-muted-foreground">{caption}</span>
@@ -2938,7 +3535,7 @@ function AppsCatalogSettings({
 
       {requiresRestartPending ? (
         <div className="flex flex-col gap-3 rounded-[12px] border border-amber-500/20 bg-amber-500/8 px-4 py-3 text-[12.5px] text-amber-800 dark:text-amber-200 sm:flex-row sm:items-center sm:justify-between">
-          <span>{tx("settings.mcp.restartRequired", "Restart nanobot to connect updated MCP tools.")}</span>
+          <span>{tx("settings.mcp.restartRequired", "Restart CloakBot to connect updated MCP tools.")}</span>
           {onRestart ? (
             <Button
               type="button"
@@ -3375,6 +3972,14 @@ function McpAppsCatalogRow({
 }
 
 function AppsTypeBadge({ children }: { children: ReactNode }) {
+  return (
+    <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-semibold uppercase leading-none tracking-[0.06em] text-muted-foreground">
+      {children}
+    </span>
+  );
+}
+
+function AlphaBadge({ children }: { children: ReactNode }) {
   return (
     <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-semibold uppercase leading-none tracking-[0.06em] text-muted-foreground">
       {children}
@@ -3939,7 +4544,7 @@ function RuntimeSettings({
       <section>
         <SettingsSectionTitle>{tx("settings.sections.identity", "Identity")}</SettingsSectionTitle>
         <SettingsGroup>
-          <SettingsRow title={tx("settings.rows.botName", "Bot name")} description={tx("settings.help.botName", "Shown wherever nanobot uses a display name.")}>
+          <SettingsRow title={tx("settings.rows.botName", "Bot name")} description={tx("settings.help.botName", "Shown wherever CloakBot uses a display name.")}>
             <Input
               value={form.botName}
               onChange={(event) => setForm((prev) => ({ ...prev, botName: event.target.value }))}
@@ -3965,7 +4570,7 @@ function RuntimeSettings({
             pendingRestart={requiresRestartPending}
             dirtyMessage={
               isNativeHost
-                ? tx("settings.status.hostRestartAfterSaving", "Save changes and nanobot will restart its engine.")
+                ? tx("settings.status.hostRestartAfterSaving", "Save changes and CloakBot will restart its engine.")
                 : tx("settings.status.restartAfterSaving", "Save changes, then restart when ready.")
             }
             pendingMessage={
@@ -5438,11 +6043,13 @@ function ToggleButton({
   onChange,
   ariaLabel,
   label,
+  disabled = false,
 }: {
   checked: boolean;
   onChange: (checked: boolean) => void;
   ariaLabel?: string;
   label: string;
+  disabled?: boolean;
 }) {
   return (
     <button
@@ -5450,10 +6057,14 @@ function ToggleButton({
       role="switch"
       aria-checked={checked}
       aria-label={ariaLabel ?? label}
-      onClick={() => onChange(!checked)}
+      disabled={disabled}
+      onClick={() => {
+        if (!disabled) onChange(!checked);
+      }}
       className={cn(
         "relative inline-flex h-[22px] w-[38px] shrink-0 items-center rounded-full p-[2px]",
         "transition-colors duration-200 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+        disabled && "cursor-not-allowed opacity-45",
         checked
           ? "bg-[#2997FF] shadow-[inset_0_0_0_1px_rgba(0,0,0,0.035)]"
           : "bg-muted shadow-[inset_0_0_0_1px_rgba(0,0,0,0.035)] hover:bg-muted/80",

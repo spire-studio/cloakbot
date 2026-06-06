@@ -15,7 +15,7 @@ import {
 import { onPrivacy, type PrivacyEvent, type PrivacyLaneClient } from '@/overlays/privacy/lib/privacy-client-lane'
 import {
   EMPTY_SNAPSHOT,
-  type PrivacyAnnotation,
+  type PrivacyPayload,
   type PrivacySnapshot,
   type PrivacyTimeline,
   type PrivacyTurn,
@@ -32,8 +32,6 @@ type PrivacyStateValue = {
   snapshot: PrivacySnapshot
   turns: PrivacyTurn[]
   timelinesByTurnId: Record<string, PrivacyTimeline | undefined>
-  /** Restoration annotations keyed by the assistant message id they belong to. */
-  annotationsByReplyTo: Record<string, PrivacyAnnotation[]>
   approvals: ToolApproval[]
   stats: PrivacyHeaderStats
 }
@@ -42,7 +40,6 @@ const EMPTY_STATE: PrivacyStateValue = {
   snapshot: EMPTY_SNAPSHOT,
   turns: [],
   timelinesByTurnId: {},
-  annotationsByReplyTo: {},
   approvals: [],
   stats: { totalEntities: 0, highSeverityCount: 0, blockedSpans: 0 },
 }
@@ -77,6 +74,63 @@ function mergeApproval(approvals: ToolApproval[], approval: ToolApproval): ToolA
 }
 
 /**
+ * Fold one decoded privacy event into the accumulated state (pure). Shared by
+ * the live lane and the refresh-path history rehydration so a replayed payload
+ * settles identically to a live one.
+ */
+function reducePrivacyState(current: PrivacyStateValue, event: PrivacyEvent): PrivacyStateValue {
+  let snapshot = current.snapshot
+  let turns = current.turns
+  const timelinesByTurnId = { ...current.timelinesByTurnId }
+  let approvals = current.approvals
+
+  if (event.kind === 'snapshot') {
+    snapshot = event.snapshot
+  } else if (event.kind === 'trace') {
+    turns = mergeTurn(turns, event.turn)
+    timelinesByTurnId[event.turn.turnId] = event.timeline
+    for (const approval of event.turn.toolApprovals ?? []) {
+      approvals = mergeApproval(approvals, approval)
+    }
+  } else if (event.kind === 'approval') {
+    approvals = mergeApproval(approvals, event.approval)
+  } else if (event.kind === 'payload') {
+    snapshot = event.payload.privacy
+    turns = mergeTurn(turns, event.payload.privacyTurn)
+    timelinesByTurnId[event.payload.privacyTurn.turnId] = event.payload.privacyTimeline
+    for (const approval of event.payload.privacyTurn.toolApprovals ?? []) {
+      approvals = mergeApproval(approvals, approval)
+    }
+  }
+
+  return {
+    snapshot,
+    turns,
+    timelinesByTurnId,
+    approvals,
+    stats: computeStats(snapshot, turns),
+  }
+}
+
+/**
+ * Seed state from the persisted per-turn privacy log (refresh rehydration).
+ *
+ * A payload whose ``turnId`` is already present is skipped so a live event that
+ * landed before the (async) history fetch resolved is never clobbered by its
+ * older persisted copy. On a cold refresh ``current`` is empty, so every payload
+ * folds in.
+ */
+function foldPrivacyHistory(current: PrivacyStateValue, payloads: PrivacyPayload[]): PrivacyStateValue {
+  let next = current
+  for (const payload of payloads) {
+    const turnId = payload.privacyTurn?.turnId
+    if (turnId && next.turns.some((turn) => turn.turnId === turnId)) continue
+    next = reducePrivacyState(next, { kind: 'payload', payload })
+  }
+  return next
+}
+
+/**
  * Accumulates privacy state for one active chat and exposes it to the overlay
  * (PrivacyPanel, BlockedCounter, RestorationAnnotations, ToolApprovalPrompt).
  *
@@ -87,10 +141,15 @@ function mergeApproval(approvals: ToolApproval[], approval: ToolApproval): ToolA
 export function PrivacyStateProvider({
   client,
   chatId,
+  loadHistory,
   children,
 }: {
   client: PrivacyLaneClient | null
   chatId: string | null
+  /** Refresh rehydration: fetch the persisted per-turn privacy log for the
+   * active chat. Omitted in tests / non-localhost so the overlay stays
+   * live-only and additive. */
+  loadHistory?: () => Promise<PrivacyPayload[]>
   children: ReactNode
 }) {
   const [state, setState] = useState<PrivacyStateValue>(EMPTY_STATE)
@@ -98,51 +157,31 @@ export function PrivacyStateProvider({
   stateRef.current = state
 
   const applyEvent = useCallback((event: PrivacyEvent) => {
-    setState((current) => {
-      let snapshot = current.snapshot
-      let turns = current.turns
-      const timelinesByTurnId = { ...current.timelinesByTurnId }
-      const annotationsByReplyTo = { ...current.annotationsByReplyTo }
-      let approvals = current.approvals
-
-      if (event.kind === 'snapshot') {
-        snapshot = event.snapshot
-      } else if (event.kind === 'trace') {
-        turns = mergeTurn(turns, event.turn)
-        timelinesByTurnId[event.turn.turnId] = event.timeline
-        for (const approval of event.turn.toolApprovals ?? []) {
-          approvals = mergeApproval(approvals, approval)
-        }
-      } else if (event.kind === 'approval') {
-        approvals = mergeApproval(approvals, event.approval)
-      } else if (event.kind === 'payload') {
-        snapshot = event.payload.privacy
-        turns = mergeTurn(turns, event.payload.privacyTurn)
-        timelinesByTurnId[event.payload.privacyTurn.turnId] = event.payload.privacyTimeline
-        for (const approval of event.payload.privacyTurn.toolApprovals ?? []) {
-          approvals = mergeApproval(approvals, approval)
-        }
-        if (event.replyTo) {
-          annotationsByReplyTo[event.replyTo] = event.payload.privacyAnnotations
-        }
-      }
-
-      return {
-        snapshot,
-        turns,
-        timelinesByTurnId,
-        annotationsByReplyTo,
-        approvals,
-        stats: computeStats(snapshot, turns),
-      }
-    })
+    setState((current) => reducePrivacyState(current, event))
   }, [])
 
   useEffect(() => {
     setState(EMPTY_STATE)
     if (!client || !chatId) return
-    return onPrivacy(client, chatId, applyEvent)
-  }, [client, chatId, applyEvent])
+    const unsubscribe = onPrivacy(client, chatId, applyEvent)
+    if (!loadHistory) return unsubscribe
+    // Rehydrate the inspector from disk so a page refresh restores the entity
+    // list, remote-prompt turns, and approvals. Live events merge on top; the
+    // fold skips turnIds already present so it never clobbers fresher live data.
+    let cancelled = false
+    void loadHistory()
+      .then((payloads) => {
+        if (cancelled || !payloads.length) return
+        setState((current) => foldPrivacyHistory(current, payloads))
+      })
+      .catch(() => {
+        /* best-effort: the overlay degrades to live-only on fetch failure */
+      })
+    return () => {
+      cancelled = true
+      unsubscribe()
+    }
+  }, [client, chatId, applyEvent, loadHistory])
 
   const value = useMemo(() => state, [state])
   return <PrivacyStateContext.Provider value={value}>{children}</PrivacyStateContext.Provider>
@@ -150,11 +189,4 @@ export function PrivacyStateProvider({
 
 export function usePrivacyState(): PrivacyStateValue {
   return useContext(PrivacyStateContext)
-}
-
-/** Restoration annotations for one assistant message id (empty when none). */
-export function usePrivacyAnnotations(messageId: string | undefined): PrivacyAnnotation[] {
-  const { annotationsByReplyTo } = usePrivacyState()
-  if (!messageId) return []
-  return annotationsByReplyTo[messageId] ?? []
 }

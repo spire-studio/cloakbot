@@ -17,6 +17,7 @@ import type {
   WebuiThreadPersistedPayload,
   WorkspaceScopePayload,
 } from "./types";
+import type { PrivacyPayload } from "@/overlays/privacy/types";
 import { fetchWithTimeout } from "./http";
 
 const API_READ_TIMEOUT_MS = 20_000;
@@ -59,7 +60,7 @@ async function request<T>(
     throw new ApiError(
       res.status,
       isHtml
-        ? "Gateway returned WebUI HTML instead of JSON. Restart nanobot gateway and try again."
+        ? "Gateway returned WebUI HTML instead of JSON. Restart cloakbot gateway and try again."
         : "Gateway returned a non-JSON response.",
     );
   }
@@ -132,6 +133,34 @@ export async function fetchWebuiThread(
   if (res.status === 404) return null;
   if (!res.ok) throw new ApiError(res.status, `HTTP ${res.status}`);
   return (await res.json()) as WebuiThreadPersistedPayload;
+}
+
+/** Per-turn privacy payloads persisted under the session vault (localhost-gated).
+ *
+ * The WebUI transcript replays restored assistant text but carries no privacy
+ * annotations — the raw side-channel blob is never persisted there. This route
+ * (``GET /api/sessions/{key}/privacy``) returns the per-turn ``WebUIPrivacyPayload``
+ * log instead, so a page refresh can rehydrate the Privacy Inspector and the
+ * per-message restoration highlights. A non-localhost client gets the redacted
+ * projection. */
+export interface PrivacyHistoryPayload {
+  turns: PrivacyPayload[];
+  localhost: boolean;
+}
+
+export async function fetchPrivacyHistory(
+  token: string,
+  key: string,
+  base: string = "",
+): Promise<PrivacyHistoryPayload> {
+  const url = `${base}/api/sessions/${encodeURIComponent(key)}/privacy`;
+  const res = await fetchWithTimeout(url, {
+    headers: { Authorization: `Bearer ${token}` },
+    credentials: "same-origin",
+  });
+  if (res.status === 404) return { turns: [], localhost: false };
+  if (!res.ok) throw new ApiError(res.status, `HTTP ${res.status}`);
+  return (await res.json()) as PrivacyHistoryPayload;
 }
 
 export async function deleteSession(
@@ -457,6 +486,48 @@ export async function updateNetworkSafetySettings(
   return request<SettingsPayload>(
     `${base}/api/settings/network-safety/update?${query}`,
     token,
+  );
+}
+
+export async function updatePrivacySettings(
+  token: string,
+  params: {
+    enabled?: boolean;
+    visualEnabled?: boolean;
+    baseUrl?: string;
+    apiKey?: string;
+    model?: string;
+  },
+  base: string = "",
+): Promise<SettingsPayload> {
+  const query = new URLSearchParams();
+  if (params.enabled !== undefined) query.set("enabled", String(params.enabled));
+  if (params.visualEnabled !== undefined) {
+    query.set("visual_enabled", String(params.visualEnabled));
+  }
+  if (params.baseUrl !== undefined) query.set("base_url", params.baseUrl);
+  if (params.apiKey !== undefined) query.set("api_key", params.apiKey);
+  if (params.model !== undefined) query.set("model", params.model);
+  return request<SettingsPayload>(
+    `${base}/api/settings/privacy/update?${query}`,
+    token,
+  );
+}
+
+export async function fetchPrivacyModels(
+  token: string,
+  overrides: { baseUrl?: string; apiKey?: string } = {},
+  base: string = "",
+): Promise<ProviderModelsPayload> {
+  const query = new URLSearchParams();
+  if (overrides.baseUrl !== undefined) query.set("base_url", overrides.baseUrl);
+  if (overrides.apiKey !== undefined) query.set("api_key", overrides.apiKey);
+  const suffix = query.toString();
+  return request<ProviderModelsPayload>(
+    `${base}/api/settings/privacy/provider-models${suffix ? `?${suffix}` : ""}`,
+    token,
+    undefined,
+    API_READ_TIMEOUT_MS,
   );
 }
 

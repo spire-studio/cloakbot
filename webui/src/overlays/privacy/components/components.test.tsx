@@ -4,9 +4,8 @@ import { describe, expect, it, vi } from 'vitest'
 import { BlockedCounter } from '@/overlays/privacy/components/BlockedCounter'
 import { EntitySummary } from '@/overlays/privacy/components/EntitySummary'
 import { ToolApprovalPrompt } from '@/overlays/privacy/components/ToolApprovalPrompt'
-import { buildAuditRecords, recordsToJsonl } from '@/overlays/privacy/lib/export-audit'
 import { REDACTED_SENTINEL } from '@/overlays/privacy/lib/severity'
-import { makeApproval, makeSnapshot, makeTurn } from '@/overlays/privacy/lib/__fixtures__'
+import { makeApproval, makeSnapshot } from '@/overlays/privacy/lib/__fixtures__'
 
 describe('BlockedCounter', () => {
   it('renders nothing at zero', () => {
@@ -76,22 +75,5 @@ describe('ToolApprovalPrompt', () => {
       <ToolApprovalPrompt approval={makeApproval({ status: 'approved' })} onResolve={() => {}} />,
     )
     expect(container.querySelector('[data-testid="tool-approval-prompt"]')).toBeNull()
-  })
-})
-
-describe('export-audit', () => {
-  it('builds type+placeholder-only records with no raw canonical/value', () => {
-    const snapshot = makeSnapshot()
-    const turns = [makeTurn()]
-    const records = buildAuditRecords({ sessionId: 'websocket:abc', snapshot, turns })
-    const jsonl = recordsToJsonl(records)
-
-    // Audit export is safe to share: it must never carry the real values.
-    expect(jsonl).not.toContain('Ada Lovelace')
-    expect(jsonl).not.toContain('ada@example.com')
-    expect(jsonl).toContain('<<PERSON_1>>')
-    expect(jsonl).toContain('PERSON')
-    expect(records.some((r) => r.kind === 'turn')).toBe(true)
-    expect(records.some((r) => r.kind === 'entity')).toBe(true)
   })
 })

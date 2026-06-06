@@ -19,9 +19,13 @@ export function severityClasses(severity: Severity): string {
   return 'border-slate-300 bg-slate-100 text-slate-700 dark:border-slate-500/40 dark:bg-slate-500/15 dark:text-slate-200'
 }
 
-/** Inline-highlight classes for a restored span in the assistant reply. */
+/** Inline-highlight classes for a restored span in the assistant reply.
+ *
+ * ``whitespace-nowrap`` keeps a multi-word entity (e.g. ``$205 million``) on one
+ * line so the rounded/padded highlight pill never splits across a line break —
+ * the whole entity wraps to the next line as a single unit instead. */
 export const PRIVACY_HIGHLIGHT_CLASS_NAME =
-  'rounded-[0.32rem] border border-sky-300/70 bg-sky-100/70 px-[0.34rem] py-[0.1rem] text-inherit transition-colors hover:bg-sky-200/70 dark:border-sky-400/40 dark:bg-sky-400/15 dark:hover:bg-sky-400/25'
+  'whitespace-nowrap rounded-[0.32rem] border border-sky-300/70 bg-sky-100/70 px-[0.34rem] py-[0.1rem] text-inherit transition-colors hover:bg-sky-200/70 dark:border-sky-400/40 dark:bg-sky-400/15 dark:hover:bg-sky-400/25'
 
 /** Sentinel the backend substitutes for stripped raw values (non-localhost). */
 export const REDACTED_SENTINEL = '[redacted: localhost-only]'

@@ -13,11 +13,10 @@ import { AttachmentTile } from "@/components/AttachmentTile";
 import { CliAppMentionText } from "@/components/CliAppMentionText";
 import { ImageLightbox } from "@/components/ImageLightbox";
 import { MarkdownText, preloadMarkdownText } from "@/components/MarkdownText";
-import { usePrivacyAnnotations } from "@/overlays/privacy/context/PrivacyStateProvider";
-import { AnnotatedMarkdown } from "@/overlays/privacy/lib/annotated-markdown";
+import { RestorationBody, RestorationDiffToggle } from "@/overlays/privacy/components/RestorationAnnotations";
+import type { PrivacyAnnotation } from "@/overlays/privacy/types";
 import { cn } from "@/lib/utils";
 import { copyTextToClipboard } from "@/lib/clipboard";
-import { formatTurnLatency } from "@/lib/format";
 import { toMediaAttachment } from "@/lib/media";
 import type {
   CliAppInfo,
@@ -54,6 +53,7 @@ export function MessageBubble({
 }: MessageBubbleProps) {
   const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
+  const [showRemote, setShowRemote] = useState(false);
   const copyResetRef = useRef<number | null>(null);
   const baseAnim = "animate-in fade-in-0 slide-in-from-bottom-1 duration-300";
   const mentionCliApps = useMemo(
@@ -134,13 +134,15 @@ export function MessageBubble({
 
   const showAssistantActions = message.role === "assistant" && !message.isStreaming && !empty;
   const showCopyButton = showAssistantCopyAction && showAssistantActions;
-  const latencyMs = message.latencyMs;
-  const showLatencyFooter =
+  // CloakBot privacy Diff toggle: lives in the footer (next to Copy) and drives
+  // the reply body's Local↔Remote view via the lifted ``showRemote`` state.
+  const privacyAnnotations =
     message.role === "assistant"
-    && latencyMs != null
-    && !message.isStreaming
-    && (!empty || hasReasoning || media.length > 0);
-  const showAssistantFooterRow = showCopyButton || showLatencyFooter;
+      ? (message.privacyAnnotations as PrivacyAnnotation[] | undefined)
+      : undefined;
+  const hasPrivacyDiff =
+    !message.isStreaming && !!privacyAnnotations && privacyAnnotations.length > 0;
+  const showAssistantFooterRow = showCopyButton || hasPrivacyDiff;
   return (
     <div className={cn("w-full text-[15px]", baseAnim)} style={{ lineHeight: "var(--cjk-line-height)" }}>
       {hasReasoning ? (
@@ -150,7 +152,12 @@ export function MessageBubble({
         <TypingDots />
       ) : empty && message.isStreaming ? null : (
         <>
-          <AssistantMarkdown messageId={message.id} content={message.content} streaming={!!message.isStreaming} />
+          <AssistantMarkdown
+            content={message.content}
+            streaming={!!message.isStreaming}
+            annotations={message.privacyAnnotations}
+            showRemote={showRemote}
+          />
           {media.length > 0 ? <MessageMedia media={media} align="left" /> : null}
           {showAssistantFooterRow ? (
             <div className="mt-2 flex min-h-8 flex-wrap items-center gap-x-2 gap-y-1 text-muted-foreground">
@@ -173,13 +180,12 @@ export function MessageBubble({
                   )}
                 </button>
               ) : null}
-              {showLatencyFooter ? (
-                <span
-                  className="text-[11px] leading-none text-muted-foreground/70 tabular-nums"
-                  title={t("message.turnLatencyTitle")}
-                >
-                  {formatTurnLatency(latencyMs)}
-                </span>
+              {hasPrivacyDiff ? (
+                <RestorationDiffToggle
+                  count={privacyAnnotations.length}
+                  showRemote={showRemote}
+                  onToggle={setShowRemote}
+                />
               ) : null}
             </div>
           ) : null}
@@ -194,22 +200,35 @@ export function MessageBubble({
  *
  * When the privacy side-channel recorded restoration annotations for this
  * message (and the turn has settled — offsets index the final restored string),
- * render through ``AnnotatedMarkdown`` so placeholder ↔ real-value spans get
- * inline highlights/tooltips. Otherwise fall back to the upstream
- * ``MarkdownText`` byte-for-byte. Additive: zero change for non-privacy turns.
+ * render through ``RestorationAnnotations`` — the Local/Remote Diff view with
+ * highlighted placeholder ↔ real-value spans. Otherwise fall back to the
+ * upstream ``MarkdownText`` byte-for-byte. Additive: zero change for non-privacy
+ * turns.
  */
 function AssistantMarkdown({
-  messageId,
   content,
   streaming,
+  annotations,
+  showRemote,
 }: {
-  messageId: string;
   content: string;
   streaming: boolean;
+  annotations: unknown[] | undefined;
+  showRemote: boolean;
 }) {
-  const annotations = usePrivacyAnnotations(messageId);
-  if (!streaming && annotations.length > 0) {
-    return <AnnotatedMarkdown content={content} annotations={annotations} />;
+  // Annotations are bound onto the message at ingest from the same frame that
+  // delivers them (``agent_ui.privacy``), so they index this exact restored
+  // ``content``. Only render the Diff body once the turn has settled (offsets
+  // are final); the Local↔Remote toggle that drives ``showRemote`` lives in the
+  // assistant footer.
+  if (!streaming && annotations && annotations.length > 0) {
+    return (
+      <RestorationBody
+        content={content}
+        annotations={annotations as PrivacyAnnotation[]}
+        showRemote={showRemote}
+      />
+    );
   }
   return <MarkdownText streaming={streaming}>{content}</MarkdownText>;
 }

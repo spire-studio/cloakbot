@@ -3,7 +3,8 @@ import type { ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 
 import { useNanobotStream } from "@/hooks/useNanobotStream";
-import type { InboundEvent, GoalStateWsPayload } from "@/lib/types";
+import type { InboundEvent, GoalStateWsPayload, AgentUIBlob } from "@/lib/types";
+import { makePayload } from "@/overlays/privacy/lib/__fixtures__";
 import { ClientProvider } from "@/providers/ClientProvider";
 
 const EMPTY_MESSAGES: import("@/lib/types").UIMessage[] = [];
@@ -155,6 +156,41 @@ describe("useNanobotStream", () => {
       isStreaming: false,
     });
     expect(result.current.isStreaming).toBe(false);
+  });
+
+  it("binds restoration annotations onto the streamed message on a streamed settle frame", async () => {
+    const fake = fakeClient();
+    const { result } = renderHook(() => useNanobotStream("chat-settle", EMPTY_MESSAGES), {
+      wrapper: wrap(fake.client),
+    });
+
+    // Stream the reply via deltas, then close the text segment.
+    act(() => {
+      fake.emit("chat-settle", { event: "delta", chat_id: "chat-settle", text: "Hello Ada Lovelace" });
+    });
+    await flushStreamFrame();
+    act(() => {
+      fake.emit("chat-settle", { event: "stream_end", chat_id: "chat-settle" });
+    });
+
+    // [buffering PrivacyHook] Settle frame: content already streamed; it carries
+    // the per-message restoration annotations in agent_ui.privacy and is marked
+    // ``streamed`` so the client binds them onto the streamed message.
+    act(() => {
+      fake.emit("chat-settle", {
+        event: "message",
+        chat_id: "chat-settle",
+        text: "Hello Ada Lovelace",
+        streamed: true,
+        agent_ui: { kind: "privacy", privacy: makePayload() } as unknown as AgentUIBlob,
+      });
+    });
+
+    // Exactly ONE assistant message (no duplicate), now carrying annotations.
+    const assistant = result.current.messages.filter((m) => m.role === "assistant");
+    expect(assistant).toHaveLength(1);
+    expect(assistant[0].isStreaming).toBe(false);
+    expect((assistant[0].privacyAnnotations as unknown[] | undefined)?.length ?? 0).toBeGreaterThan(0);
   });
 
   it("drops pending stream work when switching chats", async () => {

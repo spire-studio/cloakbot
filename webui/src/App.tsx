@@ -33,7 +33,7 @@ import type {
 } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { fetchSettings, fetchWorkspaces } from "@/lib/api";
+import { fetchPrivacyHistory, fetchSettings, fetchWorkspaces } from "@/lib/api";
 import {
   createRuntimeHost,
   toRuntimeSurface,
@@ -73,6 +73,7 @@ const SETTINGS_SECTION_KEYS: SettingsSectionKey[] = [
   "overview",
   "appearance",
   "models",
+  "privacy",
   "image",
   "browser",
   "apps",
@@ -521,7 +522,7 @@ function Shell({
   const { t, i18n } = useTranslation();
   const { client, token } = useClient();
   const { theme, toggle } = useTheme();
-  const { sessions, loading, refresh, createChat, deleteChat } = useSessions();
+  const { sessions, loading, refresh, createChat, deleteChat, isPendingChatKey } = useSessions();
   const { state: sidebarState, update: updateSidebarState } =
     useSidebarState(sessions, !loading);
   const initialRouteRef = useRef<ShellRoute | null>(null);
@@ -682,7 +683,13 @@ function Shell({
 
   useEffect(() => {
     if (loading || !activeKey) return;
+    // A just-created chat lives only in the optimistic ref until its first
+    // message is persisted; ``sessions`` (state) may not include it on this
+    // render. Without the ref check this guard bounces the brand-new chat back
+    // to ``#/new`` (replace), so its turn never dispatches. See first-message
+    // send flow in ThreadShell.handleWelcomeSend.
     if (sessions.some((session) => session.key === activeKey)) return;
+    if (isPendingChatKey(activeKey)) return;
     const currentRoute = readShellRoute();
     navigate(
       currentRoute.view === "chat"
@@ -693,7 +700,7 @@ function Shell({
           },
       { replace: true },
     );
-  }, [activeKey, loading, navigate, sessions]);
+  }, [activeKey, loading, navigate, sessions, isPendingChatKey]);
 
   useEffect(() => {
     return client.onSessionUpdate((_chatId, _scope, workspaceScope) => {
@@ -1254,8 +1261,20 @@ function Shell({
     };
   }, [showHostChrome]);
 
+  // Refresh rehydration for the privacy overlay: fetch the persisted per-turn
+  // log for the active session so the inspector + highlights survive a reload.
+  const loadPrivacyHistory = useCallback(async () => {
+    if (!activeKey) return [];
+    try {
+      const { turns } = await fetchPrivacyHistory(token, activeKey);
+      return turns;
+    } catch {
+      return [];
+    }
+  }, [token, activeKey]);
+
   return (
-    <PrivacyStateProvider client={client} chatId={activeChatId}>
+    <PrivacyStateProvider client={client} chatId={activeChatId} loadHistory={loadPrivacyHistory}>
     <ThemeProvider theme={theme}>
       <div
         className={cn(
@@ -1393,7 +1412,6 @@ function Shell({
             <PrivacyPanel
               open={privacyPanelOpen}
               onToggle={() => setPrivacyPanelOpen((v) => !v)}
-              sessionId={activeKey}
             />
           ) : null}
         </div>

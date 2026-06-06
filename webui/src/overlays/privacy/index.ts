@@ -6,7 +6,7 @@
  * frames). Everything here is additive over the adopted upstream Workbench
  * webui; nothing forks an upstream component.
  */
-export { PrivacyStateProvider, usePrivacyState, usePrivacyAnnotations } from './context/PrivacyStateProvider'
+export { PrivacyStateProvider, usePrivacyState } from './context/PrivacyStateProvider'
 export type { PrivacyHeaderStats } from './context/PrivacyStateProvider'
 export { onPrivacy, classifyPrivacyFrame, extractPrivacyPayload } from './lib/privacy-client-lane'
 export type { PrivacyEvent, PrivacyEventHandler, PrivacyLaneClient } from './lib/privacy-client-lane'
@@ -16,5 +16,4 @@ export { PrivacyTraceRow } from './components/PrivacyTraceRow'
 export { RestorationAnnotations } from './components/RestorationAnnotations'
 export { ToolApprovalPrompt, PendingToolApprovals } from './components/ToolApprovalPrompt'
 export { AnnotatedMarkdown } from './lib/annotated-markdown'
-export { buildAuditRecords, recordsToJsonl, downloadAuditJsonl } from './lib/export-audit'
 export * from './types'

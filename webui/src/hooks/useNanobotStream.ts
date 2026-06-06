@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useClient } from "@/providers/ClientProvider";
 import { toMediaAttachment } from "@/lib/media";
+import { extractPrivacyPayload } from "@/overlays/privacy";
 import {
   mergeToolProgressEvents,
   mergeUniqueToolTraceLines,
@@ -850,6 +851,46 @@ export function useNanobotStream(
           ? ev.media_urls.map((m) => toMediaAttachment(m))
           : ev.media?.map((url) => toMediaAttachment({ url }));
         const hasMedia = !!media && media.length > 0;
+        // CloakBot privacy overlay: restoration annotations ride agent_ui.privacy
+        // on this same settling frame, so bind them onto the message here — their
+        // offsets index ev.text (the final restored string). This is a reliable
+        // per-message link with no dependency on a reply_to <-> client id match.
+        const privacyPayload = extractPrivacyPayload(
+          ev.agent_ui as Parameters<typeof extractPrivacyPayload>[0],
+        );
+        const privacyAnnotations = privacyPayload?.privacyAnnotations;
+        const privacyTurnId = privacyPayload?.privacyTurn?.turnId;
+
+        if (ev.streamed) {
+          // [buffering PrivacyHook] Settle frame of a streamed turn: the content
+          // already rendered via deltas. Bind the restoration annotations onto the
+          // streamed message (no append, no re-render) so highlight / hover /
+          // Local↔Remote diff appear LIVE without duplicating the reply. A refresh
+          // rehydrates independently from the delta replay + the GET /privacy route.
+          clearActivitySegment();
+          setMessages((prev) => {
+            for (let i = prev.length - 1; i >= 0; i -= 1) {
+              const m = prev[i];
+              if (m.role === "assistant" && m.kind !== "trace") {
+                return [
+                  ...prev.slice(0, i),
+                  {
+                    ...m,
+                    ...(ev.text ? { content: ev.text } : {}),
+                    isStreaming: false,
+                    ...(privacyAnnotations?.length ? { privacyAnnotations } : {}),
+                    ...(privacyTurnId ? { privacyTurnId } : {}),
+                  },
+                  ...prev.slice(i + 1),
+                ];
+              }
+            }
+            return prev;
+          });
+          buffer.current = null;
+          activeAssistantRef.current = null;
+          return;
+        }
 
         // A complete (non-streamed) assistant message. If a stream was in
         // flight, drop the placeholder so we don't render the text twice.
@@ -870,6 +911,8 @@ export function useNanobotStream(
             content,
             ...(hasMedia ? { media } : {}),
             ...(lat !== undefined ? { latencyMs: lat } : {}),
+            ...(privacyAnnotations?.length ? { privacyAnnotations } : {}),
+            ...(privacyTurnId ? { privacyTurnId } : {}),
           });
         });
         if (hasMedia) {

@@ -69,6 +69,11 @@ export interface UIMessage {
    * string only. Populated by the privacy side-channel; ``undefined`` for turns
    * with no detected entities. Never echoed back to the remote model. */
   privacyAnnotations?: unknown[];
+  /** CloakBot privacy overlay: the privacy turn id (``WebUIPrivacyTurn.turnId``)
+   * that produced this assistant reply. Lets each activity cluster scope its
+   * ``PrivacyTraceRow`` to THIS turn instead of the session-global latest one.
+   * Bound on the same frame as ``privacyAnnotations`` (live + on rehydrate). */
+  privacyTurnId?: string;
 }
 
 export interface UICliAppAttachment {
@@ -378,6 +383,15 @@ export interface SettingsPayload {
     exec_sandbox?: string | null;
     exec_path_append_set: boolean;
   };
+  privacy?: {
+    enabled: boolean;
+    visual_enabled: boolean;
+    base_url?: string | null;
+    api_key_hint?: string | null;
+    model: string;
+    configured: boolean;
+    active: boolean;
+  };
   requires_restart: boolean;
   restart_required_sections?: Array<"runtime" | "browser" | "image">;
 }
@@ -585,6 +599,12 @@ export interface NetworkSafetySettingsUpdate {
   webuiDefaultAccessMode: WebuiDefaultAccessMode;
 }
 
+export interface PrivacyDetectorDraft {
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+}
+
 export interface ImageGenerationSettingsUpdate {
   enabled: boolean;
   provider: string;
@@ -628,6 +648,10 @@ export type InboundEvent =
       latency_ms?: number;
       /** Optional structured payload on progress frames (channel-specific). */
       agent_ui?: AgentUIBlob;
+      /** CloakBot: settle frame of a streamed turn. The content already arrived
+       * via deltas, so the client binds restoration annotations (in ``agent_ui``)
+       * onto the streamed message instead of appending / re-rendering it. */
+      streamed?: boolean;
     }
   | {
       event: "file_edit";

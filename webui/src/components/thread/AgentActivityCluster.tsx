@@ -195,6 +195,13 @@ export function AgentActivityCluster({
   );
   const cliRuns = useMemo(() => collectCliRuns(messages), [messages]);
   const mcpRuns = useMemo(() => collectMcpRuns(messages), [messages]);
+  // CloakBot privacy overlay: scope the PrivacyTraceRow to THIS turn's privacy
+  // pass. The cluster's assistant reply carries the privacy turn id; pick the
+  // last one present (one turn unit == one cluster).
+  const privacyTurnId = useMemo(
+    () => [...messages].reverse().find((m) => m.privacyTurnId)?.privacyTurnId,
+    [messages],
+  );
   const cliAppsByName = useMemo(
     () => new Map(cliApps.map((app) => [app.name.toLowerCase(), app])),
     [cliApps],
@@ -513,8 +520,9 @@ export function AgentActivityCluster({
               })}
               {fileEdits.length ? <FileEditGroup edits={fileEdits} /> : null}
               {/* CloakBot privacy overlay: per-turn privacy summary in the
-                  activity timeline (renders nothing until a privacy turn lands). */}
-              <PrivacyTraceRow />
+                  activity timeline (scoped to THIS turn; renders nothing when the
+                  turn had no privacy activity). */}
+              <PrivacyTraceRow turnId={privacyTurnId} />
             </div>
           </div>
         </div>
