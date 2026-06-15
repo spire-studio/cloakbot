@@ -14,6 +14,7 @@ from cloakbot.privacy.core.detection.general_detector import (
     GeneralPrivacyDetector,
     PartialCandidate,
 )
+from cloakbot.privacy.core.placeholders import INTERNAL_TOKEN_RE
 from cloakbot.privacy.core.types import (
     DetectedEntity,
     DetectionResult,
@@ -21,8 +22,6 @@ from cloakbot.privacy.core.types import (
     Severity,
 )
 
-# Robust regex to catch placeholders with or without brackets, and various PII tags
-_TOKEN_PATTERN = re.compile(r"(?:<<)?[A-Z]{2,}(?:_[A-Z]+)*_\d+(?:>>)?")
 _ENTITY_PRIORITY = {
     "email": 100,
     "phone": 100,
@@ -43,7 +42,7 @@ _ENTITY_PRIORITY = {
     "value": 50,
 }
 _LOCAL_PATH_PATTERN = re.compile(
-    r"(?<!\S)(?:file://[^\s<>'\"]+|~[/\\][^\s<>'\"]+|/[^<>'\"\s]+|\.{1,2}[/\\][^\s<>'\"]+|[A-Za-z]:[\\/][^\s<>'\"]+)"
+    r"(?<!\S)(?:file://[^\s<>'\"]+|~[/\\][^\s<>'\"]+|/[^<>'\"\s]+|\.{1,2}[/\\][^\s<>'\"]+|[A-Za-z]:[\\/][^\s<>'\"]+)",
 )
 _LOCAL_PATH_TRAILING = ".,;:!?)\\]}"
 
@@ -77,7 +76,7 @@ class PiiDetector:
         entities_by_text: dict[str, DetectedEntity] = {}
         for entity in general_result.entities + digit_result.entities + _detect_local_paths(prompt):
             # Central filter: Ignore anything that looks like our own internal tokens
-            if _TOKEN_PATTERN.search(entity.text):
+            if INTERNAL_TOKEN_RE.search(entity.text):
                 logger.debug("PiiDetector: ignoring internal token match '{}'", entity.text)
                 continue
 
@@ -94,7 +93,7 @@ class PiiDetector:
                 "general": general_result.raw_output,
                 "digit": digit_result.raw_output,
                 "intent_hint": intent_hint,
-            }
+            },
         )
 
         logger.debug(

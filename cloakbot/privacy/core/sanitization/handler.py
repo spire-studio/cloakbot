@@ -2,41 +2,10 @@
 
 from __future__ import annotations
 
-import re
-
+from cloakbot.privacy.core.placeholders import find_unprotected_positions, is_placeholder
 from cloakbot.privacy.core.sanitization.alias_resolver import resolve_existing_placeholder
-from cloakbot.privacy.core.state.vault import PLACEHOLDER_RE, _SessionMap
-from cloakbot.privacy.core.types import REGISTRY, ComputableEntity, DetectionResult
-
-_IS_PLACEHOLDER_RE = re.compile(r"^<<[A-Z]+(?:_[A-Z]+)*_\d+>>$")
-
-
-def _find_protected_spans(text: str) -> list[tuple[int, int]]:
-    """Return sorted ``(start, end)`` spans for every existing ``<<TOKEN>>``."""
-    return [(m.start(), m.end()) for m in PLACEHOLDER_RE.finditer(text)]
-
-
-def _overlaps_any(start: int, end: int, spans: list[tuple[int, int]]) -> bool:
-    """True if ``[start, end)`` overlaps with any protected span."""
-    return any(s < end and start < e for s, e in spans)
-
-
-def _find_safe_positions(
-    text: str,
-    needle: str,
-    protected: list[tuple[int, int]],
-) -> list[int]:
-    """Return start positions of *needle* that don't overlap protected spans."""
-    positions: list[int] = []
-    start = 0
-    while True:
-        idx = text.find(needle, start)
-        if idx == -1:
-            break
-        if not _overlaps_any(idx, idx + len(needle), protected):
-            positions.append(idx)
-        start = idx + 1
-    return positions
+from cloakbot.privacy.core.state.vault import _SessionMap
+from cloakbot.privacy.core.types import REGISTRY, ComputableEntity, DetectionResult, GeneralEntity
 
 
 def apply_tokens(
@@ -62,30 +31,27 @@ def apply_tokens(
 
     for entity in ordered:
         # Skip entities that are themselves placeholders
-        if _IS_PLACEHOLDER_RE.fullmatch(entity.text):
+        if is_placeholder(entity.text):
             continue
         if "<<" in entity.text and ">>" in entity.text:
             continue
 
-        # Find protected zones (existing placeholders)
-        protected = _find_protected_spans(text)
-
-        # Find safe (non-overlapping) positions for this entity
-        positions = _find_safe_positions(text, entity.text, protected)
+        # Find safe (non-overlapping) positions for this entity, avoiding any
+        # existing placeholder spans already in the text.
+        positions = find_unprotected_positions(text, entity.text)
         if not positions:
             continue
 
         # Get or create placeholder via vault.
         tag = tag_map.get(entity.entity_type, "ENTITY")
 
-        # Detector-emitted cross-turn dedupe decision (Plan C). When the
-        # local model has already judged whether this surface refers to a
-        # known entity, it overrides the legacy substring resolver — which
-        # only looks at lexical overlap and cannot distinguish "another
-        # person who shares a surname" from "the same person partially
-        # mentioned". A None / unknown hint falls back to the resolver, so
-        # callers that don't supply `dedupe_targets` get unchanged behavior.
-        hint = getattr(entity, "dedupe_hint", None)
+        # Detector-emitted cross-turn dedupe decision (Plan C). When the local
+        # model has already judged whether this surface refers to a known
+        # entity, it overrides the substring resolver — which only looks at
+        # lexical overlap and cannot distinguish "another person who shares a
+        # surname" from "the same person partially mentioned". A None / unknown
+        # hint falls back to the resolver. Only GeneralEntity carries a hint.
+        hint = entity.dedupe_hint if isinstance(entity, GeneralEntity) else None
 
         placeholder: str | None = None
         if hint == "new":
@@ -100,7 +66,7 @@ def apply_tokens(
                 tag,
                 turn_id=turn_id,
             )
-        elif hint and _IS_PLACEHOLDER_RE.fullmatch(hint) and hint in smap.placeholder_to_entity:
+        elif hint and is_placeholder(hint) and hint in smap.placeholder_to_entity:
             # Detector says this surface is the SAME as an existing
             # placeholder. Honor it verbatim and register the surface as
             # an additional alias of that placeholder.

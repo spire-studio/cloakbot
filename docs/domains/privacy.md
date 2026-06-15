@@ -27,7 +27,8 @@ should see placeholders, not raw sensitive values.
 7. `analyze_user_intent()` (the `UserIntentAnalyzer` in
    `agents/classification/intent_analyzer.py`) classifies the raw user input as
    `chat` or `math`.
-8. `runtime/registry.py` maps `chat` to `ChatAgent` and `math` to `MathAgent`.
+8. `runtime/routing.py` maps `chat` to `ChatAgent` and `math` to `MathAgent`
+   (the `_WORKERS` table is the single source of truth for supported intents).
 9. The remote LLM receives only the sanitized prompt.
 10. `post_llm_hook()` calls `PrivacyRuntime.finalize_turn()`.
 11. Math turns execute validated snippet blocks locally, then responses are
@@ -54,7 +55,10 @@ Remote or untrusted zone:
 
 ## Token And Vault Invariants
 
-- Placeholder format is `<<TAG_N>>`, defined by `PLACEHOLDER_RE`.
+- Placeholder format is `<<TAG_N>>`, defined once in `core/placeholders.py`
+  (`PLACEHOLDER_RE` and the token/​span helpers). Every detector, the sanitizer,
+  the vault, math, and the egress gate import the grammar from there so it cannot
+  drift between the mint path and an egress path.
 - Placeholder indexes are stable per session and entity family.
 - Known aliases are replaced before detection so multi-turn references reuse
   existing placeholders.

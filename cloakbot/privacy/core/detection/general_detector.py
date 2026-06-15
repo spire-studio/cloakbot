@@ -1,15 +1,14 @@
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 
 from loguru import logger
 from pydantic import BaseModel
 
 from cloakbot.privacy.core.detection.llm_json import JsonCompletionRunner, load_json_object
+from cloakbot.privacy.core.placeholders import is_placeholder
 from cloakbot.privacy.core.types import REGISTRY, GeneralEntity
 
-_DEDUPE_PLACEHOLDER_RE = re.compile(r"^<<[A-Z]+(?:_[A-Z]+)*_\d+>>$")
 _DEDUPE_ELIGIBLE_TAGS = {"PERSON", "ORG"}
 
 _TYPE_BLOCK = REGISTRY.get_prompt_block("general")
@@ -124,7 +123,7 @@ def scan_partial_candidates(
                     surface=surface,
                     canonical=canonical,
                     entity_type=entity_type,
-                )
+                ),
             )
 
     return candidates
@@ -154,7 +153,7 @@ def _build_user_prompt(
             "[Candidate partial mentions detected in the text - judge each one:]\n"
             f"{candidate_lines}\n"
             "Only extract the candidate if it clearly refers to the known entity in "
-            "context. If ambiguous or unrelated, skip it."
+            "context. If ambiguous or unrelated, skip it.",
         )
 
     if dedupe_targets:
@@ -167,26 +166,26 @@ def _build_user_prompt(
             f"{target_lines}\n"
             "For EACH person/org entity you extract, you MUST add a `dedupe_hint` "
             "field with EXACTLY one of:\n"
-            "  • the matching placeholder above (e.g. \"<<PERSON_1>>\") — only "
+            '  • the matching placeholder above (e.g. "<<PERSON_1>>") — only '
             "when the new mention clearly refers to the SAME individual or "
             "organisation as that placeholder.\n"
-            "  • the literal string \"new\" — when the mention is clearly a "
+            '  • the literal string "new" — when the mention is clearly a '
             "DIFFERENT entity (e.g. another person who happens to share a "
             "surname; a different company with a similar name; phrases like "
-            "\"another\", \"a different\", \"someone surnamed X\", "
-            "\"someone else named X\" almost always mean a NEW entity).\n"
+            '"another", "a different", "someone surnamed X", '
+            '"someone else named X" almost always mean a NEW entity).\n'
             "  • omit the field entirely — only when truly ambiguous and you "
             "cannot tell.\n"
             "Worked example:\n"
-            "  Known: <<PERSON_1>>: \"Lin Zhiyuan\" (person)\n"
-            "  Text:  \"...also held by someone surnamed Lin.\"\n"
-            "  Extract: {\"text\": \"Lin\", \"entity_type\": \"person\", "
-            "\"dedupe_hint\": \"new\"}\n"
-            "  (NOT \"<<PERSON_1>>\" — \"someone surnamed Lin\" explicitly "
+            '  Known: <<PERSON_1>>: "Lin Zhiyuan" (person)\n'
+            '  Text:  "...also held by someone surnamed Lin."\n'
+            '  Extract: {"text": "Lin", "entity_type": "person", '
+            '"dedupe_hint": "new"}\n'
+            '  (NOT "<<PERSON_1>>" — "someone surnamed Lin" explicitly '
             "signals a DIFFERENT individual who merely shares a surname.)\n"
             "Over-merging two distinct people onto one placeholder silently "
             "corrupts downstream restoration; when in real doubt, choose "
-            "\"new\" rather than the placeholder."
+            '"new" rather than the placeholder.',
         )
 
     if not sections:
@@ -249,7 +248,7 @@ class GeneralPrivacyDetector:
             ],
         )
         return GeneralDetectionResult(
-            raw_output=raw_output, entities=entities, latency_ms=latency_ms
+            raw_output=raw_output, entities=entities, latency_ms=latency_ms,
         )
 
 
@@ -273,7 +272,7 @@ def parse_general_entities(
             slug = str(item["entity_type"])
             if slug not in _VALID_ENTITY_TYPES:
                 continue
-            if text in seen or prompt.find(text) == -1:
+            if text in seen or text not in prompt:
                 continue
 
             seen.add(text)
@@ -282,7 +281,7 @@ def parse_general_entities(
                     text=text,
                     entity_type=slug,
                     dedupe_hint=_parse_dedupe_hint(item, slug, valid_placeholders),
-                )
+                ),
             )
         except (KeyError, ValueError):
             logger.debug("GeneralPrivacyDetector: skipping malformed entity: {}", item)
@@ -298,7 +297,7 @@ def _parse_dedupe_hint(
 ) -> str | None:
     """Validate and normalise the optional `dedupe_hint` field emitted by the
     local model. Returns `None` for any malformed or non-eligible hint so the
-    sanitizer falls back to the legacy substring resolver path."""
+    sanitizer falls back to the substring resolver path."""
     raw = item.get("dedupe_hint")
     if not raw:
         return None
@@ -314,7 +313,7 @@ def _parse_dedupe_hint(
         return None
     if hint.lower() == "new":
         return "new"
-    if _DEDUPE_PLACEHOLDER_RE.fullmatch(hint) and hint in valid_placeholders:
+    if is_placeholder(hint) and hint in valid_placeholders:
         return hint
     return None
 

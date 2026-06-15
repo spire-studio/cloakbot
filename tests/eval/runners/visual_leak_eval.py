@@ -60,6 +60,7 @@ import pytesseract
 from PIL import Image
 
 from cloakbot.privacy import visual_redaction
+from cloakbot.privacy.visual_redaction import detector as visual_detector
 from tests.eval.generators.render_invoice import (
     RenderedInvoice,
     render_invoice_v1,
@@ -434,7 +435,7 @@ def _write_markdown(path: Path, agg: AggregateResult, results: list[SeedResult])
 
 async def _main(args: argparse.Namespace) -> int:
     # Local monkey-patch — does not affect anything outside this process.
-    visual_redaction._inspect_visual = _stub_inspect_visual  # type: ignore[attr-defined]
+    visual_detector._inspect_visual = _stub_inspect_visual  # type: ignore[attr-defined]
 
     today = args.date or datetime.now(timezone.utc).strftime("%Y-%m-%d")
     image_dir = REPORT_ROOT / today / "visual"

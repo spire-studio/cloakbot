@@ -65,7 +65,7 @@ class PlainTextChunker:
                     text=body,
                     char_span=(buf_start, buf_end),
                     provenance={"chunker": "plaintext"},
-                )
+                ),
             )
             buf = []
             buf_start = None
@@ -132,7 +132,7 @@ def _enforce_hard_cut(
                     text=body[start:end],
                     char_span=chunk.char_span,
                     provenance={**chunk.provenance, "hard_cut": True},
-                )
+                ),
             )
             start = max(start + max_chars - overlap_chars, end)
     return cut

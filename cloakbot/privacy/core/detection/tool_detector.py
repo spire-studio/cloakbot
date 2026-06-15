@@ -165,9 +165,9 @@ class ToolPrivacyDetector:
                         timeout=self._timeout_s,
                     )
                     return index, list(result.entities), False, None
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     return index, [], True, "timeout"
-                except Exception as exc:  # noqa: BLE001 — caller decides fail policy
+                except Exception as exc:
                     return index, [], True, type(exc).__name__
 
         raw = await asyncio.gather(*(_detect_one(c.index, c.text) for c in chunks))
@@ -194,7 +194,7 @@ class ToolPrivacyDetector:
                     entity_types=sorted({e.entity_type for e in entities}),
                     failed=failed,
                     failure_reason=reason,
-                )
+                ),
             )
 
         logger.debug(

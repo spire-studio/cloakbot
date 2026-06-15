@@ -7,6 +7,7 @@ from typing import Any
 from cloakbot.privacy.protocol.contracts import EventRecord, EventType, PrivacyStage, ProtocolStatus
 from cloakbot.privacy.protocol.metrics import MetricsSnapshot, build_metrics_snapshot
 from cloakbot.privacy.protocol.replay import SessionTraceIndex
+from cloakbot.privacy.protocol.timing import elapsed_ms
 
 
 @dataclass
@@ -61,7 +62,7 @@ def emit_event(
     if parent_span_id is not None:
         start_event = _START_EVENT_BY_TRACE_AND_SPAN.get((trace_id, parent_span_id))
         if start_event is not None:
-            duration_ms = max(int((timestamp - start_event.timestamp).total_seconds() * 1000), 0)
+            duration_ms = elapsed_ms(start_event.timestamp, timestamp)
 
     event = EventRecord(
         event_type=event_type,

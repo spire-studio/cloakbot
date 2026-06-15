@@ -59,7 +59,7 @@ class MarkdownChunker:
                     text=text,
                     char_span=None,
                     provenance={"chunker": "markdown"},
-                )
+                ),
             )
             buf.clear()
 
@@ -93,7 +93,7 @@ class MarkdownChunker:
                             "chunker": "markdown",
                             "subchunker": "plaintext",
                         },
-                    )
+                    ),
                 )
         return out
 

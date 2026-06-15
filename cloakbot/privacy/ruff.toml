@@ -1,0 +1,44 @@
+# The privacy kernel is the security-critical core, so it is held to a stricter
+# lint bar than the rest of the repo. This config inherits the repo root config
+# and layers on high-signal rule families for files under cloakbot/privacy/ only
+# (ruff applies the nearest config per file).
+#
+# Deliberately NOT enabled here (each is a separate, larger initiative the audit
+# flagged for a later pass): the docstring suite (D*), typing-honesty (ANN*),
+# exception-message style (EM*/TRY*), boolean-trap (FBT*), and import-outside-
+# top-level (PLC0415) — the privacy layer has a handful of *intentional* deferred
+# imports (fresh-config reads, cycle avoidance) that PLC0415 would force noqas on.
+extend = "../../pyproject.toml"
+
+[lint]
+extend-select = [
+    "UP",   # pyupgrade — modern syntax (PEP 585/604 generics, …)
+    "B",    # flake8-bugbear — likely-bug patterns
+    "C4",   # flake8-comprehensions
+    "SIM",  # flake8-simplify
+    "COM",  # trailing commas
+    "Q",    # quote consistency
+    "PIE",  # misc lints (no-op/duplicate patterns)
+    "RUF",  # ruff-native (unsorted __all__, etc.)
+    "TID",  # tidy imports (no relative imports)
+    "ISC",  # implicit string concatenation
+    "FA",   # future annotations
+    "FLY",  # static str.join → f-string
+    "PGH",  # pygrep hooks (blanket noqa / type-ignore)
+]
+extend-ignore = [
+    # The privacy docstrings/prompts intentionally use em-dashes, arrows (→ ↔)
+    # and other non-ASCII prose; the ambiguous-unicode lints are pure noise here.
+    "RUF001",
+    "RUF002",
+    "RUF003",
+    # `class X(str, Enum)` → `StrEnum` is a cross-cutting enum migration with
+    # serialization implications; deferred (the enums are shared repo-wide).
+    "UP042",
+]
+
+[lint.isort]
+# This config is rooted under cloakbot/privacy/, so pin first-party detection to
+# match the repo-root config (otherwise isort would re-sort cloakbot imports as
+# third-party and disagree with the root config).
+known-first-party = ["cloakbot"]

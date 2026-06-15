@@ -8,6 +8,7 @@ from cloakbot.privacy.webui.contracts import (
     WebUIAssistantDeltaEvent,
     WebUIAssistantDoneEvent,
     WebUIAssistantMessageEvent,
+    WebUIAttachment,
     WebUIPrivacyPayload,
     WebUIPrivacySnapshotEvent,
     WebUIPrivacyTimeline,
@@ -19,6 +20,8 @@ from cloakbot.privacy.webui.contracts import (
     WebUIStatusEvent,
     WebUIToolApproval,
     WebUIToolResult,
+    WebUIUserAttachment,
+    WebUIUserDocument,
     WebUIUserMessage,
 )
 
@@ -27,6 +30,7 @@ __all__ = [
     "WebUIAssistantDeltaEvent",
     "WebUIAssistantDoneEvent",
     "WebUIAssistantMessageEvent",
+    "WebUIAttachment",
     "WebUIPrivacyPayload",
     "WebUIPrivacySnapshotEvent",
     "WebUIPrivacyTimeline",
@@ -38,6 +42,8 @@ __all__ = [
     "WebUISessionEvent",
     "WebUIStatusData",
     "WebUIStatusEvent",
+    "WebUIUserAttachment",
+    "WebUIUserDocument",
     "WebUIUserMessage",
     "build_webui_privacy_payload",
     "build_webui_privacy_timeline",

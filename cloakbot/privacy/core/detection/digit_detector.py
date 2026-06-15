@@ -1,16 +1,14 @@
 from __future__ import annotations
 
-import re
-
 from loguru import logger
 from pydantic import BaseModel
 
 from cloakbot.privacy.core.detection.llm_json import JsonCompletionRunner, load_json_object
+from cloakbot.privacy.core.placeholders import INTERNAL_TOKEN_RE
 from cloakbot.privacy.core.types import REGISTRY, ComputableEntity
 
 _TYPE_BLOCK = REGISTRY.get_prompt_block("computable")
 _ENUM_STR = REGISTRY.get_enum_str("computable")
-_TOKEN_PATTERN = re.compile(r"(?:<<)?[A-Z]{2,}(?:_[A-Z]+)*_\d+(?:>>)?")
 _VALID_ENTITY_TYPES = {spec.slug for spec in REGISTRY.computable}
 
 _DIGIT_SYSTEM_PROMPT = f"""You are a privacy-focused numeric and temporal entity extractor.
@@ -89,9 +87,9 @@ def parse_digit_entities(raw_output: str, prompt: str) -> list[ComputableEntity]
 
             if slug not in _VALID_ENTITY_TYPES:
                 continue
-            if _TOKEN_PATTERN.search(text):
+            if INTERNAL_TOKEN_RE.search(text):
                 continue
-            if text in seen or prompt.find(text) == -1:
+            if text in seen or text not in prompt:
                 continue
 
             seen.add(text)

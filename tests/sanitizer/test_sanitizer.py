@@ -234,7 +234,7 @@ class TestSessionMap:
             counters={"PERSON": 1},
         )
         with patch(
-            "cloakbot.privacy.core.state.vault._map_path",
+            "cloakbot.privacy.core.state.vault_store._map_path",
             return_value=tmp_path / "test.json",
         ):
             _save_map("test:session", smap)
@@ -246,7 +246,7 @@ class TestSessionMap:
 
     def test_missing_file_returns_empty_map(self, tmp_path: Path):
         with patch(
-            "cloakbot.privacy.core.state.vault._map_path",
+            "cloakbot.privacy.core.state.vault_store._map_path",
             return_value=tmp_path / "nonexistent.json",
         ):
             loaded = _load_map("no:session")
@@ -256,7 +256,7 @@ class TestSessionMap:
         bad = tmp_path / "bad.json"
         bad.write_text("not json", encoding="utf-8")
         with patch(
-            "cloakbot.privacy.core.state.vault._map_path",
+            "cloakbot.privacy.core.state.vault_store._map_path",
             return_value=bad,
         ):
             loaded = _load_map("bad:session")
@@ -293,7 +293,7 @@ def session_key(tmp_path: Path):
     """Isolated session key that writes maps to tmp_path."""
     key = "test:isolated"
     with patch(
-        "cloakbot.privacy.core.state.vault._map_path",
+        "cloakbot.privacy.core.state.vault_store._map_path",
         side_effect=lambda k: tmp_path / f"{k.replace(':', '_')}.json",
     ):
         clear_cache(key)

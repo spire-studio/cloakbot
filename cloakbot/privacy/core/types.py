@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Dict, List, Union
 
 from pydantic import BaseModel, Field, computed_field
 
@@ -16,15 +15,15 @@ class EntitySpec(BaseModel):
     slug: str
     tag: str
     description: str
-    include: List[str] = Field(default_factory=list)
-    exclude: List[str] = Field(default_factory=list)
-    examples: List[str] = Field(default_factory=list)
+    include: list[str] = Field(default_factory=list)
+    exclude: list[str] = Field(default_factory=list)
+    examples: list[str] = Field(default_factory=list)
     severity: Severity = Severity.HIGH
 
 
 class PrivacyRegistry(BaseModel):
-    general: List[EntitySpec]
-    computable: List[EntitySpec]
+    general: list[EntitySpec]
+    computable: list[EntitySpec]
 
     def get_prompt_block(self, category: str) -> str:
         specs = getattr(self, category)
@@ -48,15 +47,15 @@ class PrivacyRegistry(BaseModel):
         return "|".join(s.slug for s in specs)
 
     @property
-    def tag_map(self) -> Dict[str, str]:
+    def tag_map(self) -> dict[str, str]:
         return {s.slug: s.tag for s in self.general + self.computable}
 
     @property
-    def severity_map(self) -> Dict[str, Severity]:
+    def severity_map(self) -> dict[str, Severity]:
         return {s.slug: s.severity for s in self.general + self.computable}
 
     @property
-    def computable_tags(self) -> List[str]:
+    def computable_tags(self) -> list[str]:
         return [s.tag for s in self.computable]
 
 
@@ -198,9 +197,9 @@ class GeneralEntity(BaseModel):
     #     the SAME entity as the given existing placeholder. The
     #     sanitizer reuses that placeholder verbatim (after validating
     #     it actually exists in the smap).
-    #   - None — the model gave no decision; fall back to the legacy
-    #     substring alias resolver behavior. This preserves backwards
-    #     compatibility for detectors / paths that don't emit the hint.
+    #   - None — the model gave no decision; the sanitizer falls back to
+    #     the substring alias resolver. Detectors / paths that do not emit
+    #     a hint use this path.
     dedupe_hint: str | None = None
 
     @computed_field
@@ -222,13 +221,14 @@ class ComputableEntity(BaseModel):
         return REGISTRY.severity_map.get(self.entity_type, Severity.MEDIUM)
 
 
-# Discriminated Union for Pydantic v2
-DetectedEntity = Union[GeneralEntity, ComputableEntity]
+# Union of the two entity shapes. Not a Pydantic discriminated union: there is
+# no discriminator field, so callers narrow with `isinstance(...)`.
+DetectedEntity = GeneralEntity | ComputableEntity
 
 
 class DetectionResult(BaseModel):
     original_prompt: str
-    entities: List[DetectedEntity]
+    entities: list[DetectedEntity]
     llm_raw_output: str
     latency_ms: float
 
@@ -237,7 +237,7 @@ class DetectionResult(BaseModel):
         return bool(self.entities)
 
     @property
-    def sensitive_entities(self) -> List[DetectedEntity]:
+    def sensitive_entities(self) -> list[DetectedEntity]:
         return self.entities
 
 

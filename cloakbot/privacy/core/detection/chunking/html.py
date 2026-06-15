@@ -31,7 +31,7 @@ from cloakbot.privacy.core.detection.chunking.text import PlainTextChunker
 _TAG_RE = re.compile(r"<[^>]+>")
 _WHITESPACE_RUN_RE = re.compile(r"\s+")
 _SCRIPT_STYLE_RE = re.compile(
-    r"<(script|style)\b[^>]*>.*?</\1>", re.IGNORECASE | re.DOTALL
+    r"<(script|style)\b[^>]*>.*?</\1>", re.IGNORECASE | re.DOTALL,
 )
 _HREF_RE = re.compile(
     r"""\b(?:href|src|content|action|cite|data-[\w-]+)\s*=\s*["']([^"']+)["']""",
@@ -66,7 +66,7 @@ class HtmlChunker:
         if not normalized:
             return []
         chunks = self._inner.chunk(
-            normalized, max_chars=max_chars, overlap_chars=overlap_chars
+            normalized, max_chars=max_chars, overlap_chars=overlap_chars,
         )
         return [
             Chunk(
@@ -92,7 +92,7 @@ def _normalize_html(html: str) -> str:
     metas = _META_RE.findall(html)
     if metas:
         parts.append(
-            "\n".join(f"meta[{name}]: {content}" for name, content in metas)
+            "\n".join(f"meta[{name}]: {content}" for name, content in metas),
         )
 
     refs: list[str] = []
@@ -100,11 +100,9 @@ def _normalize_html(html: str) -> str:
         url = url.strip()
         if not url:
             continue
-        if url.startswith(("mailto:", "tel:")):
+        if url.startswith(("mailto:", "tel:")) or url.lower().startswith(("http://", "https://", "ftp://", "ftps://", "file://")):
             refs.append(url)
-        elif url.lower().startswith(("http://", "https://", "ftp://", "ftps://", "file://")):
-            refs.append(url)
-        elif url.startswith("/") or url.startswith("./") or url.startswith("../"):
+        elif url.startswith(("/", "./", "../")):
             # Relative path — may itself encode usernames / IDs.
             refs.append(url)
     if refs:

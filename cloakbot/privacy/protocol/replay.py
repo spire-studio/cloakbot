@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from cloakbot.privacy.protocol.contracts import EventRecord
+from cloakbot.privacy.protocol.timing import elapsed_ms
 
 
 @dataclass
@@ -63,7 +64,7 @@ def build_turn_timeline(session_id: str, turn_id: str, *, index: SessionTraceInd
             stage_durations_ms={},
         )
 
-    total_duration_ms = max(int((events[-1].timestamp - events[0].timestamp).total_seconds() * 1000), 0)
+    total_duration_ms = elapsed_ms(events[0].timestamp, events[-1].timestamp)
     stage_durations_ms: dict[str, int] = {}
     for event in events:
         if event.duration_ms is None:
