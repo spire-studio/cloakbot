@@ -145,7 +145,7 @@ REGISTRY = PrivacyRegistry(
             examples=[
                 "Hall PLC",
                 "Acme Corp",
-                "DMIT, Inc.",
+                "Globex LLC",
                 "Taylor-Simmons",
                 "Miller, Henderson and Johnson",
                 "BlueCross",
