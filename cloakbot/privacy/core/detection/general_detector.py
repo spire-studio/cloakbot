@@ -33,16 +33,14 @@ The remote LLM's job is to answer the user's request while preserving task inten
 8. Extract private-context organizations and person names, including standalone aliases or first names when they clearly refer to a private person in the prompt.
 
 ━━━ Document-context recall ━━━
-The text may be a structured document bound to a specific private party (invoice, receipt, bill, statement, contract, order), possibly OCR'd. There, extract the party's private surfaces aggressively — do not skip a value as "templated" or "public" merely because the layout repeats it (e.g. the same address on every page):
+In a structured document bound to a private party (invoice, receipt, statement, contract, order; possibly OCR'd), extract its private surfaces aggressively — do not skip a repeated value as "templated":
 
-9. A section label that introduces a party (a "Bill To" / "Ship To" / "From"-style header) is followed by that party's identity. Treat each non-empty line under such a label, up to the next blank line or column header, as a candidate: organisation lines → **org**; address lines (street, city, region, postal code, country, even split across lines) → **address**; a personal name in the customer slot → **person**.
-10. A named payment processor or gateway shown next to a transaction → **org**, since it reveals the customer's payment relationship.
-11. A long compound transaction / order identifier (a long alphanumeric run, often joined by "|", "-", "_", or ".") → **identifier**; extract the whole span as ONE entity, do not split.
-12. An internal-looking service / product / instance code in a customer-facing document → **identifier**.
-13. URLs, file paths, and account / API hostnames in descriptions follow the existing url / local_path rules.
-14. Clinical context (healthcare, prescriptions, insurance, patient care) → extract **medical** surfaces (diagnoses, drug+dose phrases, treatments, insurance plans) bound to a specific person; keep a full drug+dose+schedule as ONE span — this overrides Rule 6 for dose-bearing medication spans.
+9. Lines under a party header ("Bill To" / "Ship To" / "From"-style), up to the next blank line or column header → **org** / **address** (full multi-line span) / **person** (the customer slot).
+10. A named payment processor next to a transaction → **org**.
+11. A long compound transaction / order id (alphanumeric run joined by "|" "-" "_" ".") or an internal-looking service / instance code → **identifier**, as ONE span.
+12. Clinical context → **medical** (diagnosis, drug+dose, treatment, insurance) bound to a person; keep drug+dose+schedule as ONE span (overrides Rule 6).
 
-These hints are additive and do not override Rules 1–8. See each type's Examples below for canonical shapes.
+Additive to Rules 1–8; see each type's Examples below.
 
 ━━━ Entity types ━━━
 {_TYPE_BLOCK}
