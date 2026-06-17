@@ -57,9 +57,19 @@ Detailed behavior lives in `domains/privacy.md`.
   span helpers (`protected_spans`, `find_unprotected_positions`) shared by the
   sanitizer and vault. Every module that matches/extracts/filters tokens imports
   from here so the grammar cannot drift between the mint path and an egress path.
-- `cloakbot/privacy/core/detection/` - local PII detectors and JSON parsing.
+- `cloakbot/privacy/core/detection/` - local PII detectors built on PydanticAI.
+  - `detector_model.py` binds the shared local detector endpoint to a PydanticAI
+    model, reusing the `config.privacy` `AsyncOpenAI` client (so the endpoint
+    stays defined in `providers/detector.py`). Detectors use `NativeOutput`: the
+    local endpoint advertises JSON-Schema structured output (vLLM guided
+    decoding / Ollama schema format), so PydanticAI constrains decoding to the
+    entity schema. The hand-tuned detector prompts stay byte-for-byte — the
+    schema travels in the API `response_format`, not the prompt.
   - `detector.py` is the user-input facade (general + digit detectors run
-    concurrently).
+    concurrently). `general_detector.py` / `digit_detector.py` are PydanticAI
+    agents whose typed `output_type` replaces hand-rolled JSON parsing; an
+    `output_validator` enforces the privacy-bearing filters (exact-substring,
+    internal-token, de-dup) as deterministic backstops.
   - `tool_detector.py` is the tool-output specialist. It runs the
     content-type sniffer, dispatches to the right chunker, runs `PiiDetector`
     per chunk under a semaphore with a per-chunk timeout, dedupes entities

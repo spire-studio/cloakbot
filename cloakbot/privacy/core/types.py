@@ -186,21 +186,6 @@ class GeneralEntity(BaseModel):
 
     text: str
     entity_type: str
-    # Optional cross-turn dedupe decision produced by the local detector.
-    # One of:
-    #   - "new" — the local model judged this is a NEW distinct entity
-    #     (e.g. "someone surnamed Lin" when a different Lin Zhiyuan is
-    #     already in the Vault). The sanitizer MUST allocate a fresh
-    #     placeholder and MUST NOT fall through to the substring alias
-    #     resolver.
-    #   - "<<PERSON_N>>" / "<<ORG_N>>" — the local model judged this is
-    #     the SAME entity as the given existing placeholder. The
-    #     sanitizer reuses that placeholder verbatim (after validating
-    #     it actually exists in the smap).
-    #   - None — the model gave no decision; the sanitizer falls back to
-    #     the substring alias resolver. Detectors / paths that do not emit
-    #     a hint use this path.
-    dedupe_hint: str | None = None
 
     @computed_field
     @property
@@ -243,9 +228,9 @@ class DetectionResult(BaseModel):
 
 __all__ = [
     "REGISTRY",
-    "GeneralEntity",
     "ComputableEntity",
     "DetectedEntity",
     "DetectionResult",
+    "GeneralEntity",
     "Severity",
 ]

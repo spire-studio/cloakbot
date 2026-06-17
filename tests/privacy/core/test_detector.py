@@ -1,9 +1,11 @@
 from __future__ import annotations
 
-from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+import json
+from unittest.mock import AsyncMock
 
 import pytest
+from pydantic_ai.messages import ModelResponse, TextPart
+from pydantic_ai.models.function import FunctionModel
 
 from cloakbot.privacy.core.detection.detector import PiiDetector
 from cloakbot.privacy.core.detection.digit_detector import DigitDetectionResult
@@ -15,18 +17,13 @@ from cloakbot.privacy.core.detection.general_detector import (
     _build_user_prompt,
     scan_partial_candidates,
 )
-from cloakbot.privacy.core.detection.llm_json import JsonCompletionRunner, is_valid_json_object
 from cloakbot.privacy.core.types import ComputableEntity, DetectionResult, GeneralEntity
 
+_GENERAL_MODEL = "cloakbot.privacy.core.detection.general_detector.build_detector_model"
 
-def _response(content: str) -> SimpleNamespace:
-    return SimpleNamespace(
-        choices=[
-            SimpleNamespace(
-                message=SimpleNamespace(content=content),
-            )
-        ]
-    )
+
+def _fixed_model(payload: str) -> FunctionModel:
+    return FunctionModel(lambda messages, info: ModelResponse(parts=[TextPart(payload)]))
 
 
 def _general(text: str, entity_type: str) -> GeneralEntity:
@@ -35,14 +32,6 @@ def _general(text: str, entity_type: str) -> GeneralEntity:
 
 def _computable(text: str, entity_type: str, value: int | float | str) -> ComputableEntity:
     return ComputableEntity(text=text, entity_type=entity_type, value=value)
-
-
-class TestDetectorJsonValidation:
-    def test_has_valid_response_json_returns_true_for_object(self) -> None:
-        assert is_valid_json_object('{"entities": []}') is True
-
-    def test_has_valid_response_json_returns_false_for_incomplete_json(self) -> None:
-        assert is_valid_json_object('{"entities": []') is False
 
 
 class TestGeneralDetectorPrompt:
@@ -89,83 +78,55 @@ class TestGeneralDetectorPrompt:
 
 
 @pytest.mark.asyncio
-class TestJsonCompletionRunner:
-    async def test_complete_retries_once_on_invalid_json(self) -> None:
-        client = SimpleNamespace(
-            chat=SimpleNamespace(
-                completions=SimpleNamespace(
-                    create=AsyncMock(
-                        side_effect=[
-                            _response('{"entities": []'),
-                            _response('{"entities": []}'),
-                        ]
-                    )
-                )
-            )
-        )
-
-        runner = JsonCompletionRunner()
-        with patch(
-            "cloakbot.privacy.core.detection.llm_json.get_detector_client",
-            return_value=client,
-        ), patch(
-            "cloakbot.privacy.core.detection.llm_json.get_detector_model",
-            return_value="test-model",
-        ):
-            raw_output, _latency_ms = await runner.complete("system", "prompt")
-
-        assert raw_output == '{"entities": []}'
-        assert client.chat.completions.create.await_count == 2
-        first_call = client.chat.completions.create.await_args_list[0].kwargs
-        assert first_call["response_format"] == {"type": "json_object"}
-
-    async def test_complete_does_not_retry_when_json_is_valid(self) -> None:
-        client = SimpleNamespace(
-            chat=SimpleNamespace(
-                completions=SimpleNamespace(
-                    create=AsyncMock(return_value=_response('{"entities": []}'))
-                )
-            )
-        )
-
-        runner = JsonCompletionRunner()
-        with patch(
-            "cloakbot.privacy.core.detection.llm_json.get_detector_client",
-            return_value=client,
-        ), patch(
-            "cloakbot.privacy.core.detection.llm_json.get_detector_model",
-            return_value="test-model",
-        ):
-            await runner.complete("system", "prompt")
-
-        assert client.chat.completions.create.await_count == 1
-
-
-@pytest.mark.asyncio
 class TestGeneralPrivacyDetector:
     async def test_detect_places_partial_candidates_in_user_prompt_only(self) -> None:
-        detector = GeneralPrivacyDetector()
-        detector._runner.complete = AsyncMock(
-            return_value=(
-                '{"entities": ['
-                '{"text": "Robert", "entity_type": "person"}, '
-                '{"text": "Robert Liu", "entity_type": "person"}'
-                "]}",
-                1.0,
+        captured: dict[str, str] = {}
+
+        def capture(messages, info):
+            captured["instructions"] = messages[0].instructions or ""
+            for message in messages:
+                for part in getattr(message, "parts", []):
+                    if type(part).__name__ == "UserPromptPart":
+                        captured["user_prompt"] = part.content
+            return ModelResponse(
+                parts=[
+                    TextPart(
+                        json.dumps(
+                            {
+                                "entities": [
+                                    {"text": "Robert", "entity_type": "person"},
+                                    {"text": "Robert Liu", "entity_type": "person"},
+                                ]
+                            }
+                        )
+                    )
+                ]
             )
-        )
 
-        result = await detector.detect(
-            "Robert 的邮箱是 robertliu@corp.com",
-            partial_candidates=[
-                PartialCandidate(surface="Robert", canonical="Robert Liu", entity_type="person"),
-            ],
-        )
+        detector = GeneralPrivacyDetector()
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr(_GENERAL_MODEL, lambda: FunctionModel(capture), raising=True)
+            result = await detector.detect(
+                "Robert 的邮箱是 robertliu@corp.com",
+                partial_candidates=[
+                    PartialCandidate(surface="Robert", canonical="Robert Liu", entity_type="person"),
+                ],
+            )
 
-        system_prompt, user_prompt = detector._runner.complete.await_args.args
-        assert "Robert Liu" not in system_prompt
-        assert '"Robert" may refer to known person "Robert Liu"' in user_prompt
+        # The system prompt (instructions) must never carry candidate context.
+        assert "Robert Liu" not in captured["instructions"]
+        assert '"Robert" may refer to known person "Robert Liu"' in captured["user_prompt"]
+        # "Robert Liu" is not a verbatim substring of the prompt -> filtered out.
         assert [entity.text for entity in result.entities] == ["Robert"]
+
+    async def test_detect_returns_empty_on_unparseable_output(self) -> None:
+        detector = GeneralPrivacyDetector()
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr(_GENERAL_MODEL, lambda: _fixed_model("not json at all"), raising=True)
+            result = await detector.detect("Hello Alice")
+
+        assert result.entities == []
+        assert result.raw_output == ""
 
 
 @pytest.mark.asyncio
@@ -192,7 +153,6 @@ class TestPiiDetectorFacade:
         detector._general.detect.assert_awaited_once_with(
             "Alice has $100,000",
             partial_candidates=None,
-            dedupe_targets=None,
         )
         detector._digit.detect.assert_awaited_once_with("Alice has $100,000")
         assert isinstance(result, DetectionResult)
@@ -224,7 +184,6 @@ class TestPiiDetectorFacade:
         detector._general.detect.assert_awaited_once_with(
             "Robert followed up",
             partial_candidates=candidates,
-            dedupe_targets=None,
         )
         detector._digit.detect.assert_awaited_once_with("Robert followed up")
 

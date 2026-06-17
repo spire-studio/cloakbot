@@ -1,8 +1,13 @@
 from __future__ import annotations
 
-from loguru import logger
+from typing import Literal
 
-from cloakbot.privacy.core.detection.llm_json import JsonCompletionRunner, load_json_object
+from loguru import logger
+from pydantic import BaseModel
+from pydantic_ai import Agent, NativeOutput
+from pydantic_ai.settings import ModelSettings
+
+from cloakbot.privacy.core.detection.detector_model import build_detector_model
 from cloakbot.privacy.hooks.context import Intent
 
 _INTENT_SYSTEM_PROMPT = """You are an intent classifier for a privacy pipeline.
@@ -25,31 +30,39 @@ Return ONLY valid JSON:
 """
 
 
+class IntentDecision(BaseModel):
+    """Structured output target for the intent classifier LLM call."""
+
+    intent: Literal["chat", "math"]
+
+
+_INTENT_AGENT = Agent(
+    output_type=NativeOutput(IntentDecision),
+    instructions=_INTENT_SYSTEM_PROMPT,
+    retries=1,
+)
+
+
 class UserIntentAnalyzer:
     """Analyze turn intent using the local model."""
 
     def __init__(self, *, temperature: float = 0.0) -> None:
-        self._runner = JsonCompletionRunner(temperature=temperature)
+        self._temperature = temperature
 
     async def analyze(self, text: str) -> Intent:
         try:
-            raw_output, _latency_ms = await self._runner.complete(_INTENT_SYSTEM_PROMPT, text)
+            result = await _INTENT_AGENT.run(
+                text,
+                model=build_detector_model(),
+                model_settings=ModelSettings(temperature=self._temperature),
+            )
         except Exception:
-            logger.warning("IntentAnalyzer: local model unavailable, fallback to chat")
+            # Any failure — local model unavailable, or an unparseable / out-of-enum
+            # response that survives the retry budget — is fail-safe to chat. The
+            # restrictive `math` path must never be entered on a guess.
+            logger.warning("IntentAnalyzer: classification unavailable, fallback to chat")
             return Intent.CHAT
-        data = load_json_object(raw_output)
-        if not data:
-            logger.warning("IntentAnalyzer: empty/invalid response, fallback to chat")
-            return Intent.CHAT
-
-        raw_intent = str(data.get("intent", "")).strip().lower()
-        if raw_intent == Intent.MATH.value:
-            return Intent.MATH
-        if raw_intent == Intent.CHAT.value:
-            return Intent.CHAT
-
-        logger.warning("IntentAnalyzer: unknown intent '{}', fallback to chat", raw_intent)
-        return Intent.CHAT
+        return Intent(result.output.intent)
 
 
 _ANALYZER = UserIntentAnalyzer()

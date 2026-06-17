@@ -10,7 +10,6 @@ from loguru import logger
 
 from cloakbot.privacy.core.detection.digit_detector import DigitPrivacyDetector
 from cloakbot.privacy.core.detection.general_detector import (
-    DedupeTarget,
     GeneralPrivacyDetector,
     PartialCandidate,
 )
@@ -60,14 +59,12 @@ class PiiDetector:
         *,
         intent_hint: str | None = None,
         partial_candidates: list[PartialCandidate] | None = None,
-        dedupe_targets: list[DedupeTarget] | None = None,
     ) -> DetectionResult:
         # Run both detectors concurrently to halve the latency
         general_result, digit_result = await asyncio.gather(
             self._general.detect(
                 prompt,
                 partial_candidates=partial_candidates,
-                dedupe_targets=dedupe_targets,
             ),
             self._digit.detect(prompt),
         )

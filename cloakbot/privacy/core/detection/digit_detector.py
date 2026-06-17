@@ -1,9 +1,17 @@
 from __future__ import annotations
 
+import time
+
 from loguru import logger
 from pydantic import BaseModel
+from pydantic_ai import Agent, NativeOutput, RunContext
+from pydantic_ai.exceptions import UnexpectedModelBehavior
+from pydantic_ai.settings import ModelSettings
 
-from cloakbot.privacy.core.detection.llm_json import JsonCompletionRunner, load_json_object
+from cloakbot.privacy.core.detection.detector_model import (
+    build_detector_model,
+    response_text,
+)
 from cloakbot.privacy.core.placeholders import INTERNAL_TOKEN_RE
 from cloakbot.privacy.core.types import REGISTRY, ComputableEntity
 
@@ -53,49 +61,81 @@ If no sensitive numeric entities are found, use "entities": [].
 Do NOT include the same entity text twice."""
 
 
+class DigitDetection(BaseModel):
+    """Structured output target for the digit detector LLM call."""
+
+    entities: list[ComputableEntity] = []
+
+
 class DigitDetectionResult(BaseModel):
     raw_output: str
     entities: list[ComputableEntity]
     latency_ms: float
 
 
+_DIGIT_AGENT = Agent(
+    output_type=NativeOutput(DigitDetection),
+    instructions=_DIGIT_SYSTEM_PROMPT,
+    deps_type=str,
+    retries=1,
+)
+
+
+@_DIGIT_AGENT.output_validator
+def _enforce_digit_invariants(ctx: RunContext[str], out: DigitDetection) -> DigitDetection:
+    """Apply the privacy-bearing filters to the model's structured output.
+
+    These are deterministic backstops, not model-correctable niceties: an
+    extracted span must be a verbatim substring of the source and must not be
+    one of our own internal placeholder tokens. ``ctx.deps`` is the source
+    prompt.
+    """
+    return DigitDetection(entities=normalize_digit_entities(out.entities, ctx.deps))
+
+
+def normalize_digit_entities(
+    entities: list[ComputableEntity],
+    prompt: str,
+) -> list[ComputableEntity]:
+    """Keep only valid, in-prompt, non-internal, de-duplicated numeric entities."""
+    seen: set[str] = set()
+    kept: list[ComputableEntity] = []
+    for entity in entities:
+        if entity.entity_type not in _VALID_ENTITY_TYPES:
+            continue
+        if INTERNAL_TOKEN_RE.search(entity.text):
+            continue
+        if entity.text in seen or entity.text not in prompt:
+            continue
+        seen.add(entity.text)
+        kept.append(entity)
+    return kept
+
+
 class DigitPrivacyDetector:
     """Detect sensitive computable numeric entities for tokenization."""
 
     def __init__(self, temperature: float = 0.0) -> None:
-        self._runner = JsonCompletionRunner(temperature=temperature)
+        self._temperature = temperature
 
     async def detect(self, prompt: str) -> DigitDetectionResult:
-        raw_output, latency_ms = await self._runner.complete(_DIGIT_SYSTEM_PROMPT, prompt)
-        entities = parse_digit_entities(raw_output, prompt)
-        return DigitDetectionResult(raw_output=raw_output, entities=entities, latency_ms=latency_ms)
-
-
-def parse_digit_entities(raw_output: str, prompt: str) -> list[ComputableEntity]:
-    data = load_json_object(raw_output)
-    if not data:
-        return []
-
-    seen: set[str] = set()
-    entities: list[ComputableEntity] = []
-
-    for item in data.get("entities", []):
+        t0 = time.perf_counter()
         try:
-            text = str(item["text"])
-            slug = str(item["entity_type"])
-            val = item["value"]
-
-            if slug not in _VALID_ENTITY_TYPES:
-                continue
-            if INTERNAL_TOKEN_RE.search(text):
-                continue
-            if text in seen or text not in prompt:
-                continue
-
-            seen.add(text)
-            entities.append(ComputableEntity(text=text, entity_type=slug, value=val))
-        except (KeyError, ValueError):
-            logger.debug("DigitPrivacyDetector: skipping malformed entity: {}", item)
-            continue
-
-    return entities
+            result = await _DIGIT_AGENT.run(
+                prompt,
+                deps=prompt,
+                model=build_detector_model(),
+                model_settings=ModelSettings(temperature=self._temperature),
+            )
+            entities = result.output.entities
+            raw_output = response_text(result)
+        except UnexpectedModelBehavior:
+            logger.warning(
+                "DigitPrivacyDetector: local model returned unparseable output; "
+                "treating as no entities",
+            )
+            entities, raw_output = [], ""
+        latency_ms = (time.perf_counter() - t0) * 1000
+        return DigitDetectionResult(
+            raw_output=raw_output, entities=entities, latency_ms=latency_ms,
+        )
