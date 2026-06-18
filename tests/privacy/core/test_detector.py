@@ -157,7 +157,7 @@ class TestPiiDetectorFacade:
         detector._digit.detect.assert_awaited_once_with("Alice has $100,000")
         assert isinstance(result, DetectionResult)
         assert len(result.entities) == 2
-        assert result.latency_ms == 10.0
+        assert result.latency_ms == 15.0  # sequential: general (10.0) + digit (5.0)
 
     async def test_detect_passes_partial_candidates_only_to_general_detector(self) -> None:
         detector = PiiDetector()

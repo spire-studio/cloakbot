@@ -13,10 +13,17 @@ design (that is its whole job). The single source of truth for the endpoint is
 "keep the endpoint LOCAL" invariant is unchanged. See ``docs/domains/privacy.md``.
 
 Output mode: detectors use ``NativeOutput`` — the local endpoint advertises
-JSON-Schema structured output (vLLM guided decoding / Ollama schema format), so
-PydanticAI constrains decoding to the entity schema. The hand-tuned detector
-prompts stay byte-for-byte: the schema travels in the API ``response_format``
-field, not in the prompt.
+JSON-Schema structured output, so PydanticAI constrains decoding to the entity
+schema. The hand-tuned detector prompts stay byte-for-byte (the schema travels
+in the API ``response_format`` field, not in the prompt).
+
+Two requirements learned from live testing on a local Ollama:
+- Use a capable detector model. A heavily quantized 4-bit build (e.g. a 4-bit
+  MLX Gemma e2b) silently returns ``{"entities": []}`` for the complex general
+  extraction regardless of output mode; an 8-bit build (e.g. e2b-mxfp8) is
+  reliable. Set it via ``config.privacy.model``.
+- Detection runs SEQUENTIALLY (see ``PiiDetector``), not concurrently: firing
+  both detectors at a single-instance local backend thrashes it.
 """
 
 from __future__ import annotations

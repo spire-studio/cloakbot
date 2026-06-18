@@ -60,11 +60,11 @@ Detailed behavior lives in `domains/privacy.md`.
 - `cloakbot/privacy/core/detection/` - local PII detectors built on PydanticAI.
   - `detector_model.py` binds the shared local detector endpoint to a PydanticAI
     model, reusing the `config.privacy` `AsyncOpenAI` client (so the endpoint
-    stays defined in `providers/detector.py`). Detectors use `NativeOutput`: the
-    local endpoint advertises JSON-Schema structured output (vLLM guided
-    decoding / Ollama schema format), so PydanticAI constrains decoding to the
-    entity schema. The hand-tuned detector prompts stay byte-for-byte — the
-    schema travels in the API `response_format`, not the prompt.
+    stays defined in `providers/detector.py`). Detectors use `NativeOutput`
+    (JSON-Schema structured output) and run SEQUENTIALLY (see `detector.py`) —
+    concurrent calls thrash a single-instance local backend. Requires a capable
+    (8-bit+) detector model; a 4-bit quant silently returns empty regardless of
+    output mode.
   - `detector.py` is the user-input facade (general + digit detectors run
     concurrently). `general_detector.py` / `digit_detector.py` are PydanticAI
     agents whose typed `output_type` replaces hand-rolled JSON parsing; an

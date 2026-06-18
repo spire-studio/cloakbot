@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
 import re
 
@@ -60,15 +59,18 @@ class PiiDetector:
         intent_hint: str | None = None,
         partial_candidates: list[PartialCandidate] | None = None,
     ) -> DetectionResult:
-        # Run both detectors concurrently to halve the latency
-        general_result, digit_result = await asyncio.gather(
-            self._general.detect(
-                prompt,
-                partial_candidates=partial_candidates,
-            ),
-            self._digit.detect(prompt),
+        # Run the detectors SEQUENTIALLY, not concurrently. They share one local
+        # model instance; firing both at once thrashes a single-instance backend
+        # (KV-cache contention) — which is slower end-to-end AND can make the
+        # slower general detector time out and silently return nothing, leaking
+        # PII. Sequential is faster and reliable here. (Concurrency would only
+        # help a batching server such as vLLM.)
+        general_result = await self._general.detect(
+            prompt,
+            partial_candidates=partial_candidates,
         )
-        latency_ms = max(general_result.latency_ms, digit_result.latency_ms)
+        digit_result = await self._digit.detect(prompt)
+        latency_ms = general_result.latency_ms + digit_result.latency_ms
 
         entities_by_text: dict[str, DetectedEntity] = {}
         for entity in general_result.entities + digit_result.entities + _detect_local_paths(prompt):
