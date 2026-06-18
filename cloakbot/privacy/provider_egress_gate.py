@@ -20,18 +20,15 @@ tags already present in the sanitized payload.
 
 from __future__ import annotations
 
-import re
-from typing import Any, Iterable
+from collections.abc import Iterable
+from typing import Any
 
 from loguru import logger
 
+from cloakbot.privacy.core.placeholders import PLACEHOLDER_TAG_RE
 from cloakbot.privacy.core.types import REGISTRY, Severity
 from cloakbot.providers.base import LLMResponse
 from cloakbot.providers.fallback_provider import FallbackProvider
-
-# Matches a privacy placeholder token and captures its TAG (e.g. ``SSN`` from
-# ``<<SSN_1>>``). Mirrors ``vault.PLACEHOLDER_RE`` but with a capture group.
-_PLACEHOLDER_TAG_RE = re.compile(r"<<([A-Z]+(?:_[A-Z]+)*)_\d+>>")
 
 
 def _high_severity_slugs() -> frozenset[str]:
@@ -49,7 +46,7 @@ def prompt_has_high_severity_placeholder(messages: Any) -> bool:
     text = _stringify_messages(messages)
     if not text:
         return False
-    for match in _PLACEHOLDER_TAG_RE.finditer(text):
+    for match in PLACEHOLDER_TAG_RE.finditer(text):
         tag = match.group(1)
         if tag.lower() in _HIGH_SLUGS:
             return True

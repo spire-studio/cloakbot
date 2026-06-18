@@ -1,7 +1,7 @@
 # Heartbeat Tasks
 
 <!--
-This file is checked periodically by your nanobot agent.
+This file is checked periodically by your CloakBot agent.
 Register it as a cron job (e.g. `cron add --name heartbeat --schedule "every 30m" --message "Check HEARTBEAT.md"`) to get the same behavior as the legacy heartbeat service.
 
 If this file has no tasks (only headers and comments), the agent will skip it.

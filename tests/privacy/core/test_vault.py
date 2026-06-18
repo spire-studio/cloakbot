@@ -8,6 +8,7 @@ from unittest.mock import patch
 import pytest
 
 import cloakbot.privacy.core.state.vault as vault
+import cloakbot.privacy.core.state.vault_store as vault_store
 from cloakbot.privacy.core.state.vault import (
     _SessionMap,
     save_artifact_bytes,
@@ -23,7 +24,7 @@ def isolated_vault(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     def fake_map_path(session_key: str) -> Path:
         return tmp_path / f"{session_key.replace(':', '_')}.json"
 
-    monkeypatch.setattr(vault, "_map_path", fake_map_path)
+    monkeypatch.setattr(vault_store, "_map_path", fake_map_path)
     yield
     vault._cache.clear()
 
@@ -79,7 +80,7 @@ def test_atomic_write_keeps_original_file_intact_on_mid_write_crash(
             Path(self.name).write_text(data[:20], encoding="utf-8")
             raise RuntimeError("simulated crash")
 
-    with patch.object(vault.tempfile, "NamedTemporaryFile", return_value=ExplodingTempFile(tmp_file)):
+    with patch.object(vault_store.tempfile, "NamedTemporaryFile", return_value=ExplodingTempFile(tmp_file)):
         with pytest.raises(RuntimeError, match="simulated crash"):
             vault._save_map(
                 session_key,

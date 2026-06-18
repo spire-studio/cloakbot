@@ -60,7 +60,7 @@ def sniff_content_type(payload: Any) -> ContentType:
         else:
             # Cheap heuristic for large payloads: starts with `{"` or
             # `[{`, contains a balanced closer in the first KiB.
-            if head.startswith(("{\"", "[{", "{\"")) and ("\":" in head or "\": " in head):
+            if head.startswith(('{"', "[{", '{"')) and ('":' in head or '": ' in head):
                 return ContentType.JSON
 
     if any(hint in head for hint in _HTML_HINTS):

@@ -60,12 +60,9 @@ from dataclasses import dataclass, field
 
 from loguru import logger
 
+from cloakbot.privacy.core.placeholders import PLACEHOLDER_RE
 from cloakbot.privacy.core.sanitization.sanitize import sanitize_tool_output
-from cloakbot.privacy.core.state.vault import (
-    PLACEHOLDER_RE,
-    _SessionMap,
-    get_map,
-)
+from cloakbot.privacy.core.state.vault import _SessionMap, get_map
 
 
 def extract_tokens(text: str) -> set[str]:

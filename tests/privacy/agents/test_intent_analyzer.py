@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import json
-from unittest.mock import AsyncMock
+from unittest.mock import patch
 
 import pytest
+from pydantic_ai.messages import ModelResponse, TextPart
+from pydantic_ai.models.function import FunctionModel
 
 from cloakbot.privacy.agents.classification.intent_analyzer import (
     _INTENT_SYSTEM_PROMPT,
@@ -11,53 +13,45 @@ from cloakbot.privacy.agents.classification.intent_analyzer import (
 )
 from cloakbot.privacy.hooks.context import Intent
 
+_TARGET = "cloakbot.privacy.agents.classification.intent_analyzer.build_detector_model"
+
+
+def _fixed_model(payload: str) -> FunctionModel:
+    return FunctionModel(lambda messages, info: ModelResponse(parts=[TextPart(payload)]))
+
 
 @pytest.mark.asyncio
 async def test_analyze_user_intent_returns_chat_for_plain_text() -> None:
-    analyzer = UserIntentAnalyzer()
-    analyzer._runner.complete = AsyncMock(
-        return_value=(json.dumps({"intent": "chat"}), 1.0)
-    )
-
-    assert await analyzer.analyze("hello there") is Intent.CHAT
+    with patch(_TARGET, return_value=_fixed_model(json.dumps({"intent": "chat"}))):
+        assert await UserIntentAnalyzer().analyze("hello there") is Intent.CHAT
 
 
 @pytest.mark.asyncio
 async def test_analyze_user_intent_returns_math_for_numeric_scenario() -> None:
-    analyzer = UserIntentAnalyzer()
-    analyzer._runner.complete = AsyncMock(
-        return_value=(json.dumps({"intent": "math"}), 1.0)
-    )
-
     text = "What if Laurie gives me 10% of $100,000 instead of 20%?"
-    assert await analyzer.analyze(text) is Intent.MATH
+    with patch(_TARGET, return_value=_fixed_model(json.dumps({"intent": "math"}))):
+        assert await UserIntentAnalyzer().analyze(text) is Intent.MATH
 
 
 @pytest.mark.asyncio
-async def test_analyze_user_intent_falls_back_to_chat_for_legacy_doc_output() -> None:
-    analyzer = UserIntentAnalyzer()
-    analyzer._runner.complete = AsyncMock(
-        return_value=(json.dumps({"intent": "doc"}), 1.0)
-    )
-
+async def test_analyze_user_intent_falls_back_to_chat_for_out_of_enum_intent() -> None:
+    # A legacy/unknown intent like "doc" is not in the chat|math schema, so it
+    # fails validation, exhausts the retry budget, and falls back to chat.
     text = "Please summarize the attached PDF document"
-    assert await analyzer.analyze(text) is Intent.CHAT
+    with patch(_TARGET, return_value=_fixed_model(json.dumps({"intent": "doc"}))):
+        assert await UserIntentAnalyzer().analyze(text) is Intent.CHAT
 
 
 @pytest.mark.asyncio
 async def test_analyze_user_intent_falls_back_to_chat_on_invalid_json() -> None:
-    analyzer = UserIntentAnalyzer()
-    analyzer._runner.complete = AsyncMock(return_value=("not-json", 1.0))
-
-    assert await analyzer.analyze("anything") is Intent.CHAT
+    with patch(_TARGET, return_value=_fixed_model("not-json")):
+        assert await UserIntentAnalyzer().analyze("anything") is Intent.CHAT
 
 
 @pytest.mark.asyncio
 async def test_analyze_user_intent_falls_back_to_chat_when_local_model_unavailable() -> None:
-    analyzer = UserIntentAnalyzer()
-    analyzer._runner.complete = AsyncMock(side_effect=RuntimeError("missing vllm config"))
-
-    assert await analyzer.analyze("anything") is Intent.CHAT
+    with patch(_TARGET, side_effect=RuntimeError("missing vllm config")):
+        assert await UserIntentAnalyzer().analyze("anything") is Intent.CHAT
 
 
 def test_intent_prompt_prioritizes_math_for_mixed_intent() -> None:

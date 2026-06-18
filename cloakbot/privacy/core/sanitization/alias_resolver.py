@@ -9,8 +9,8 @@ from cloakbot.privacy.core.state.vault import _SessionMap
 _SUBSTRING_ALIAS_TAGS = {"PERSON", "ORG"}
 
 
-class AliasResolverAgent:
-    """Resolve likely cross-turn aliases onto an existing placeholder.
+def resolve_existing_placeholder(text: str, tag: str, smap: _SessionMap) -> str | None:
+    """Resolve a likely cross-turn alias onto an existing placeholder.
 
     Strategy (v1):
       1. Exact (post-normalize) lookup against existing vault aliases.
@@ -18,41 +18,34 @@ class AliasResolverAgent:
          so ``"Laurie"`` and ``"Laurie Luo"`` share one placeholder,
          and ``"Anthropic, Inc."`` collapses to ``"Anthropic"``.
       3. Ambiguity is fatal — if two existing placeholders both look
-         like a match, we return ``None`` and the caller allocates a
-         fresh token. Over-merging silently corrupts restoration; we
-         err on the side of producing extra placeholders.
+         like a match, return ``None`` and the caller allocates a fresh
+         token. Over-merging silently corrupts restoration; we err on the
+         side of producing extra placeholders.
     """
+    existing = smap.lookup_placeholder(text)
+    if existing is not None:
+        return existing
 
-    def resolve(
-        self,
-        text: str,
-        tag: str,
-        smap: _SessionMap,
-    ) -> str | None:
-        existing = smap.lookup_placeholder(text)
-        if existing is not None:
-            return existing
-
-        normalized = smap.normalize_text(text)
-        if not normalized:
-            return None
-
-        candidates: list[str] = []
-        for placeholder, entity in smap.placeholder_to_entity.items():
-            if not placeholder.startswith(f"<<{tag}_"):
-                continue
-            if normalized in entity.normalized_aliases:
-                candidates.append(placeholder)
-                continue
-
-            if tag in _SUBSTRING_ALIAS_TAGS and _substring_alias_match(
-                normalized, entity.normalized_aliases
-            ):
-                candidates.append(placeholder)
-
-        if len(candidates) == 1:
-            return candidates[0]
+    normalized = smap.normalize_text(text)
+    if not normalized:
         return None
+
+    candidates: list[str] = []
+    for placeholder, entity in smap.placeholder_to_entity.items():
+        if not placeholder.startswith(f"<<{tag}_"):
+            continue
+        if normalized in entity.normalized_aliases:
+            candidates.append(placeholder)
+            continue
+
+        if tag in _SUBSTRING_ALIAS_TAGS and _substring_alias_match(
+            normalized, entity.normalized_aliases,
+        ):
+            candidates.append(placeholder)
+
+    if len(candidates) == 1:
+        return candidates[0]
+    return None
 
 
 def _substring_alias_match(normalized: str, alias_list: list[str]) -> bool:
@@ -88,10 +81,3 @@ def _substring_alias_match(normalized: str, alias_list: list[str]) -> bool:
         ):
             return True
     return False
-
-
-_RESOLVER = AliasResolverAgent()
-
-
-def resolve_existing_placeholder(text: str, tag: str, smap: _SessionMap) -> str | None:
-    return _RESOLVER.resolve(text, tag, smap)

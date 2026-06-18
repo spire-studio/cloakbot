@@ -7,7 +7,8 @@ import re
 from pydantic import BaseModel
 
 from cloakbot.privacy.core.math.math_executor import LocalComputationRecord
-from cloakbot.privacy.core.state.vault import PLACEHOLDER_RE, _SessionMap
+from cloakbot.privacy.core.placeholders import PLACEHOLDER_RE, entity_type_from_placeholder
+from cloakbot.privacy.core.state.vault import _SessionMap
 from cloakbot.privacy.core.types import REGISTRY, Severity
 
 
@@ -96,7 +97,11 @@ def restore_tokens_with_annotations(
         if restored != token:
             entity = smap.placeholder_to_entity.get(token)
             canonical = entity.canonical if entity is not None else smap.placeholder_to_original.get(token, restored)
-            entity_type = entity.entity_type if entity is not None else _entity_type_from_placeholder(token)
+            entity_type = (
+                entity.entity_type
+                if entity is not None
+                else (entity_type_from_placeholder(token) or "entity")
+            )
             annotations.append(
                 RestoredTokenAnnotation(
                     placeholder=token,
@@ -108,7 +113,7 @@ def restore_tokens_with_annotations(
                     canonical=canonical,
                     aliases=list(entity.aliases) if entity is not None else [canonical],
                     value=entity.value if entity is not None else smap.placeholder_to_value.get(token),
-                )
+                ),
             )
 
         output_len += len(restored)
@@ -153,16 +158,9 @@ def build_local_computation_annotations(
                 aliases=[],
                 value=computation.result,
                 formula=computation.resolved_expression,
-            )
+            ),
         )
         cursor = end
 
     _reindex_annotations_utf16(text, annotations)
     return annotations
-
-
-def _entity_type_from_placeholder(placeholder: str) -> str:
-    match = re.fullmatch(r"<<([A-Z]+(?:_[A-Z]+)*)_\d+>>", placeholder)
-    if not match:
-        return "entity"
-    return match.group(1).lower()

@@ -21,7 +21,7 @@ def append_webui_privacy_payload(
 ) -> None:
     path = _turns_path(workspace, session_key)
     line = payload.model_dump_json(by_alias=True)
-    with open(path, "a", encoding="utf-8") as f:
+    with path.open("a", encoding="utf-8") as f:
         f.write(line + "\n")
 
 
@@ -34,7 +34,7 @@ def load_webui_privacy_payloads(
         return []
 
     payloads: list[WebUIPrivacyPayload] = []
-    with open(path, encoding="utf-8") as f:
+    with path.open(encoding="utf-8") as f:
         for line in f:
             line = line.strip()
             if not line:

@@ -1,11 +1,8 @@
 from __future__ import annotations
 
-import base64
-import binascii
-import mimetypes
-import re
+import contextlib
 import uuid
-from pathlib import Path
+from collections.abc import Iterator
 from typing import Any
 
 from loguru import logger
@@ -21,80 +18,18 @@ from cloakbot.privacy.document_redaction import process_user_document
 from cloakbot.privacy.hooks.context import TurnContext
 from cloakbot.privacy.protocol.contracts import EventType, PrivacyStage, ProtocolStatus
 from cloakbot.privacy.protocol.observability import emit_event
+from cloakbot.privacy.runtime.attachments import (
+    build_image_blocks_from_media,
+    document_suffix,
+    extract_documents_from_media,
+)
 from cloakbot.privacy.runtime.routing import normalize_intent, select_worker
 from cloakbot.privacy.tool_models import ToolVaultArtifact
 from cloakbot.privacy.transparency.report import TurnReport
 from cloakbot.privacy.visual_redaction import process_visual_blocks
-from cloakbot.utils.helpers import detect_image_mime
 
 _PROMPT_VAULT_PREFIX = "user_input"
 _DOCUMENT_VAULT_PREFIX = "user_document"
-
-_DATA_URL_PATTERN = re.compile(
-    r"data:(?P<mime>image/[-+.\w]+);base64,(?P<payload>.+)",
-    flags=re.DOTALL,
-)
-
-# Document data URLs use a broader MIME pattern (``text/plain``,
-# ``text/markdown`` today; reserved for future expansion to other
-# text-shaped formats). The match-anything-text shape lets a single
-# regex serve both the upload filter and the decoder.
-_DOCUMENT_DATA_URL_PATTERN = re.compile(
-    r"data:(?P<mime>text/[-+.\w]+);base64,(?P<payload>.+)",
-    flags=re.DOTALL,
-)
-_SUPPORTED_DOCUMENT_MIMES = frozenset({"text/plain", "text/markdown"})
-# Hard cap on uploaded document size at the privacy layer. Above this
-# the document is dropped with a fail-closed notice — chunking
-# 100k-char payloads would dominate latency and put us out of vLLM's
-# practical recall envelope long before we get a useful signal.
-_MAX_DOCUMENT_CHARS = 64_000
-
-
-def _decode_data_url(reference: str) -> tuple[bytes, str | None] | None:
-    """Parse a ``data:image/...;base64,...`` URL into ``(raw_bytes, mime)``.
-
-    Returns ``None`` on any malformed prefix or invalid base64 — callers
-    log a sanitized fingerprint rather than the raw URL so the failure
-    path never echoes user content into the log stream.
-    """
-    match = _DATA_URL_PATTERN.fullmatch(reference)
-    if not match:
-        return None
-    try:
-        raw = base64.b64decode(match.group("payload"), validate=True)
-    except (binascii.Error, ValueError):
-        return None
-    if not raw:
-        return None
-    return raw, match.group("mime")
-
-
-def _document_suffix(mime: str) -> str:
-    """File extension to use when persisting an uploaded document.
-
-    Kept conservative — only the MIMEs that pass
-    :data:`_SUPPORTED_DOCUMENT_MIMES` should reach here, and we want a
-    short stable suffix per family so a glob over the vault can find
-    "all user-uploaded contracts" without parsing every file.
-    """
-    return {"text/plain": "txt", "text/markdown": "md"}.get(mime, "txt")
-
-
-def _media_fingerprint(reference: str) -> str:
-    """Short, log-safe summary of a media reference.
-
-    For inline data URLs we keep only the mime-prefix tag; for filesystem
-    paths we keep the final path segment. The intent is "enough to debug
-    a mis-routed upload, never enough to leak the underlying bytes."
-    """
-    if reference.startswith("data:"):
-        head, _, _ = reference.partition(";")
-        return f"<{head}…>"
-    tail = reference.rsplit("/", 1)[-1]
-    if len(tail) > 24:
-        return f"<…{tail[-24:]}>"
-    return f"<{tail}>"
 
 
 def _visual_privacy_enabled() -> bool:
@@ -139,17 +74,85 @@ def privacy_mode_active() -> bool:
         return True
 
 
+class _TurnObservability:
+    """Per-turn observability emitter.
+
+    Binds the trace/session/turn identity once and brackets each pipeline
+    stage's STARTED → SUCCEEDED / FAILED triple into a single ``with`` block, so
+    the stage body stays readable and the three events can't drift out of sync.
+    """
+
+    def __init__(self, ctx: TurnContext, *, channel: str) -> None:
+        self._ctx = ctx
+        self.channel = channel
+        self._trace_id = f"{ctx.session_key}:{ctx.turn_id}"
+
+    def emit(
+        self,
+        event_type: EventType,
+        *,
+        span: str,
+        stage: PrivacyStage,
+        status: ProtocolStatus,
+        payload: dict[str, Any],
+        parent: str | None = None,
+    ) -> None:
+        emit_event(
+            event_type=event_type,
+            trace_id=self._trace_id,
+            span_id=f"{self._ctx.turn_id}:{span}",
+            parent_span_id=f"{self._ctx.turn_id}:{parent}" if parent is not None else None,
+            session_id=self._ctx.session_key,
+            turn_id=self._ctx.turn_id,
+            stage=stage,
+            status=status,
+            payload=payload,
+        )
+
+    @contextlib.contextmanager
+    def span(
+        self,
+        name: str,
+        *,
+        events: tuple[EventType, EventType, EventType],
+        start_stage: PrivacyStage,
+        end_stage: PrivacyStage,
+        start_payload: dict[str, Any],
+        error_payload: dict[str, Any] | None = None,
+    ) -> Iterator[dict[str, Any]]:
+        """Emit STARTED, run the body, then emit SUCCEEDED (or FAILED on raise).
+
+        ``events`` is the ``(started, succeeded, failed)`` event-type triple.
+        Yields a mutable dict the body fills in as the success payload.
+        """
+        started, succeeded, failed = events
+        self.emit(started, span=name, stage=start_stage, status=ProtocolStatus.STARTED, payload=start_payload)
+        end_payload: dict[str, Any] = {}
+        try:
+            yield end_payload
+        except Exception as exc:
+            self.emit(
+                failed,
+                span=f"{name}:failed",
+                parent=name,
+                stage=start_stage,
+                status=ProtocolStatus.FAILED,
+                payload={"error": str(exc), **(error_payload or {})},
+            )
+            raise
+        self.emit(
+            succeeded,
+            span=f"{name}:completed",
+            parent=name,
+            stage=end_stage,
+            status=ProtocolStatus.SUCCEEDED,
+            payload=end_payload,
+        )
+
+
 class PrivacyRuntime:
     def __init__(self, *, channel: str = "cli") -> None:
         self.channel = channel
-
-    @staticmethod
-    def _trace_id(ctx: TurnContext) -> str:
-        return f"{ctx.session_key}:{ctx.turn_id}"
-
-    @staticmethod
-    def _span_id(ctx: TurnContext, stage: str) -> str:
-        return f"{ctx.turn_id}:{stage}"
 
     async def prepare_turn(
         self,
@@ -160,71 +163,43 @@ class PrivacyRuntime:
         fail_open: bool = True,
     ) -> tuple[str | list[dict[str, Any]], TurnContext]:
         ctx = TurnContext(session_key=session_key, turn_id=str(uuid.uuid4()), raw_input=text)
-        trace_id = self._trace_id(ctx)
+        obs = _TurnObservability(ctx, channel=self.channel)
 
-        emit_event(
-            event_type=EventType.TURN_RECEIVED,
-            trace_id=trace_id,
-            span_id=self._span_id(ctx, "received"),
-            session_id=ctx.session_key,
-            turn_id=ctx.turn_id,
+        obs.emit(
+            EventType.TURN_RECEIVED,
+            span="received",
             stage=PrivacyStage.RAW,
             status=ProtocolStatus.STARTED,
             payload={"channel": self.channel},
         )
-        emit_event(
-            event_type=EventType.TURN_SANITIZE_STARTED,
-            trace_id=trace_id,
-            span_id=self._span_id(ctx, "sanitize"),
-            session_id=ctx.session_key,
-            turn_id=ctx.turn_id,
-            stage=PrivacyStage.RAW,
-            status=ProtocolStatus.STARTED,
-            payload={"input_length": len(text)},
-        )
-        try:
+
+        with obs.span(
+            "sanitize",
+            events=(
+                EventType.TURN_SANITIZE_STARTED,
+                EventType.TURN_SANITIZE_SUCCEEDED,
+                EventType.TURN_SANITIZE_FAILED,
+            ),
+            start_stage=PrivacyStage.RAW,
+            end_stage=PrivacyStage.SANITIZED,
+            start_payload={"input_length": len(text)},
+        ) as sanitize_done:
             sanitized, modified, entities, _ = await sanitize_input_with_detection(
                 text,
                 session_key,
                 fail_open=fail_open,
                 turn_id=ctx.turn_id,
             )
-        except Exception as exc:
-            emit_event(
-                event_type=EventType.TURN_SANITIZE_FAILED,
-                trace_id=trace_id,
-                span_id=f"{self._span_id(ctx, 'sanitize')}:failed",
-                parent_span_id=self._span_id(ctx, "sanitize"),
-                session_id=ctx.session_key,
-                turn_id=ctx.turn_id,
-                stage=PrivacyStage.RAW,
-                status=ProtocolStatus.FAILED,
-                payload={"error": str(exc)},
-            )
-            raise
-        emit_event(
-            event_type=EventType.TURN_SANITIZE_SUCCEEDED,
-            trace_id=trace_id,
-            span_id=f"{self._span_id(ctx, 'sanitize')}:completed",
-            parent_span_id=self._span_id(ctx, "sanitize"),
-            session_id=ctx.session_key,
-            turn_id=ctx.turn_id,
-            stage=PrivacyStage.SANITIZED,
-            status=ProtocolStatus.SUCCEEDED,
-            payload={"was_sanitized": modified},
-        )
+            sanitize_done["was_sanitized"] = modified
         ctx.sanitized_input = sanitized
         ctx.was_sanitized = modified
         ctx.user_input_entities = entities
 
         analyzed_intent = await analyze_user_intent(text)
         ctx.intent = normalize_intent(analyzed_intent)
-        emit_event(
-            event_type=EventType.TURN_INTENT_CLASSIFIED,
-            trace_id=trace_id,
-            span_id=self._span_id(ctx, "intent"),
-            session_id=ctx.session_key,
-            turn_id=ctx.turn_id,
+        obs.emit(
+            EventType.TURN_INTENT_CLASSIFIED,
+            span="intent",
             stage=PrivacyStage.SANITIZED,
             status=ProtocolStatus.SUCCEEDED,
             payload={
@@ -233,43 +208,21 @@ class PrivacyRuntime:
             },
         )
 
-        emit_event(
-            event_type=EventType.TURN_DISPATCH_STARTED,
-            trace_id=trace_id,
-            span_id=self._span_id(ctx, "dispatch"),
-            session_id=ctx.session_key,
-            turn_id=ctx.turn_id,
-            stage=PrivacyStage.SANITIZED,
-            status=ProtocolStatus.STARTED,
-            payload={"intent": ctx.intent.value},
-        )
-        worker = select_worker(ctx.intent)
-        try:
+        with obs.span(
+            "dispatch",
+            events=(
+                EventType.TURN_DISPATCH_STARTED,
+                EventType.TURN_DISPATCH_COMPLETED,
+                EventType.TURN_DISPATCH_FAILED,
+            ),
+            start_stage=PrivacyStage.SANITIZED,
+            end_stage=PrivacyStage.SANITIZED,
+            start_payload={"intent": ctx.intent.value},
+            error_payload={"intent": ctx.intent.value},
+        ) as dispatch_done:
+            worker = select_worker(ctx.intent)
             prepared = await worker.prepare_input(ctx)
-        except Exception as exc:
-            emit_event(
-                event_type=EventType.TURN_DISPATCH_FAILED,
-                trace_id=trace_id,
-                span_id=f"{self._span_id(ctx, 'dispatch')}:failed",
-                parent_span_id=self._span_id(ctx, "dispatch"),
-                session_id=ctx.session_key,
-                turn_id=ctx.turn_id,
-                stage=PrivacyStage.SANITIZED,
-                status=ProtocolStatus.FAILED,
-                payload={"error": str(exc), "intent": ctx.intent.value},
-            )
-            raise
-        emit_event(
-            event_type=EventType.TURN_DISPATCH_COMPLETED,
-            trace_id=trace_id,
-            span_id=f"{self._span_id(ctx, 'dispatch')}:completed",
-            parent_span_id=self._span_id(ctx, "dispatch"),
-            session_id=ctx.session_key,
-            turn_id=ctx.turn_id,
-            stage=PrivacyStage.SANITIZED,
-            status=ProtocolStatus.SUCCEEDED,
-            payload={"intent": ctx.intent.value},
-        )
+            dispatch_done["intent"] = ctx.intent.value
         ctx.remote_prompt = prepared
 
         if media:
@@ -281,7 +234,7 @@ class PrivacyRuntime:
                 # the image as-is (normal multimodal behaviour) — the user has
                 # opted out of visual privacy for images. Typed text is still
                 # placeholdered, and documents still go through the text pipeline.
-                image_blocks = self._build_image_blocks_from_media(media) or None
+                image_blocks = build_image_blocks_from_media(media) or None
             document_blocks = await self._prepare_user_documents(media, ctx)
             if image_blocks or document_blocks:
                 # LLM-facing layout: images first (multimodal convention),
@@ -309,7 +262,7 @@ class PrivacyRuntime:
         into the user message, or ``None`` when no usable image was
         produced. All visual records are stashed on the :class:`TurnContext`.
         """
-        blocks = self._build_image_blocks_from_media(media)
+        blocks = build_image_blocks_from_media(media)
         if not blocks:
             return None
 
@@ -369,88 +322,6 @@ class PrivacyRuntime:
             )
         return prepared_blocks
 
-    @staticmethod
-    def _build_image_blocks_from_media(media: list[str]) -> list[dict[str, Any]]:
-        """Read media references into ``image_url`` blocks for visual processing.
-
-        Accepts two reference shapes:
-
-        - ``data:image/<mime>;base64,<payload>`` — inline data URLs sent by
-          the WebUI/clipboard path. Parsed in-memory; the source ``path``
-          metadata is suppressed because the original filename/contents
-          have no on-disk anchor.
-        - Filesystem paths (legacy channel uploads via Feishu/Slack/QQ).
-          Read with the same constraints as
-          ``agent.context.ContextBuilder._build_user_content``.
-
-        Warning logs **never** print the raw reference: data URLs carry
-        the user's raw image bytes in base64, and even fs paths can
-        include sensitive folder names. We log a short fingerprint
-        (kind + first 24 chars) so debugging stays useful without
-        defeating the privacy boundary on its own log line.
-        """
-        blocks: list[dict[str, Any]] = []
-        for reference in media:
-            if not isinstance(reference, str) or not reference:
-                continue
-
-            if reference.startswith("data:"):
-                # Text documents (``data:text/markdown;…``, ``data:text/plain;…``)
-                # are handled by ``_prepare_user_documents`` via the chunker
-                # pipeline. Silently skip them here so the image branch
-                # doesn't warn on a non-image MIME it was never meant to
-                # decode. The warning below is reserved for genuinely
-                # malformed image data URLs.
-                if _DOCUMENT_DATA_URL_PATTERN.fullmatch(reference):
-                    continue
-                raw_mime: tuple[bytes, str | None] | None = _decode_data_url(reference)
-                if raw_mime is None:
-                    logger.warning(
-                        "cannot decode user-attached media: {} ({} chars)",
-                        _media_fingerprint(reference),
-                        len(reference),
-                    )
-                    continue
-                raw, declared_mime = raw_mime
-                mime = detect_image_mime(raw) or declared_mime
-                if not mime or not mime.startswith("image/"):
-                    continue
-                b64 = base64.b64encode(raw).decode("ascii")
-                blocks.append(
-                    {
-                        "type": "image_url",
-                        "image_url": {"url": f"data:{mime};base64,{b64}"},
-                        # No on-disk path — WebUI uploads are session-scoped only.
-                        "_meta": {"path": None},
-                    }
-                )
-                continue
-
-            try:
-                p = Path(reference)
-                if not p.is_file():
-                    continue
-                raw = p.read_bytes()
-            except OSError as exc:
-                logger.warning(
-                    "cannot read user-attached media {}: {}",
-                    _media_fingerprint(reference),
-                    exc,
-                )
-                continue
-            mime = detect_image_mime(raw) or mimetypes.guess_type(reference)[0]
-            if not mime or not mime.startswith("image/"):
-                continue
-            b64 = base64.b64encode(raw).decode("ascii")
-            blocks.append(
-                {
-                    "type": "image_url",
-                    "image_url": {"url": f"data:{mime};base64,{b64}"},
-                    "_meta": {"path": str(p)},
-                }
-            )
-        return blocks
-
     async def _prepare_user_documents(
         self,
         media: list[str],
@@ -472,7 +343,7 @@ class PrivacyRuntime:
         raises is replaced with an omit notice block, and no original
         text reaches the LLM-bound payload.
         """
-        documents = self._extract_documents_from_media(media)
+        documents = extract_documents_from_media(media)
         if not documents:
             return []
 
@@ -491,7 +362,7 @@ class PrivacyRuntime:
                     ctx.session_key,
                     ctx.turn_id,
                     vault_call_id,
-                    f"original_document.{_document_suffix(mime)}",
+                    f"original_document.{document_suffix(mime)}",
                     text,
                 )
                 ctx.user_input_document_artifacts.append(
@@ -554,79 +425,21 @@ class PrivacyRuntime:
 
         return prepared
 
-    @staticmethod
-    def _extract_documents_from_media(
-        media: list[str],
-    ) -> list[tuple[str, str, str | None]]:
-        """Decode ``data:text/...`` entries to ``(text, mime, name)`` tuples.
-
-        Image data URLs and on-disk paths are skipped — the visual
-        pipeline picks those up separately in
-        :meth:`_build_image_blocks_from_media`. Anything that decodes
-        but exceeds ``_MAX_DOCUMENT_CHARS`` is dropped with a sanitized
-        log line; we don't want a 1MB paste to dominate latency.
-
-        Document names are not part of the data URL spec — channels
-        that want to surface a filename should encode it into the
-        attachment metadata (``WebUIAttachment.name``) which is
-        threaded separately. This helper returns ``None`` for the
-        name slot and lets the caller fill it in if available.
-        """
-        out: list[tuple[str, str, str | None]] = []
-        for reference in media:
-            if not isinstance(reference, str) or not reference.startswith("data:"):
-                continue
-            match = _DOCUMENT_DATA_URL_PATTERN.fullmatch(reference)
-            if not match:
-                continue
-            mime = match.group("mime")
-            if mime not in _SUPPORTED_DOCUMENT_MIMES:
-                continue
-            try:
-                raw = base64.b64decode(match.group("payload"), validate=True)
-            except (binascii.Error, ValueError):
-                logger.warning(
-                    "cannot decode user-uploaded document: {} ({} chars)",
-                    _media_fingerprint(reference),
-                    len(reference),
-                )
-                continue
-            try:
-                text = raw.decode("utf-8")
-            except UnicodeDecodeError:
-                logger.warning(
-                    "user-uploaded document is not valid UTF-8: {}",
-                    _media_fingerprint(reference),
-                )
-                continue
-            if len(text) > _MAX_DOCUMENT_CHARS:
-                logger.warning(
-                    "user-uploaded document exceeds the {} char privacy cap; "
-                    "dropping ({} chars, mime={})",
-                    _MAX_DOCUMENT_CHARS,
-                    len(text),
-                    mime,
-                )
-                continue
-            out.append((text, mime, None))
-        return out
-
     async def finalize_turn(self, response: str, ctx: TurnContext, *, include_report: bool = True) -> str:
-        trace_id = self._trace_id(ctx)
+        obs = _TurnObservability(ctx, channel=self.channel)
 
-        emit_event(
-            event_type=EventType.TURN_RESTORE_STARTED,
-            trace_id=trace_id,
-            span_id=self._span_id(ctx, "restore"),
-            session_id=ctx.session_key,
-            turn_id=ctx.turn_id,
-            stage=PrivacyStage.SANITIZED,
-            status=ProtocolStatus.STARTED,
-            payload={"response_length": len(response)},
-        )
-
-        worker = select_worker(ctx.intent)
-        try:
+        with obs.span(
+            "restore",
+            events=(
+                EventType.TURN_RESTORE_STARTED,
+                EventType.TURN_RESTORE_COMPLETED,
+                EventType.TURN_RESTORE_FAILED,
+            ),
+            start_stage=PrivacyStage.SANITIZED,
+            end_stage=PrivacyStage.POSTPROCESSED,
+            start_payload={"response_length": len(response)},
+        ) as restore_done:
+            worker = select_worker(ctx.intent)
             finalized = await worker.finalize_output(response, ctx)
             ctx.sanitized_output = finalized
 
@@ -635,43 +448,16 @@ class PrivacyRuntime:
             annotations.sort(key=lambda annotation: (annotation.start, annotation.end))
             ctx.display_output = restored
             ctx.display_output_annotations = annotations
-        except Exception as exc:
-            emit_event(
-                event_type=EventType.TURN_RESTORE_FAILED,
-                trace_id=trace_id,
-                span_id=f"{self._span_id(ctx, 'restore')}:failed",
-                parent_span_id=self._span_id(ctx, "restore"),
-                session_id=ctx.session_key,
-                turn_id=ctx.turn_id,
-                stage=PrivacyStage.SANITIZED,
-                status=ProtocolStatus.FAILED,
-                payload={"error": str(exc)},
-            )
-            raise
-
-        emit_event(
-            event_type=EventType.TURN_RESTORE_COMPLETED,
-            trace_id=trace_id,
-            span_id=f"{self._span_id(ctx, 'restore')}:completed",
-            parent_span_id=self._span_id(ctx, "restore"),
-            session_id=ctx.session_key,
-            turn_id=ctx.turn_id,
-            stage=PrivacyStage.POSTPROCESSED,
-            status=ProtocolStatus.SUCCEEDED,
-            payload={"annotation_count": len(annotations)},
-        )
+            restore_done["annotation_count"] = len(annotations)
 
         report_text = TurnReport(ctx=ctx).render()
         if include_report and report_text:
             restored = f"{restored}\n\n{report_text}"
 
-        emit_event(
-            event_type=EventType.TURN_COMPLETED,
-            trace_id=trace_id,
-            span_id=self._span_id(ctx, "completed"),
-            parent_span_id=self._span_id(ctx, "received"),
-            session_id=ctx.session_key,
-            turn_id=ctx.turn_id,
+        obs.emit(
+            EventType.TURN_COMPLETED,
+            span="completed",
+            parent="received",
             stage=PrivacyStage.POSTPROCESSED,
             status=ProtocolStatus.SUCCEEDED,
             payload={"include_report": include_report},

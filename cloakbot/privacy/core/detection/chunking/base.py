@@ -62,4 +62,4 @@ class Chunker(Protocol):
     ) -> list[Chunk]: ...
 
 
-__all__ = ["Chunk", "Chunker", "DEFAULT_MAX_CHARS", "DEFAULT_OVERLAP_CHARS"]
+__all__ = ["DEFAULT_MAX_CHARS", "DEFAULT_OVERLAP_CHARS", "Chunk", "Chunker"]

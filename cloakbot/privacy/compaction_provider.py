@@ -27,11 +27,13 @@ exception, which ``archive``'s own ``try/except`` likewise routes to
 
 from __future__ import annotations
 
+import dataclasses
 from typing import Any
 
 from loguru import logger
 
 from cloakbot.privacy.compaction import CompactionGuard
+from cloakbot.privacy.core.state.vault import route_fixed_key_through_active_run
 from cloakbot.providers.base import LLMResponse
 
 # Session key the consolidation summarizer runs under. The consolidator is not
@@ -100,8 +102,6 @@ class CompactionGuardedProvider:
         *args: Any,
         **kwargs: Any,
     ) -> LLMResponse:
-        from cloakbot.privacy.core.state.vault import route_fixed_key_through_active_run
-
         guard = CompactionGuard(self._session_key)
         window = _window_text_from_messages(messages)
 
@@ -140,8 +140,6 @@ class CompactionGuardedProvider:
 def _with_content(response: LLMResponse, content: str | None) -> LLMResponse:
     """Return a copy of *response* with replaced content (dataclass-agnostic)."""
     try:
-        import dataclasses
-
         if dataclasses.is_dataclass(response):
             return dataclasses.replace(response, content=content)
     except Exception:  # pragma: no cover - dataclasses.replace edge

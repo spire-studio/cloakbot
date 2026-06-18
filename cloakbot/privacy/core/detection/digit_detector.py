@@ -1,16 +1,22 @@
 from __future__ import annotations
 
-import re
+import time
 
 from loguru import logger
 from pydantic import BaseModel
+from pydantic_ai import Agent, NativeOutput, RunContext
+from pydantic_ai.exceptions import UnexpectedModelBehavior
+from pydantic_ai.settings import ModelSettings
 
-from cloakbot.privacy.core.detection.llm_json import JsonCompletionRunner, load_json_object
+from cloakbot.privacy.core.detection.detector_model import (
+    build_detector_model,
+    response_text,
+)
+from cloakbot.privacy.core.placeholders import INTERNAL_TOKEN_RE
 from cloakbot.privacy.core.types import REGISTRY, ComputableEntity
 
 _TYPE_BLOCK = REGISTRY.get_prompt_block("computable")
 _ENUM_STR = REGISTRY.get_enum_str("computable")
-_TOKEN_PATTERN = re.compile(r"(?:<<)?[A-Z]{2,}(?:_[A-Z]+)*_\d+(?:>>)?")
 _VALID_ENTITY_TYPES = {spec.slug for spec in REGISTRY.computable}
 
 _DIGIT_SYSTEM_PROMPT = f"""You are a privacy-focused numeric and temporal entity extractor.
@@ -26,11 +32,9 @@ Rules:
 5. Classify private money as financial. Money MUST have a currency symbol or currency word adjacent to the digits (e.g. "$5.00", "5.00 USD", "¥100", "€20", "5 EUR", "RMB 80"). A bare number with no currency is NOT financial — see Rules 9 and 10.
 6. Use amount, value, and measurement only for standalone private quantities, not for identifiers or substrings inside another sensitive entity.
 7. If masking a number would break the user's formatting or routing instruction, do not extract it unless it is clearly private.
-8. Invoice / receipt / billing context: dates (invoice date, transaction date, billing period, due date), money lines (Subtotal, Total, Tax, Credit, Balance), and quantity lines are ALL private when they belong to a specific customer's document. Do not skip them as "common knowledge".
-9. Number-with-unit rule: when a digit is immediately followed by a measurement or quantity unit (e.g. "GB", "TB", "MB", "KB", "kg", "lb", "ml", "hours", "minutes", "items", "pcs", "users", or a multiplier "x"), classify as **measurement** (keep the unit in the text) or **amount** (for pure quantity multipliers like "0 x ..."). Never label number-with-unit as **financial**, even when it appears next to a money line.
-10. Quantity multiplier rule: spans of the form "N x <noun>" or "N × <noun>" describe a count, not money. Classify as **amount** with value N. Examples: "0 x Extra IPv4 Address" -> amount value=0; "2 x Storage Slots" -> amount value=2.
-11. Money completeness: if you extract any currency amount from the input, extract EVERY currency-formatted span in the document, including duplicates and zero values ("$0.00 USD", "$0.00") — the downstream tokeniser dedupes by canonical value, so you must not skip repeats or zeros. Examples: an invoice with "$5.00 USD" extra fee, "$95.00 USD" subtotal, and "$0.00 USD" credit yields three financial entities, not one.
-12. Date completeness: invoices and receipts frequently list 3+ dates (issue, transaction, period). Extract every date you see, including ranges like "05/02/2026 - 06/01/2026" — emit each date in the range as a separate temporal entity, or the range itself if it is one inseparable span.
+8. Billing context: within a specific customer's document, its dates, money lines (subtotal, tax, total, balance, credit), and quantities are private even when they look generic — do not skip them as "common knowledge".
+9. Completeness: extract EVERY currency-formatted span (including repeats and zero values) and EVERY date (including both ends of a range); the tokeniser dedupes downstream.
+10. Number-with-unit: a digit joined to a unit (storage, weight, volume, time, count) or an "N × <noun>" multiplier is **measurement** / **amount** (value = N), never **financial** — even beside a money line.
 
 Entity types:
 {_TYPE_BLOCK}
@@ -57,49 +61,81 @@ If no sensitive numeric entities are found, use "entities": [].
 Do NOT include the same entity text twice."""
 
 
+class DigitDetection(BaseModel):
+    """Structured output target for the digit detector LLM call."""
+
+    entities: list[ComputableEntity] = []
+
+
 class DigitDetectionResult(BaseModel):
     raw_output: str
     entities: list[ComputableEntity]
     latency_ms: float
 
 
+_DIGIT_AGENT = Agent(
+    output_type=NativeOutput(DigitDetection),
+    instructions=_DIGIT_SYSTEM_PROMPT,
+    deps_type=str,
+    retries=1,
+)
+
+
+@_DIGIT_AGENT.output_validator
+def _enforce_digit_invariants(ctx: RunContext[str], out: DigitDetection) -> DigitDetection:
+    """Apply the privacy-bearing filters to the model's structured output.
+
+    These are deterministic backstops, not model-correctable niceties: an
+    extracted span must be a verbatim substring of the source and must not be
+    one of our own internal placeholder tokens. ``ctx.deps`` is the source
+    prompt.
+    """
+    return DigitDetection(entities=normalize_digit_entities(out.entities, ctx.deps))
+
+
+def normalize_digit_entities(
+    entities: list[ComputableEntity],
+    prompt: str,
+) -> list[ComputableEntity]:
+    """Keep only valid, in-prompt, non-internal, de-duplicated numeric entities."""
+    seen: set[str] = set()
+    kept: list[ComputableEntity] = []
+    for entity in entities:
+        if entity.entity_type not in _VALID_ENTITY_TYPES:
+            continue
+        if INTERNAL_TOKEN_RE.search(entity.text):
+            continue
+        if entity.text in seen or entity.text not in prompt:
+            continue
+        seen.add(entity.text)
+        kept.append(entity)
+    return kept
+
+
 class DigitPrivacyDetector:
     """Detect sensitive computable numeric entities for tokenization."""
 
     def __init__(self, temperature: float = 0.0) -> None:
-        self._runner = JsonCompletionRunner(temperature=temperature)
+        self._temperature = temperature
 
     async def detect(self, prompt: str) -> DigitDetectionResult:
-        raw_output, latency_ms = await self._runner.complete(_DIGIT_SYSTEM_PROMPT, prompt)
-        entities = parse_digit_entities(raw_output, prompt)
-        return DigitDetectionResult(raw_output=raw_output, entities=entities, latency_ms=latency_ms)
-
-
-def parse_digit_entities(raw_output: str, prompt: str) -> list[ComputableEntity]:
-    data = load_json_object(raw_output)
-    if not data:
-        return []
-
-    seen: set[str] = set()
-    entities: list[ComputableEntity] = []
-
-    for item in data.get("entities", []):
+        t0 = time.perf_counter()
         try:
-            text = str(item["text"])
-            slug = str(item["entity_type"])
-            val = item["value"]
-
-            if slug not in _VALID_ENTITY_TYPES:
-                continue
-            if _TOKEN_PATTERN.search(text):
-                continue
-            if text in seen or prompt.find(text) == -1:
-                continue
-
-            seen.add(text)
-            entities.append(ComputableEntity(text=text, entity_type=slug, value=val))
-        except (KeyError, ValueError):
-            logger.debug("DigitPrivacyDetector: skipping malformed entity: {}", item)
-            continue
-
-    return entities
+            result = await _DIGIT_AGENT.run(
+                prompt,
+                deps=prompt,
+                model=build_detector_model(),
+                model_settings=ModelSettings(temperature=self._temperature),
+            )
+            entities = result.output.entities
+            raw_output = response_text(result)
+        except UnexpectedModelBehavior:
+            logger.warning(
+                "DigitPrivacyDetector: local model returned unparseable output; "
+                "treating as no entities",
+            )
+            entities, raw_output = [], ""
+        latency_ms = (time.perf_counter() - t0) * 1000
+        return DigitDetectionResult(
+            raw_output=raw_output, entities=entities, latency_ms=latency_ms,
+        )

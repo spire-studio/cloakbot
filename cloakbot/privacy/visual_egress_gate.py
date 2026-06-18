@@ -42,12 +42,14 @@ localhost", not "nothing touches disk").
 from __future__ import annotations
 
 import base64
+import uuid
 from pathlib import Path
 from typing import Any
 
 from loguru import logger
 
 from cloakbot.privacy.core.sanitization.sanitize import sanitize_input_with_detection
+from cloakbot.privacy.core.state.vault import route_fixed_key_through_active_run
 from cloakbot.privacy.visual_redaction import (
     VisualBlocksResult,
     process_visual_blocks,
@@ -284,10 +286,6 @@ class VisualEgressGatedImageProvider:
         aspect_ratio: str | None = None,
         image_size: str | None = None,
     ) -> Any:
-        import uuid
-
-        from cloakbot.privacy.core.state.vault import route_fixed_key_through_active_run
-
         turn_id = f"{_VISUAL_EGRESS_TURN_PREFIX}_{uuid.uuid4().hex[:12]}"
 
         # [Cap B / M3] The image-gen seam uses a fixed shared key

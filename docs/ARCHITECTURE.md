@@ -42,10 +42,34 @@ Detailed behavior lives in `domains/privacy.md`.
 - `cloakbot/privacy/runtime/pipeline.py` - `PrivacyRuntime.prepare_turn()` and
   `finalize_turn()` coordinate one privacy turn. `prepare_turn` accepts an
   optional `media=[...]` list so user-attached images flow through the visual
-  pipeline *before* the context builder ever sees raw bytes.
-- `cloakbot/privacy/core/detection/` - local PII detectors and JSON parsing.
+  pipeline *before* the context builder ever sees raw bytes. Per-turn
+  observability events are emitted through a `_TurnObservability` helper whose
+  `span()` context manager brackets each stage's started/succeeded/failed triple.
+- `cloakbot/privacy/runtime/attachments.py` - pure, ctx-free decoding of
+  `media=[...]` references into image `image_url` blocks and decoded text-document
+  tuples (extracted from `pipeline.py`). Logging only ever prints a redacted
+  `media_fingerprint`, never the raw reference.
+- `cloakbot/privacy/core/placeholders.py` - the single source of truth for the
+  `<<TAG_N>>` placeholder grammar (the trust-boundary token format): the
+  compiled patterns (`PLACEHOLDER_RE`, `TOKEN_RE`, `PLACEHOLDER_TAG_RE`,
+  `INTERNAL_TOKEN_RE`), token helpers (`is_placeholder`, `placeholder_tag`,
+  `placeholder_inner`, `entity_type_from_placeholder`), and the token-aware
+  span helpers (`protected_spans`, `find_unprotected_positions`) shared by the
+  sanitizer and vault. Every module that matches/extracts/filters tokens imports
+  from here so the grammar cannot drift between the mint path and an egress path.
+- `cloakbot/privacy/core/detection/` - local PII detectors built on PydanticAI.
+  - `detector_model.py` binds the shared local detector endpoint to a PydanticAI
+    model, reusing the `config.privacy` `AsyncOpenAI` client (so the endpoint
+    stays defined in `providers/detector.py`). Detectors use `NativeOutput`
+    (JSON-Schema structured output) and run SEQUENTIALLY (see `detector.py`) —
+    concurrent calls thrash a single-instance local backend. Requires a capable
+    (8-bit+) detector model; a 4-bit quant silently returns empty regardless of
+    output mode.
   - `detector.py` is the user-input facade (general + digit detectors run
-    concurrently).
+    concurrently). `general_detector.py` / `digit_detector.py` are PydanticAI
+    agents whose typed `output_type` replaces hand-rolled JSON parsing; an
+    `output_validator` enforces the privacy-bearing filters (exact-substring,
+    internal-token, de-dup) as deterministic backstops.
   - `tool_detector.py` is the tool-output specialist. It runs the
     content-type sniffer, dispatches to the right chunker, runs `PiiDetector`
     per chunk under a semaphore with a per-chunk timeout, dedupes entities
@@ -57,10 +81,18 @@ Detailed behavior lives in `domains/privacy.md`.
 - `cloakbot/privacy/core/sanitization/` - placeholder application, restoration,
   alias reuse, and public sanitization facade. `sanitize.py` now exposes
   `sanitize_tool_output_chunked` for tool outputs above the chunker threshold.
-- `cloakbot/privacy/core/state/vault.py` - session-scoped placeholder and
-  computation registry persisted under the privacy vault directory.
-  `normalize_text` NFKC-normalises and strips combining marks so full-width
-  and accented duplicates coalesce onto one placeholder.
+- `cloakbot/privacy/core/state/` - the session-scoped placeholder/computation
+  vault, split into a clean dependency chain behind a facade:
+  - `registry.py` - the in-memory data model (`_SessionMap`, `VaultEntity`,
+    `VaultComputation`). `normalize_text` NFKC-normalises and strips combining
+    marks so full-width and accented duplicates coalesce onto one placeholder.
+  - `vault_store.py` - workspace-scoped disk + artifact serialization (atomic
+    map persistence, tool-artifact bytes). No scope/cache awareness.
+  - `scope.py` - Cap B scope routing (`VaultScope`, `use_ephemeral_scope`,
+    `route_fixed_key_through_active_run`), the live in-memory caches, and the
+    `get_map` / `save_map` access facade.
+  - `vault.py` - the public facade everything imports from; composes the three
+    layers and re-exports the cohesive vault API.
 - `cloakbot/privacy/core/math/` - remote snippet contract and local arithmetic
   execution.
 - `cloakbot/privacy/runtime/tool_interceptor.py` - restores tool arguments for
@@ -93,8 +125,12 @@ Detailed behavior lives in `domains/privacy.md`.
 - `cloakbot/agent/tools/filesystem.py` - `read_file` tries the PDF text
   layer first (`fitz.get_text`) for digitally-issued PDFs; image-only PDFs
   fall back to the rasterise + visual-redaction path.
-- `cloakbot/privacy/protocol/` - strict event contracts, metrics, observability,
-  and replay helpers.
+- `cloakbot/privacy/protocol/` - the turn observability event protocol.
+  `contracts.py` holds the live event schema (`EventRecord` + the
+  `EventType`/`PrivacyStage`/`ProtocolStatus` enums); `observability.py` mints and
+  sinks events; `metrics.py`/`replay.py` read them back; `timing.py` is the shared
+  `elapsed_ms` helper. (The earlier aspirational, unused contract schema was
+  removed.)
 - `cloakbot/privacy/webui/` - backend contracts and builders for WebUI privacy
   panels. `side_channel.py` assembles the privacy side-channel payload and
   exposes `project_payload_for_egress()`, which returns a redacted projection
@@ -111,6 +147,11 @@ Keep privacy dependencies predictable:
 
 - Hooks call runtime.
 - Runtime coordinates core, agents, protocol, and transparency.
+- `core/placeholders.py` is the lowest layer (depends on nothing privacy-internal);
+  the sanitizer, vault registry, detectors, math, and egress gate all import the
+  token grammar from it. Inside `core/state/`, the dependency chain is
+  `registry → vault_store → scope → vault` (the facade); never import a
+  higher link from a lower one.
 - Core modules should not import WebUI modules.
 - WebUI builders may read privacy contracts and snapshots, but should not mutate
   Vault state except through existing runtime/session paths.

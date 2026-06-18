@@ -4,7 +4,8 @@ from collections import Counter
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from cloakbot.privacy.core.state.vault import PLACEHOLDER_RE, get_map
+from cloakbot.privacy.core.placeholders import PLACEHOLDER_RE, placeholder_tag
+from cloakbot.privacy.core.state.vault import get_map
 from cloakbot.privacy.core.types import REGISTRY, DetectedEntity, Severity
 from cloakbot.privacy.hooks.context import TurnContext
 
@@ -79,21 +80,21 @@ class TurnReport(BaseModel):
 
         if data.detected_input_entities:
             lines.append(
-                f"├─ Newly detected this turn: {_format_entity_summaries(data.detected_input_entities)}  "
+                f"├─ Newly detected this turn: {_format_entity_summaries(data.detected_input_entities)}  ",
             )
         else:
             lines.append("├─ Newly detected this turn: _none_  ")
 
         if data.tool_output_entities:
             lines.append(
-                f"├─ Tool-output detections: {_format_entity_summaries(data.tool_output_entities)}  "
+                f"├─ Tool-output detections: {_format_entity_summaries(data.tool_output_entities)}  ",
             )
         else:
             lines.append("├─ Tool-output detections: _none_  ")
 
         if data.restored_output_placeholders:
             lines.append(
-                f"├─ Restored in final output: {_format_placeholder_summaries(data.restored_output_placeholders)}  "
+                f"├─ Restored in final output: {_format_placeholder_summaries(data.restored_output_placeholders)}  ",
             )
             lines.append("└─ Status: _tokens restored for display_")
         else:
@@ -155,7 +156,7 @@ def _summarize_placeholders(text: str) -> list[PlaceholderSummary]:
     counts: dict[str, list[str]] = {}
     for match in PLACEHOLDER_RE.finditer(text or ""):
         placeholder = match.group(0)
-        tag, _index = placeholder[2:-2].rsplit("_", 1)
+        tag = placeholder_tag(placeholder)
         counts.setdefault(tag, [])
         if placeholder not in counts[tag]:
             counts[tag].append(placeholder)

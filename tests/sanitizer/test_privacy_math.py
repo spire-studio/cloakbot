@@ -10,7 +10,6 @@ from cloakbot.privacy.core.math.math_executor import (
 )
 from cloakbot.privacy.core.math.math_helpers import (
     execute_privacy_math,
-    extract_python_snippet,
     extract_python_snippets,
 )
 from cloakbot.privacy.core.state.vault import _SessionMap
@@ -26,13 +25,6 @@ def test_build_instruction_contains_numeric_tokens() -> None:
     assert "PERCENTAGE_*" in text
     assert "percent/share" in text
     assert "PERSON_1" not in text
-
-
-def test_extract_python_snippet() -> None:
-    text = "answer\n<python_snippet_1>\nresult = (A + B) / C\n</python_snippet_1>"
-    snippet = extract_python_snippet(text)
-    assert snippet is not None
-    assert "result =" in snippet
 
 
 def test_execute_privacy_math() -> None:

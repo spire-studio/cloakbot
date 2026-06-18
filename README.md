@@ -179,9 +179,11 @@ CloakBot's privacy guarantee depends on the PII detector running **on a host you
 
 ```bash
 curl -fsSL https://ollama.com/install.sh | sh
-ollama pull gemma4:e2b        # ships the model + an OpenAI-compatible endpoint in one tool
-# → base URL http://127.0.0.1:11434/v1 · API key "ollama" (any value) · model gemma4:e2b
+ollama pull gemma4:e2b-mxfp8  # ships the model + an OpenAI-compatible endpoint in one tool
+# → base URL http://127.0.0.1:11434/v1 · API key "ollama" (any value) · model gemma4:e2b-mxfp8
 ```
+
+> **Use an 8-bit build** (`gemma4:e2b-mxfp8`), not a 4-bit quant — low-bit quantisation degrades the general detector enough that it silently returns *no* entities (a silent PII leak). Verified on **Apple M4 · 16 GB**.
 
 **vLLM (GPU machine — fast, reproducible; the A1/A2/A3 eval path):**
 

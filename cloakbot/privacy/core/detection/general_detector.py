@@ -1,16 +1,19 @@
 from __future__ import annotations
 
-import re
+import time
 from dataclasses import dataclass
 
 from loguru import logger
 from pydantic import BaseModel
+from pydantic_ai import Agent, NativeOutput, RunContext
+from pydantic_ai.exceptions import UnexpectedModelBehavior
+from pydantic_ai.settings import ModelSettings
 
-from cloakbot.privacy.core.detection.llm_json import JsonCompletionRunner, load_json_object
+from cloakbot.privacy.core.detection.detector_model import (
+    build_detector_model,
+    response_text,
+)
 from cloakbot.privacy.core.types import REGISTRY, GeneralEntity
-
-_DEDUPE_PLACEHOLDER_RE = re.compile(r"^<<[A-Z]+(?:_[A-Z]+)*_\d+>>$")
-_DEDUPE_ELIGIBLE_TAGS = {"PERSON", "ORG"}
 
 _TYPE_BLOCK = REGISTRY.get_prompt_block("general")
 _ENUM_STR = REGISTRY.get_enum_str("general")
@@ -32,20 +35,15 @@ The remote LLM's job is to answer the user's request while preserving task inten
 7. Use identifier only for compact reference codes or explicit account endings; never for spans with "$", "%", month names, or date formats.
 8. Extract private-context organizations and person names, including standalone aliases or first names when they clearly refer to a private person in the prompt.
 
-━━━ Document-context recall hints ━━━
-The text may be an OCR'd invoice, receipt, bill, contract, or order — i.e. a structured document tied to a specific private party. In these documents, be **aggressive** about extracting the following surfaces (do not dismiss them as "templated" or "public"):
+━━━ Document-context recall ━━━
+In a structured document bound to a private party (invoice, receipt, statement, contract, order; possibly OCR'd), extract its private surfaces aggressively — do not skip a repeated value as "templated":
 
-9. Invoice / receipt section labels — "Pay To", "Invoiced To", "Bill To", "Ship To", "Sold To", "From", "To" — are followed by an organisation or person and an address. Treat every non-empty line beneath such a label, up to the next blank line or column header, as a candidate for extraction:
-   - Organisation lines (e.g. "DMIT, Inc.", "Acme Corp", "Anthropic PBC") → **org**.
-   - Address lines (street, city, state/region, postal code, country) → **address**, even when split across multiple lines.
-   - Personal names appearing in the customer slot → **person**.
-10. Payment gateway / processor names appearing next to a transaction (Alipay, WeChat Pay, Stripe, PayPal, Square, Adyen, Braintree, UnionPay, ApplePay, GooglePay) → **org**, because their presence reveals the customer's payment relationship.
-11. Long compound transaction / order identifiers — typically ≥16 alphanumeric chars, often containing "|", "-", "_", or "." separators (e.g. "2026043022001359301458224680|AHVBS6N2UDFC-JIWGK-8896153") → **identifier**. Extract the entire span as a single entity; do not split.
-12. Service / product / instance codes that look like internal labels (e.g. "LAX.AN4.Pro.TINY", "DMIT-US-1", "us-west-2-i-0a1b2c3d") → **identifier** when they appear in a customer-facing document (invoice line item, receipt, contract).
-13. URLs, file paths, account / API hostnames embedded in invoice or receipt descriptions follow the existing url / local_path rules — extract them as usual.
-14. Clinical context — when the prompt discusses healthcare, doctors, prescriptions, insurance, or patient care, be aggressive about extracting **medical** surfaces (diagnoses, drug+dose phrases, treatments, insurance plans) bound to a specific person. See the `medical` Examples below for canonical shapes. The full drug+dose+schedule phrase stays as ONE span — this overrides Rule 6 for medication spans that embed a dose.
+9. Lines under a party header ("Bill To" / "Ship To" / "From"-style), up to the next blank line or column header → **org** / **address** (full multi-line span) / **person** (the customer slot).
+10. A named payment processor next to a transaction → **org**.
+11. A long compound transaction / order id (alphanumeric run joined by "|" "-" "_" ".") or an internal-looking service / instance code → **identifier**, as ONE span.
+12. Clinical context → **medical** (diagnosis, drug+dose, treatment, insurance) bound to a person; keep drug+dose+schedule as ONE span (overrides Rule 6).
 
-These hints are additive — they do not override Rules 1–8. If a surface looks "templated" but only because the OCR layout repeats it (e.g. the same customer address on every page), still extract it.
+Additive to Rules 1–8; see each type's Examples below.
 
 ━━━ Entity types ━━━
 {_TYPE_BLOCK}
@@ -56,17 +54,13 @@ Return ONLY valid JSON.
   "entities": [
     {{
       "text": "<exact substring from input, unchanged>",
-      "entity_type": "<{_ENUM_STR}>",
-      "dedupe_hint": "<<PERSON_N>>" | "new"   // optional; only when the user prompt explicitly asks for cross-turn dedupe on this entity type
+      "entity_type": "<{_ENUM_STR}>"
     }}
   ]
 }}
 
 If no sensitive general entities are found, use "entities": [].
-Do NOT include the same entity text twice.
-The `dedupe_hint` field is OPTIONAL. Only emit it when the user prompt
-contains an explicit "Cross-turn dedupe" section, and only for PERSON or
-ORG entities. Omit the field entirely in every other case."""
+Do NOT include the same entity text twice."""
 
 _PARTIAL_CANDIDATE_ENTITY_TYPES = {"person", "org"}
 
@@ -74,22 +68,6 @@ _PARTIAL_CANDIDATE_ENTITY_TYPES = {"person", "org"}
 @dataclass(frozen=True)
 class PartialCandidate:
     surface: str
-    canonical: str
-    entity_type: str
-
-
-@dataclass(frozen=True)
-class DedupeTarget:
-    """A known person/org entity from the session Vault that the detector
-    should consider when emitting a `dedupe_hint` for each freshly-detected
-    PERSON / ORG span.
-
-    `placeholder` is the existing token (e.g. ``"<<PERSON_1>>"``) the local
-    detector may reference in its output to mean "this new mention refers to
-    the SAME entity". `canonical` is the original surface (e.g.
-    ``"Lin Zhiyuan"``) shown to the detector for context."""
-
-    placeholder: str
     canonical: str
     entity_type: str
 
@@ -129,7 +107,7 @@ def scan_partial_candidates(
                     surface=surface,
                     canonical=canonical,
                     entity_type=entity_type,
-                )
+                ),
             )
 
     return candidates
@@ -142,62 +120,31 @@ def _build_system_prompt() -> str:
 def _build_user_prompt(
     prompt: str,
     partial_candidates: list[PartialCandidate] | None = None,
-    dedupe_targets: list[DedupeTarget] | None = None,
 ) -> str:
-    sections: list[str] = []
-
-    if partial_candidates:
-        candidate_lines = "\n".join(
-            (
-                f'- "{candidate.surface}" may refer to known {candidate.entity_type} '
-                f'"{candidate.canonical}" -> if so, extract "{candidate.surface}" '
-                f"as: {candidate.entity_type}"
-            )
-            for candidate in partial_candidates
-        )
-        sections.append(
-            "[Candidate partial mentions detected in the text - judge each one:]\n"
-            f"{candidate_lines}\n"
-            "Only extract the candidate if it clearly refers to the known entity in "
-            "context. If ambiguous or unrelated, skip it."
-        )
-
-    if dedupe_targets:
-        target_lines = "\n".join(
-            f'- {target.placeholder}: "{target.canonical}" ({target.entity_type})'
-            for target in dedupe_targets
-        )
-        sections.append(
-            "[Cross-turn dedupe — known person/org entities from prior turns:]\n"
-            f"{target_lines}\n"
-            "For EACH person/org entity you extract, you MUST add a `dedupe_hint` "
-            "field with EXACTLY one of:\n"
-            "  • the matching placeholder above (e.g. \"<<PERSON_1>>\") — only "
-            "when the new mention clearly refers to the SAME individual or "
-            "organisation as that placeholder.\n"
-            "  • the literal string \"new\" — when the mention is clearly a "
-            "DIFFERENT entity (e.g. another person who happens to share a "
-            "surname; a different company with a similar name; phrases like "
-            "\"another\", \"a different\", \"someone surnamed X\", "
-            "\"someone else named X\" almost always mean a NEW entity).\n"
-            "  • omit the field entirely — only when truly ambiguous and you "
-            "cannot tell.\n"
-            "Worked example:\n"
-            "  Known: <<PERSON_1>>: \"Lin Zhiyuan\" (person)\n"
-            "  Text:  \"...also held by someone surnamed Lin.\"\n"
-            "  Extract: {\"text\": \"Lin\", \"entity_type\": \"person\", "
-            "\"dedupe_hint\": \"new\"}\n"
-            "  (NOT \"<<PERSON_1>>\" — \"someone surnamed Lin\" explicitly "
-            "signals a DIFFERENT individual who merely shares a surname.)\n"
-            "Over-merging two distinct people onto one placeholder silently "
-            "corrupts downstream restoration; when in real doubt, choose "
-            "\"new\" rather than the placeholder."
-        )
-
-    if not sections:
+    if not partial_candidates:
         return prompt
 
-    return "\n\n".join(sections) + f"\n\nText to analyze:\n{prompt}"
+    candidate_lines = "\n".join(
+        (
+            f'- "{candidate.surface}" may refer to known {candidate.entity_type} '
+            f'"{candidate.canonical}" -> if so, extract "{candidate.surface}" '
+            f"as: {candidate.entity_type}"
+        )
+        for candidate in partial_candidates
+    )
+    section = (
+        "[Candidate partial mentions detected in the text - judge each one:]\n"
+        f"{candidate_lines}\n"
+        "Only extract the candidate if it clearly refers to the known entity in "
+        "context. If ambiguous or unrelated, skip it."
+    )
+    return f"{section}\n\nText to analyze:\n{prompt}"
+
+
+class GeneralDetection(BaseModel):
+    """Structured output target for the general detector LLM call."""
+
+    entities: list[GeneralEntity] = []
 
 
 class GeneralDetectionResult(BaseModel):
@@ -206,44 +153,85 @@ class GeneralDetectionResult(BaseModel):
     latency_ms: float
 
 
+_GENERAL_AGENT = Agent(
+    output_type=NativeOutput(GeneralDetection),
+    instructions=_GENERAL_SYSTEM_PROMPT,
+    deps_type=str,
+    retries=1,
+)
+
+
+@_GENERAL_AGENT.output_validator
+def _enforce_general_invariants(ctx: RunContext[str], out: GeneralDetection) -> GeneralDetection:
+    """Apply the privacy-bearing filters to the model's structured output.
+
+    Deterministic backstops: each span must be a verbatim substring of the
+    source (``ctx.deps``), of a known entity type, and de-duplicated. Never
+    delegated to a retry.
+    """
+    return GeneralDetection(entities=normalize_general_entities(out.entities, ctx.deps))
+
+
+def normalize_general_entities(
+    entities: list[GeneralEntity],
+    prompt: str,
+) -> list[GeneralEntity]:
+    """Keep only valid, in-prompt, de-duplicated entities."""
+    seen: set[str] = set()
+    kept: list[GeneralEntity] = []
+    for entity in entities:
+        slug = entity.entity_type
+        if slug not in _VALID_ENTITY_TYPES:
+            continue
+        if entity.text in seen or entity.text not in prompt:
+            continue
+        seen.add(entity.text)
+        kept.append(GeneralEntity(text=entity.text, entity_type=slug))
+    return kept
+
+
 class GeneralPrivacyDetector:
     """Detect general sensitive entities, excluding computable math elements."""
 
     def __init__(self, *, temperature: float = 0.0) -> None:
-        self._runner = JsonCompletionRunner(temperature=temperature)
+        self._temperature = temperature
 
     async def detect(
         self,
         prompt: str,
         *,
         partial_candidates: list[PartialCandidate] | None = None,
-        dedupe_targets: list[DedupeTarget] | None = None,
     ) -> GeneralDetectionResult:
-        system_prompt = _build_system_prompt()
-        user_prompt = _build_user_prompt(prompt, partial_candidates, dedupe_targets)
-        valid_dedupe_placeholders = {t.placeholder for t in dedupe_targets or []}
+        user_prompt = _build_user_prompt(prompt, partial_candidates)
         logger.debug(
             "GeneralPrivacyDetector prompt built: partial_candidate_count={} "
             "partial_candidate_types={} candidate_section={} "
-            "dedupe_target_count={} dedupe_section={} "
             "system_prompt_chars={} user_prompt_chars={}",
             _partial_candidate_count(partial_candidates),
             _partial_candidate_types(partial_candidates),
             "Candidate partial mentions detected" in user_prompt,
-            len(dedupe_targets or []),
-            "Cross-turn dedupe" in user_prompt,
-            len(system_prompt),
+            len(_GENERAL_SYSTEM_PROMPT),
             len(user_prompt),
         )
-        raw_output, latency_ms = await self._runner.complete(
-            system_prompt,
-            user_prompt,
-        )
-        entities = parse_general_entities(
-            raw_output,
-            prompt,
-            valid_dedupe_placeholders=valid_dedupe_placeholders,
-        )
+
+        t0 = time.perf_counter()
+        try:
+            result = await _GENERAL_AGENT.run(
+                user_prompt,
+                deps=prompt,
+                model=build_detector_model(),
+                model_settings=ModelSettings(temperature=self._temperature),
+            )
+            entities = result.output.entities
+            raw_output = response_text(result)
+        except UnexpectedModelBehavior:
+            logger.warning(
+                "GeneralPrivacyDetector: local model returned unparseable output; "
+                "treating as no entities",
+            )
+            entities, raw_output = [], ""
+        latency_ms = (time.perf_counter() - t0) * 1000
+
         logger.debug(
             "GeneralPrivacyDetector response parsed: raw_chars={} entity_count={} entities={}",
             len(raw_output),
@@ -254,74 +242,8 @@ class GeneralPrivacyDetector:
             ],
         )
         return GeneralDetectionResult(
-            raw_output=raw_output, entities=entities, latency_ms=latency_ms
+            raw_output=raw_output, entities=entities, latency_ms=latency_ms,
         )
-
-
-def parse_general_entities(
-    raw_output: str,
-    prompt: str,
-    *,
-    valid_dedupe_placeholders: set[str] | None = None,
-) -> list[GeneralEntity]:
-    data = load_json_object(raw_output)
-    if not data:
-        return []
-
-    seen: set[str] = set()
-    entities: list[GeneralEntity] = []
-    valid_placeholders = valid_dedupe_placeholders or set()
-
-    for item in data.get("entities", []):
-        try:
-            text = str(item["text"])
-            slug = str(item["entity_type"])
-            if slug not in _VALID_ENTITY_TYPES:
-                continue
-            if text in seen or prompt.find(text) == -1:
-                continue
-
-            seen.add(text)
-            entities.append(
-                GeneralEntity(
-                    text=text,
-                    entity_type=slug,
-                    dedupe_hint=_parse_dedupe_hint(item, slug, valid_placeholders),
-                )
-            )
-        except (KeyError, ValueError):
-            logger.debug("GeneralPrivacyDetector: skipping malformed entity: {}", item)
-            continue
-
-    return entities
-
-
-def _parse_dedupe_hint(
-    item: dict,
-    slug: str,
-    valid_placeholders: set[str],
-) -> str | None:
-    """Validate and normalise the optional `dedupe_hint` field emitted by the
-    local model. Returns `None` for any malformed or non-eligible hint so the
-    sanitizer falls back to the legacy substring resolver path."""
-    raw = item.get("dedupe_hint")
-    if not raw:
-        return None
-    if not isinstance(raw, str):
-        return None
-    hint = raw.strip()
-    if not hint:
-        return None
-    # Only PERSON / ORG go through cross-turn dedupe. Any hint on a
-    # non-eligible entity type is meaningless and we discard it.
-    tag = REGISTRY.tag_map.get(slug, "")
-    if tag not in _DEDUPE_ELIGIBLE_TAGS:
-        return None
-    if hint.lower() == "new":
-        return "new"
-    if _DEDUPE_PLACEHOLDER_RE.fullmatch(hint) and hint in valid_placeholders:
-        return hint
-    return None
 
 
 def _partial_candidate_count(partial_candidates: list[PartialCandidate] | None) -> int:

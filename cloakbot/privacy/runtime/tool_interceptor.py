@@ -4,21 +4,20 @@ import base64
 import json
 import os
 import re
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, NoReturn
 from urllib.parse import urlparse
 from uuid import uuid4
 
 from cloakbot.privacy.core.detection.chunking import DEFAULT_MAX_CHARS
+from cloakbot.privacy.core.placeholders import PLACEHOLDER_RE
 from cloakbot.privacy.core.sanitization.sanitize import (
     remap_response,
     sanitize_tool_output,
     sanitize_tool_output_chunked,
 )
-from cloakbot.privacy.core.state.vault import (
-    PLACEHOLDER_RE,
-    save_artifact_text,
-)
+from cloakbot.privacy.core.state.vault import save_artifact_text
 from cloakbot.privacy.core.types import Severity
 from cloakbot.privacy.hooks.context import TurnContext
 from cloakbot.privacy.runtime.streaming_sanitizer import StreamingSanitizerRegistry
@@ -213,6 +212,37 @@ def _stream_id_for(tool_call: ToolCallRequest, result: str | None = None) -> str
     return f"{tool_call.name}:{tool_call.id}" if tool_call.id else None
 
 
+@dataclass(frozen=True)
+class SanitizeResult:
+    """Outcome of recursively sanitizing one tool argument or result value.
+
+    Replaces a positional 5-tuple so the fail-closed ``failed`` flag and the
+    entity / visual-redaction lists can never drift out of order across the
+    recursive list/dict fold.
+    """
+
+    value: Any
+    modified: bool = False
+    entities: list[Any] = field(default_factory=list)
+    visual_redactions: list[VisualPrivacyRedaction] = field(default_factory=list)
+    failed: bool = False
+
+    @classmethod
+    def unchanged(cls, value: Any) -> SanitizeResult:
+        return cls(value=value)
+
+    @classmethod
+    def merge(cls, value: Any, parts: list[SanitizeResult]) -> SanitizeResult:
+        """Fold child results into one, OR-ing flags and concatenating lists."""
+        return cls(
+            value=value,
+            modified=any(part.modified for part in parts),
+            entities=[entity for part in parts for entity in part.entities],
+            visual_redactions=[vr for part in parts for vr in part.visual_redactions],
+            failed=any(part.failed for part in parts),
+        )
+
+
 class ToolPrivacyInterceptor:
     """Restore local tool inputs and sanitize tool outputs before model reuse."""
 
@@ -234,58 +264,31 @@ class ToolPrivacyInterceptor:
             return local_file_call
 
         if privacy_class is not ToolPrivacyClass.LOCAL:
-            (
-                sanitized_arguments,
-                modified,
-                entities,
-                _visual_redactions,
-                _failed,
-            ) = await self._sanitize_value(restored_arguments)
+            result = await self._sanitize_value(restored_arguments)
             placeholder_sensitive = _contains_placeholder(tool_call.arguments)
-            sensitive = modified or placeholder_sensitive
-            if sensitive:
-                self._ctx.tool_input_entities.extend(entities)
-                request = ToolApprovalRequest(
-                    approval_id=uuid4().hex,
-                    session_key=self._ctx.session_key,
-                    turn_id=self._ctx.turn_id,
-                    tool_call_id=tool_call.id,
-                    tool_name=tool_call.name,
+            if result.modified or placeholder_sensitive:
+                # Remote tool: the model only ever sees the SANITIZED arguments.
+                self._raise_for_approval(
+                    tool_call,
                     privacy_class=privacy_class,
-                    remote_arguments=_dict_or_empty(sanitized_arguments),
+                    remote_arguments=_dict_or_empty(result.value),
                     restored_arguments=_dict_or_empty(restored_arguments),
-                    detected_entities=entities,
+                    entities=result.entities,
                 )
-                self._ctx.tool_approvals.append(request)
-                raise ToolApprovalRequiredError(request)
         elif _high_severity_local_required():
-            # Severity-driven approval gate for LOCAL tools. Opt-in so
-            # the default user experience is unchanged. We compute
-            # entities purely to inspect their severity; the returned
-            # arguments stay the *restored* originals because LOCAL
-            # tools execute on real values by design.
-            (
-                _sanitized_args,
-                _modified,
-                local_entities,
-                _vr,
-                _failed,
-            ) = await self._sanitize_value(restored_arguments)
-            if _has_high_severity(local_entities):
-                self._ctx.tool_input_entities.extend(local_entities)
-                request = ToolApprovalRequest(
-                    approval_id=uuid4().hex,
-                    session_key=self._ctx.session_key,
-                    turn_id=self._ctx.turn_id,
-                    tool_call_id=tool_call.id,
-                    tool_name=tool_call.name,
+            # Severity-driven approval gate for LOCAL tools. Opt-in so the default
+            # user experience is unchanged. We compute entities purely to inspect
+            # their severity; the remote arguments stay the *restored* originals
+            # because LOCAL tools execute on real values by design.
+            result = await self._sanitize_value(restored_arguments)
+            if _has_high_severity(result.entities):
+                self._raise_for_approval(
+                    tool_call,
                     privacy_class=privacy_class,
                     remote_arguments=_dict_or_empty(restored_arguments),
                     restored_arguments=_dict_or_empty(restored_arguments),
-                    detected_entities=local_entities,
+                    entities=result.entities,
                 )
-                self._ctx.tool_approvals.append(request)
-                raise ToolApprovalRequiredError(request)
 
         return ToolCallRequest(
             id=tool_call.id,
@@ -295,6 +298,36 @@ class ToolPrivacyInterceptor:
             provider_specific_fields=tool_call.provider_specific_fields,
             function_provider_specific_fields=tool_call.function_provider_specific_fields,
         )
+
+    def _raise_for_approval(
+        self,
+        tool_call: ToolCallRequest,
+        *,
+        privacy_class: ToolPrivacyClass,
+        remote_arguments: dict[str, Any],
+        restored_arguments: dict[str, Any],
+        entities: list[Any],
+    ) -> NoReturn:
+        """Record a pending tool approval and stop the call.
+
+        The sanitized-vs-restored choice for ``remote_arguments`` *is* the
+        privacy boundary decision and is the only thing that differs between the
+        remote-tool and high-severity-LOCAL gates; both funnel through here.
+        """
+        self._ctx.tool_input_entities.extend(entities)
+        request = ToolApprovalRequest(
+            approval_id=uuid4().hex,
+            session_key=self._ctx.session_key,
+            turn_id=self._ctx.turn_id,
+            tool_call_id=tool_call.id,
+            tool_name=tool_call.name,
+            privacy_class=privacy_class,
+            remote_arguments=remote_arguments,
+            restored_arguments=restored_arguments,
+            detected_entities=entities,
+        )
+        self._ctx.tool_approvals.append(request)
+        raise ToolApprovalRequiredError(request)
 
     async def sanitize_tool_result(
         self,
@@ -318,13 +351,12 @@ class ToolPrivacyInterceptor:
                 result,
             )
         else:
-            (
-                sanitized,
-                modified,
-                entities,
-                visual_redactions,
-                detection_failed,
-            ) = await self._sanitize_value(result, tool_name=tool_call.name)
+            outcome = await self._sanitize_value(result, tool_name=tool_call.name)
+            sanitized = outcome.value
+            modified = outcome.modified
+            entities = outcome.entities
+            visual_redactions = outcome.visual_redactions
+            detection_failed = outcome.failed
             vault_artifacts = self._persist_read_file_text_artifacts(tool_call, sanitized)
 
         if detection_failed:
@@ -338,18 +370,14 @@ class ToolPrivacyInterceptor:
             )
             modified = True
 
-        self._ctx.tool_output_entities.extend(entities)
-        self._ctx.tool_results.append(
-            ToolPrivacyRecord(
-                tool_call_id=tool_call.id,
-                tool_name=tool_call.name,
-                privacy_class=privacy_class,
-                remote_arguments=dict(tool_call.arguments),
-                sanitized_output=_recorded_output_text(sanitized),
-                was_sanitized=modified,
-                visual_redactions=visual_redactions,
-                vaultArtifacts=vault_artifacts,
-            )
+        self._append_tool_record(
+            tool_call,
+            sanitized,
+            modified,
+            entities,
+            privacy_class,
+            visual_redactions=visual_redactions,
+            vault_artifacts=vault_artifacts,
         )
         return sanitized
 
@@ -388,7 +416,7 @@ class ToolPrivacyInterceptor:
                 turn_id=self._ctx.turn_id,
             )
             final = _join_output_trailer(sanitized, trailer)
-            self._record_streaming_result(tool_call, final, modified, entities, privacy_class)
+            self._append_tool_record(tool_call, final, modified, entities, privacy_class)
             return final
 
         sanitizer = self._stream_registry.get(
@@ -419,7 +447,7 @@ class ToolPrivacyInterceptor:
                 stream_id,
             )
         final = _join_output_trailer(emitted, trailer)
-        self._record_streaming_result(
+        self._append_tool_record(
             tool_call,
             final,
             sanitizer.modified,
@@ -428,14 +456,18 @@ class ToolPrivacyInterceptor:
         )
         return final
 
-    def _record_streaming_result(
+    def _append_tool_record(
         self,
         tool_call: ToolCallRequest,
-        sanitized: str,
+        sanitized: Any,
         modified: bool,
         entities: list[Any],
         privacy_class: ToolPrivacyClass,
+        *,
+        visual_redactions: list[VisualPrivacyRedaction] | None = None,
+        vault_artifacts: list[ToolVaultArtifact] | None = None,
     ) -> None:
+        """Record one tool-result privacy entry (the single transparency-record builder)."""
         self._ctx.tool_output_entities.extend(entities)
         self._ctx.tool_results.append(
             ToolPrivacyRecord(
@@ -445,8 +477,8 @@ class ToolPrivacyInterceptor:
                 remote_arguments=dict(tool_call.arguments),
                 sanitized_output=_recorded_output_text(sanitized),
                 was_sanitized=modified,
-                visual_redactions=[],
-                vaultArtifacts=[],
+                visual_redactions=visual_redactions or [],
+                vaultArtifacts=vault_artifacts or [],
             )
         )
 
@@ -471,16 +503,15 @@ class ToolPrivacyInterceptor:
         value: Any,
         *,
         tool_name: str | None = None,
-    ) -> tuple[Any, bool, list[Any], list[VisualPrivacyRedaction], bool]:
+    ) -> SanitizeResult:
         """Recursively sanitize a tool argument or result value.
 
-        When ``tool_name`` is set, string leaves are routed through the
-        chunked tool detector (``sanitize_tool_output_chunked``) and the
-        fifth return element propagates a *detection_failed* signal so
-        the caller can fail-closed on the whole payload. When
-        ``tool_name`` is ``None`` (input-args path), the existing
-        single-shot detector is used and the failure signal is always
-        ``False``.
+        When ``tool_name`` is set, string leaves are routed through the chunked
+        tool detector (``sanitize_tool_output_chunked``) and the result's
+        ``failed`` flag propagates a *detection_failed* signal so the caller can
+        fail-closed on the whole payload. When ``tool_name`` is ``None``
+        (input-args path), the single-shot detector is used and ``failed`` is
+        always ``False``.
         """
         if isinstance(value, str):
             # Skip detection on strings that are entirely placeholders +
@@ -488,7 +519,7 @@ class ToolPrivacyInterceptor:
             # is wasted compute, and (worse) can produce nested or
             # mis-aligned tokens when a regex matches inside ``<<…_N>>``.
             if _is_pure_placeholder_text(value):
-                return value, False, [], [], False
+                return SanitizeResult.unchanged(value)
             if tool_name is not None and len(value) > _CHUNK_ROUTING_THRESHOLD:
                 sanitized, modified, entities, failed = await sanitize_tool_output_chunked(
                     value,
@@ -496,57 +527,26 @@ class ToolPrivacyInterceptor:
                     tool_name=tool_name,
                     turn_id=self._ctx.turn_id,
                 )
-                return sanitized, modified, entities, [], failed
+                return SanitizeResult(value=sanitized, modified=modified, entities=entities, failed=failed)
             sanitized, modified, entities = await sanitize_tool_output(
                 value,
                 self._ctx.session_key,
                 turn_id=self._ctx.turn_id,
             )
-            return sanitized, modified, entities, [], False
+            return SanitizeResult(value=sanitized, modified=modified, entities=entities)
 
         if isinstance(value, list):
-            sanitized_items: list[Any] = []
-            modified_any = False
-            all_entities: list[Any] = []
-            visual_redactions: list[VisualPrivacyRedaction] = []
-            failed_any = False
-            for item in value:
-                (
-                    sanitized_item,
-                    modified,
-                    entities,
-                    item_visual_redactions,
-                    failed,
-                ) = await self._sanitize_value(item, tool_name=tool_name)
-                sanitized_items.append(sanitized_item)
-                modified_any = modified_any or modified
-                all_entities.extend(entities)
-                visual_redactions.extend(item_visual_redactions)
-                failed_any = failed_any or failed
-            return sanitized_items, modified_any, all_entities, visual_redactions, failed_any
+            parts = [await self._sanitize_value(item, tool_name=tool_name) for item in value]
+            return SanitizeResult.merge([part.value for part in parts], parts)
 
         if isinstance(value, dict):
-            sanitized_dict: dict[str, Any] = {}
-            modified_any = False
-            all_entities: list[Any] = []
-            visual_redactions: list[VisualPrivacyRedaction] = []
-            failed_any = False
-            for key, item in value.items():
-                (
-                    sanitized_item,
-                    modified,
-                    entities,
-                    item_visual_redactions,
-                    failed,
-                ) = await self._sanitize_value(item, tool_name=tool_name)
-                sanitized_dict[key] = sanitized_item
-                modified_any = modified_any or modified
-                all_entities.extend(entities)
-                visual_redactions.extend(item_visual_redactions)
-                failed_any = failed_any or failed
-            return sanitized_dict, modified_any, all_entities, visual_redactions, failed_any
+            keyed = {key: await self._sanitize_value(item, tool_name=tool_name) for key, item in value.items()}
+            return SanitizeResult.merge(
+                {key: part.value for key, part in keyed.items()},
+                list(keyed.values()),
+            )
 
-        return value, False, [], [], False
+        return SanitizeResult.unchanged(value)
 
     async def _sanitize_visual_tool_result(
         self,

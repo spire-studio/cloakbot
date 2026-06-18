@@ -9,7 +9,7 @@ Use these tools when the user wants **multi-turn sustained work** on **one** cle
 
 ## Start fast
 
-`long_task` is a lightweight marker. Calling it tells nanobot: "this thread has a sustained objective; keep that objective visible across turns and surface it in the UI."
+`long_task` is a lightweight marker. Calling it tells CloakBot: "this thread has a sustained objective; keep that objective visible across turns and surface it in the UI."
 
 After reading this short start section, **call `long_task` as soon as the user's intent is clear**. Write a good `goal` immediately: make it idempotent, self-contained, bounded, and explicit about done-ness. Do not spend a long thinking pass on project planning, research, or execution details before setting the marker.
 

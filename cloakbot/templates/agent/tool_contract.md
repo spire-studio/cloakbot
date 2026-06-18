@@ -62,6 +62,6 @@ documents the general tool contract and non-obvious usage patterns.
 
 ## Scheduling and Background Work
 
-- Use `cron` for scheduled reminders or recurring jobs; do not run `nanobot cron` through `exec`.
+- Use `cron` for scheduled reminders or recurring jobs; do not run `cloakbot cron` through `exec`.
 - For heartbeat tasks, register `HEARTBEAT.md` as a cron job according to the agent instructions.
 - Do not write reminders only to memory files when the user expects an actual notification.

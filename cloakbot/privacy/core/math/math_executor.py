@@ -6,21 +6,17 @@ from loguru import logger
 from pydantic import BaseModel, Field
 
 from cloakbot.privacy.core.math.math_helpers import (
+    SNIPPET_RE,
     execute_privacy_math,
     extract_math_expression,
     extract_python_snippets,
     format_result,
     resolve_expression,
 )
+from cloakbot.privacy.core.placeholders import PLACEHOLDER_RE, placeholder_inner
 from cloakbot.privacy.core.state.vault import VaultComputation, _SessionMap, get_map, save_map
 from cloakbot.privacy.core.types import REGISTRY
 
-_PLACEHOLDER_RE = re.compile(r"^<<([A-Z]+(?:_[A-Z]+)*_\d+)>>$")
-_INPUT_TOKEN_RE = re.compile(r"<<([A-Z]+(?:_[A-Z]+)*_\d+)>>")
-_SNIPPET_BLOCK_RE = re.compile(
-    r"<python_snippet_(\d+)>\s*(.*?)\s*</python_snippet_\1>",
-    flags=re.DOTALL | re.IGNORECASE,
-)
 _CALC_MARKER_RE = re.compile(
     r"\s*Local calculation result for python_snippet_(\d+):\s*(<<CALC_\d+>>)\.\s*"
     r"Use CALC_\d+ as the numeric variable for this prior local calculation in future python snippets\.",
@@ -141,7 +137,7 @@ async def apply_privacy_math_for_turn(
     cursor = 0
     modified_vault = False
 
-    for match in _SNIPPET_BLOCK_RE.finditer(response or ""):
+    for match in SNIPPET_RE.finditer(response or ""):
         snippet_index = int(match.group(1))
         snippet_content = match.group(2).strip()
         marker = _read_existing_calc_marker(response, match.end(), snippet_index)
@@ -172,9 +168,9 @@ async def apply_privacy_math_for_turn(
             # because the smap update is not visible to the validator's
             # `allowed_names = set(values.keys())` snapshot taken per snippet.
             if computation.placeholder:
-                placeholder_match = _PLACEHOLDER_RE.fullmatch(computation.placeholder)
-                if placeholder_match is not None:
-                    values[placeholder_match.group(1)] = float(computation.value)
+                inner = placeholder_inner(computation.placeholder)
+                if inner is not None:
+                    values[inner] = float(computation.value)
         except Exception as exc:
             logger.warning("math-executer: snippet {} failed: {}", snippet_index, exc)
             display_parts.append(snippet_content)
@@ -246,44 +242,47 @@ def _record_from_computation(
 
 def _extract_numeric_token_names(sanitized_text: str, smap: _SessionMap | None = None) -> list[str]:
     """Identify which tokens in the text are computable."""
-    numeric_prefixes = tuple([*REGISTRY.computable_tags, "CALC"])
+    numeric_prefixes = (*REGISTRY.computable_tags, "CALC")
 
     seen: set[str] = set()
     names: list[str] = []
-    for match in _INPUT_TOKEN_RE.finditer(sanitized_text or ""):
-        name = match.group(1)
-        if name.startswith(numeric_prefixes) and name not in seen:
+    for match in PLACEHOLDER_RE.finditer(sanitized_text or ""):
+        name = placeholder_inner(match.group(0))
+        if name is not None and name.startswith(numeric_prefixes) and name not in seen:
             seen.add(name)
             names.append(name)
 
     if smap is not None:
         for placeholder in smap.placeholder_to_computation:
-            match = _PLACEHOLDER_RE.fullmatch(placeholder)
-            if match and match.group(1) not in seen:
-                seen.add(match.group(1))
-                names.append(match.group(1))
+            name = placeholder_inner(placeholder)
+            if name is not None and name not in seen:
+                seen.add(name)
+                names.append(name)
     return names
+
+
+# Ordered (prefix, hint) for the per-token "AVAILABLE TOKENS" lines. Ordered so
+# the first matching prefix wins; mirrors the token families in the math contract.
+_TOKEN_HINTS: tuple[tuple[str, str], ...] = (
+    ("FINANCE_", "monetary amount token"),
+    (
+        "PERCENTAGE_",
+        "percentage/share token normalized locally as a decimal fraction; "
+        "use as a multiplier for the referenced base quantity",
+    ),
+    ("AMOUNT_", "count or non-percentage ratio token"),
+    ("DATE_", "date/time token"),
+    ("METRIC_", "measurement token"),
+    ("VALUE_", "generic numeric value token"),
+    ("CALC_", "prior local calculation result"),
+)
 
 
 def _describe_numeric_token(name: str) -> str:
     """Render a short semantic hint for each numeric token family."""
-    if name.startswith("FINANCE_"):
-        return f"- {name}: monetary amount token"
-    if name.startswith("PERCENTAGE_"):
-        return (
-            f"- {name}: percentage/share token normalized locally as a decimal fraction; "
-            "use as a multiplier for the referenced base quantity"
-        )
-    if name.startswith("AMOUNT_"):
-        return f"- {name}: count or non-percentage ratio token"
-    if name.startswith("DATE_"):
-        return f"- {name}: date/time token"
-    if name.startswith("METRIC_"):
-        return f"- {name}: measurement token"
-    if name.startswith("VALUE_"):
-        return f"- {name}: generic numeric value token"
-    if name.startswith("CALC_"):
-        return f"- {name}: prior local calculation result"
+    for prefix, hint in _TOKEN_HINTS:
+        if name.startswith(prefix):
+            return f"- {name}: {hint}"
     return f"- {name}"
 
 
@@ -291,9 +290,9 @@ def _build_variable_values(smap: _SessionMap) -> dict[str, float]:
     """Build a simple map of token names to their numeric values."""
     values = {}
     for placeholder, val in smap.placeholder_to_value.items():
-        match = _PLACEHOLDER_RE.fullmatch(placeholder)
-        if match and isinstance(val, (int, float)):
-            values[match.group(1)] = float(val)
+        inner = placeholder_inner(placeholder)
+        if inner is not None and isinstance(val, (int, float)):
+            values[inner] = float(val)
     return values
 
 

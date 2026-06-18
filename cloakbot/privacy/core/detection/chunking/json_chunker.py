@@ -48,7 +48,7 @@ class JsonChunker:
             obj = payload if not isinstance(payload, str) else json.loads(payload)
         except (json.JSONDecodeError, ValueError):
             return self._fallback.chunk(
-                payload, max_chars=max_chars, overlap_chars=overlap_chars
+                payload, max_chars=max_chars, overlap_chars=overlap_chars,
             )
 
         pairs = _flatten(obj)
@@ -73,7 +73,7 @@ class JsonChunker:
                         "chunker": "json",
                         "paths": list(buf_paths),
                     },
-                )
+                ),
             )
             buf.clear()
             buf_paths.clear()

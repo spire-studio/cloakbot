@@ -13,14 +13,13 @@ Integration tests (require vLLM, skipped by default):
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from cloakbot.privacy.core.detection.detector import PiiDetector
-from cloakbot.privacy.core.detection.general_detector import parse_general_entities
+from cloakbot.privacy.core.detection.general_detector import normalize_general_entities
 from cloakbot.privacy.core.sanitization.handler import apply_tokens as _rewrite
 from cloakbot.privacy.core.sanitization.restorer import restore_tokens as _remap
 from cloakbot.privacy.core.sanitization.sanitize import (
@@ -71,53 +70,42 @@ def _empty_map() -> _SessionMap:
 
 
 # ---------------------------------------------------------------------------
-# PiiDetector — JSON parser (no LLM)
+# General detector — entity normalization (no LLM)
+#
+# JSON parsing / fence + think-block stripping now live in PydanticAI and the
+# detector model wrapper (covered by tests/privacy/core/test_detector*.py).
+# Here we test only the privacy-bearing filters we own.
 # ---------------------------------------------------------------------------
 
-class TestParseResponse:
-    def test_parses_valid_json(self):
-        raw = json.dumps({"entities": [
-            {"text": "Alice", "entity_type": "person"},
-        ]})
-        result = parse_general_entities(raw, "Hello Alice")
+class TestNormalizeGeneralEntities:
+    def test_keeps_valid_entity(self):
+        result = normalize_general_entities(
+            [GeneralEntity(text="Alice", entity_type="person")], "Hello Alice",
+        )
         assert len(result) == 1
         assert result[0].text == "Alice"
         assert result[0].entity_type == "person"
 
-    def test_strips_markdown_fences(self):
-        raw = '```json\n{"entities": []}\n```'
-        result = parse_general_entities(raw, "anything")
-        assert result == []
-
-    def test_strips_think_block(self):
-        raw = '<think>reasoning</think>\n{"entities": []}'
-        result = parse_general_entities(raw, "anything")
-        assert result == []
-
-    def test_returns_empty_on_invalid_json(self):
-        result = parse_general_entities("not json at all", "prompt")
-        assert result == []
-
     def test_skips_entity_not_in_prompt(self):
-        raw = json.dumps({"entities": [
-            {"text": "Bob", "entity_type": "person"},
-        ]})
-        result = parse_general_entities(raw, "Hello Alice")  # Bob not in prompt
+        result = normalize_general_entities(
+            [GeneralEntity(text="Bob", entity_type="person")], "Hello Alice",
+        )
         assert result == []
 
     def test_deduplicates_same_text(self):
-        raw = json.dumps({"entities": [
-            {"text": "Alice", "entity_type": "person"},
-            {"text": "Alice", "entity_type": "person"},
-        ]})
-        result = parse_general_entities(raw, "Hello Alice and Alice")
+        result = normalize_general_entities(
+            [
+                GeneralEntity(text="Alice", entity_type="person"),
+                GeneralEntity(text="Alice", entity_type="person"),
+            ],
+            "Hello Alice and Alice",
+        )
         assert len(result) == 1
 
     def test_skips_unknown_entity_type(self):
-        raw = json.dumps({"entities": [
-            {"text": "Alice", "entity_type": "unknown_type"},
-        ]})
-        result = parse_general_entities(raw, "Hello Alice")
+        result = normalize_general_entities(
+            [GeneralEntity(text="Alice", entity_type="unknown_type")], "Hello Alice",
+        )
         assert result == []
 
 
@@ -234,7 +222,7 @@ class TestSessionMap:
             counters={"PERSON": 1},
         )
         with patch(
-            "cloakbot.privacy.core.state.vault._map_path",
+            "cloakbot.privacy.core.state.vault_store._map_path",
             return_value=tmp_path / "test.json",
         ):
             _save_map("test:session", smap)
@@ -246,7 +234,7 @@ class TestSessionMap:
 
     def test_missing_file_returns_empty_map(self, tmp_path: Path):
         with patch(
-            "cloakbot.privacy.core.state.vault._map_path",
+            "cloakbot.privacy.core.state.vault_store._map_path",
             return_value=tmp_path / "nonexistent.json",
         ):
             loaded = _load_map("no:session")
@@ -256,7 +244,7 @@ class TestSessionMap:
         bad = tmp_path / "bad.json"
         bad.write_text("not json", encoding="utf-8")
         with patch(
-            "cloakbot.privacy.core.state.vault._map_path",
+            "cloakbot.privacy.core.state.vault_store._map_path",
             return_value=bad,
         ):
             loaded = _load_map("bad:session")
@@ -267,33 +255,12 @@ class TestSessionMap:
 # sanitize_input + remap_response — mocked LLM
 # ---------------------------------------------------------------------------
 
-def _mock_detection(entities_json: list[dict]) -> AsyncMock:
-    """Return an AsyncMock for PiiDetector.detect() with given entities."""
-    mock = AsyncMock()
-
-    def _build_result(prompt: str) -> DetectionResult:
-        raw = json.dumps({"entities": entities_json})
-        entities = parse_general_entities(raw, prompt)
-        return DetectionResult(
-            original_prompt=prompt,
-            entities=entities,
-            llm_raw_output=raw,
-            latency_ms=1.0,
-        )
-
-    mock.side_effect = lambda prompt: asyncio.coroutine(lambda: _build_result(prompt))()
-    return mock
-
-
-import asyncio
-
-
 @pytest.fixture()
 def session_key(tmp_path: Path):
     """Isolated session key that writes maps to tmp_path."""
     key = "test:isolated"
     with patch(
-        "cloakbot.privacy.core.state.vault._map_path",
+        "cloakbot.privacy.core.state.vault_store._map_path",
         side_effect=lambda k: tmp_path / f"{k.replace(':', '_')}.json",
     ):
         clear_cache(key)

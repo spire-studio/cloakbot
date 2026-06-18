@@ -1,8 +1,16 @@
+"""Event-protocol schema for the privacy turn timeline.
+
+These types are the wire/record contract for the observability event stream:
+`emit_event` mints an :class:`EventRecord`, the sink stores it, and the replay /
+metrics layers read it back. Nothing here is aspirational — every type has a
+live producer or consumer.
+"""
+
 from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
-from typing import Any, Literal
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict
 
@@ -34,77 +42,6 @@ class EventType(str, Enum):
     TURN_COMPLETED = "turn.completed"
 
 
-class ContractMeta(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    trace_id: str
-    span_id: str
-    session_id: str
-    turn_id: str
-    idempotency_key: str
-    timestamp: datetime
-    status: ProtocolStatus
-    error_code: str
-
-
-class TurnContextPayload(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    intent: Literal["chat", "math"]
-    channel: Literal["cli", "gateway", "webui", "api"]
-    privacy_stage: PrivacyStage
-
-
-class TurnContract(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    meta: ContractMeta
-    context: TurnContextPayload
-    payload: dict[str, Any]
-
-
-class AgentTaskSpec(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    task_id: str
-    task_type: Literal["intent_analysis", "math_exec", "tool_chain"]
-    mode: Literal["sync", "async"]
-    priority: Literal["p0", "p1", "p2"]
-    deadline_ms: int
-
-
-class AgentTaskContract(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    meta: ContractMeta
-    task: AgentTaskSpec
-    input: dict[str, Any]
-
-
-class ToolSpec(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    name: str
-    version: str
-    timeout_ms: int
-
-
-class ToolPrivacySpec(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    sanitize_before: bool
-    sanitize_after: bool
-
-
-class ToolInvocationContract(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    meta: ContractMeta
-    tool: ToolSpec
-    input: dict[str, Any]
-    privacy: ToolPrivacySpec
-
-
 class EventRecord(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -121,3 +58,6 @@ class EventRecord(BaseModel):
     timestamp: datetime
     duration_ms: int | None = None
     payload: dict[str, Any]
+
+
+__all__ = ["EventRecord", "EventType", "PrivacyStage", "ProtocolStatus"]

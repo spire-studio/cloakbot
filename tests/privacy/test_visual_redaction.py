@@ -14,10 +14,8 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from cloakbot.privacy.visual_redaction import (
-    _redact_image,
-    redact_visual_content_blocks,
-)
+from cloakbot.privacy.visual_redaction import redact_visual_content_blocks
+from cloakbot.privacy.visual_redaction.pipeline import _redact_image
 
 # Smallest valid PNG so ``PIL.Image.open`` succeeds inside the pipeline.
 _TINY_PNG_BYTES = base64.b64decode(
@@ -64,12 +62,12 @@ def _ocr_data_empty() -> dict[str, list]:
 async def test_redact_image_fails_closed_when_detector_items_unmatched() -> None:
     """Detector found PII but local OCR could not place a box → omit."""
     with patch(
-        "cloakbot.privacy.visual_redaction._inspect_visual",
+        "cloakbot.privacy.visual_redaction.detector._inspect_visual",
         new=AsyncMock(
             return_value={"sensitive_items": [{"label": "name", "text": "Alice"}]}
         ),
     ), patch(
-        "cloakbot.privacy.visual_redaction._ocr_data",
+        "cloakbot.privacy.visual_redaction.pipeline._ocr_data",
         return_value=_ocr_data_with_text("unrelated"),
     ):
         bytes_or_none, record = await _redact_image(
@@ -95,10 +93,10 @@ async def test_redact_image_fails_closed_when_ocr_has_text_but_no_items() -> Non
     fail-closed gate the original image was forwarded as-is.
     """
     with patch(
-        "cloakbot.privacy.visual_redaction._inspect_visual",
+        "cloakbot.privacy.visual_redaction.detector._inspect_visual",
         new=AsyncMock(return_value={"sensitive_items": []}),
     ), patch(
-        "cloakbot.privacy.visual_redaction._ocr_data",
+        "cloakbot.privacy.visual_redaction.pipeline._ocr_data",
         return_value=_ocr_data_with_text("hello"),
     ):
         bytes_or_none, record = await _redact_image(
@@ -118,10 +116,10 @@ async def test_redact_image_passes_through_when_image_has_no_text() -> None:
     real failure mode.
     """
     with patch(
-        "cloakbot.privacy.visual_redaction._inspect_visual",
+        "cloakbot.privacy.visual_redaction.detector._inspect_visual",
         new=AsyncMock(return_value={"sensitive_items": []}),
     ), patch(
-        "cloakbot.privacy.visual_redaction._ocr_data",
+        "cloakbot.privacy.visual_redaction.pipeline._ocr_data",
         return_value=_ocr_data_empty(),
     ):
         bytes_or_none, record = await _redact_image(
@@ -142,10 +140,10 @@ async def test_redact_image_can_be_forced_open_via_env(monkeypatch) -> None:
     """
     monkeypatch.setenv("CLOAKBOT_VISUAL_FAIL_MODE", "pass")
     with patch(
-        "cloakbot.privacy.visual_redaction._inspect_visual",
+        "cloakbot.privacy.visual_redaction.detector._inspect_visual",
         new=AsyncMock(return_value={"sensitive_items": [{"label": "name", "text": "Alice"}]}),
     ), patch(
-        "cloakbot.privacy.visual_redaction._ocr_data",
+        "cloakbot.privacy.visual_redaction.pipeline._ocr_data",
         return_value=_ocr_data_with_text("unrelated"),
     ):
         bytes_or_none, record = await _redact_image(
@@ -189,7 +187,7 @@ async def test_redact_visual_content_blocks_does_not_leak_source_path() -> None:
 async def test_redact_image_records_regions_for_each_matched_box() -> None:
     """Every drawn box must show up on ``record.regions`` for the region map."""
     with patch(
-        "cloakbot.privacy.visual_redaction._inspect_visual",
+        "cloakbot.privacy.visual_redaction.detector._inspect_visual",
         new=AsyncMock(
             return_value={
                 "sensitive_items": [
@@ -198,7 +196,7 @@ async def test_redact_image_records_regions_for_each_matched_box() -> None:
             }
         ),
     ), patch(
-        "cloakbot.privacy.visual_redaction._ocr_data",
+        "cloakbot.privacy.visual_redaction.pipeline._ocr_data",
         return_value=_ocr_data_with_text("Alice"),
     ):
         bytes_or_none, record = await _redact_image(
@@ -228,7 +226,7 @@ async def test_redact_image_binds_placeholders_when_resolver_is_supplied() -> No
         return "<<PERSON_42>>"
 
     with patch(
-        "cloakbot.privacy.visual_redaction._inspect_visual",
+        "cloakbot.privacy.visual_redaction.detector._inspect_visual",
         new=AsyncMock(
             return_value={
                 "sensitive_items": [
@@ -237,7 +235,7 @@ async def test_redact_image_binds_placeholders_when_resolver_is_supplied() -> No
             }
         ),
     ), patch(
-        "cloakbot.privacy.visual_redaction._ocr_data",
+        "cloakbot.privacy.visual_redaction.pipeline._ocr_data",
         return_value=_ocr_data_with_text("Alice"),
     ):
         _bytes, record = await _redact_image(
@@ -260,7 +258,7 @@ def test_format_region_map_collapses_duplicate_placeholders() -> None:
     entities and repeated the address in its reply ("…3113 Wilson
     Avenue… (Portland, Oregon 97232, US)").
     """
-    from cloakbot.privacy.visual_redaction import _format_region_map_text
+    from cloakbot.privacy.visual_redaction.render import _format_region_map_text
 
     regions = [
         {
@@ -296,10 +294,8 @@ def test_draw_redactions_renders_each_placeholder_only_once() -> None:
     """Duplicate placeholders fill multiple boxes but the *label text* lands once."""
     from PIL import Image
 
-    from cloakbot.privacy.visual_redaction import (
-        VisualRedactedRegion,
-        _draw_redactions,
-    )
+    from cloakbot.privacy.visual_redaction.models import VisualRedactedRegion
+    from cloakbot.privacy.visual_redaction.render import _draw_redactions
 
     image = Image.new("RGB", (400, 200), color="white")
     regions = [
@@ -329,10 +325,8 @@ def test_draw_redactions_renders_each_placeholder_only_once() -> None:
 def test_draw_redactions_label_call_count_is_one_per_placeholder() -> None:
     from PIL import Image
 
-    from cloakbot.privacy.visual_redaction import (
-        VisualRedactedRegion,
-        _draw_redactions,
-    )
+    from cloakbot.privacy.visual_redaction.models import VisualRedactedRegion
+    from cloakbot.privacy.visual_redaction.render import _draw_redactions
 
     image = Image.new("RGB", (400, 200), color="white")
     regions = [
@@ -359,7 +353,7 @@ def test_draw_redactions_label_call_count_is_one_per_placeholder() -> None:
         call_log.append(text)
 
     with patch(
-        "cloakbot.privacy.visual_redaction._render_box_label",
+        "cloakbot.privacy.visual_redaction.render._render_box_label",
         side_effect=fake_render,
     ):
         _draw_redactions(image, regions)
@@ -386,10 +380,10 @@ async def test_redact_image_uses_text_side_entities_as_visual_needles() -> None:
     detector first found the value.
     """
     with patch(
-        "cloakbot.privacy.visual_redaction._inspect_visual",
+        "cloakbot.privacy.visual_redaction.detector._inspect_visual",
         new=AsyncMock(return_value={"sensitive_items": []}),
     ), patch(
-        "cloakbot.privacy.visual_redaction._ocr_data",
+        "cloakbot.privacy.visual_redaction.pipeline._ocr_data",
         return_value=_ocr_data_with_text("DMIT"),
     ):
         bytes_or_none, record = await _redact_image(
@@ -451,7 +445,7 @@ async def test_process_visual_blocks_back_substitutes_visual_placeholders_into_o
         # Visual detector finds the address and allocates a placeholder
         # via the resolver — the same path the production code uses.
         placeholder = placeholder_resolver(raw_address, "billing_address")
-        from cloakbot.privacy.visual_redaction import (
+        from cloakbot.privacy.visual_redaction.models import (
             VisualPrivacyRedaction,
             VisualRedactedRegion,
         )
@@ -477,13 +471,13 @@ async def test_process_visual_blocks_back_substitutes_visual_placeholders_into_o
     # ``process_visual_blocks`` (to dodge a tool_models cycle), so
     # patch it at its source module rather than via visual_redaction.
     with patch(
-        "cloakbot.privacy.visual_redaction.extract_visual_text",
+        "cloakbot.privacy.visual_redaction.pipeline.extract_visual_text",
         return_value=ocr_text,
     ), patch(
         "cloakbot.privacy.core.sanitization.sanitize.sanitize_tool_output",
         new=AsyncMock(side_effect=fake_sanitize),
     ), patch(
-        "cloakbot.privacy.visual_redaction.redact_visual_content_blocks",
+        "cloakbot.privacy.visual_redaction.pipeline.redact_visual_content_blocks",
         new=AsyncMock(side_effect=fake_redact),
     ):
         result = await process_visual_blocks(
@@ -507,7 +501,7 @@ async def test_process_visual_blocks_back_substitutes_visual_placeholders_into_o
 @pytest.mark.asyncio
 async def test_redact_visual_content_blocks_substitutes_omit_when_pipeline_fails_closed() -> None:
     """When ``_redact_image`` returns ``None`` the block must become a text omit."""
-    from cloakbot.privacy.visual_redaction import VisualPrivacyRedaction
+    from cloakbot.privacy.visual_redaction.models import VisualPrivacyRedaction
 
     fake_record = VisualPrivacyRedaction(
         sourcePath="/private/x.png",
@@ -529,7 +523,7 @@ async def test_redact_visual_content_blocks_substitutes_omit_when_pipeline_fails
         }
     ]
     with patch(
-        "cloakbot.privacy.visual_redaction._redact_image",
+        "cloakbot.privacy.visual_redaction.pipeline._redact_image",
         side_effect=fake_redact,
     ):
         redacted, modified, records = await redact_visual_content_blocks(blocks)

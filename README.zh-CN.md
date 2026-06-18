@@ -179,9 +179,11 @@ CloakBot 的隐私保证依赖于 PII 检测器跑在**你自己掌控的机器*
 
 ```bash
 curl -fsSL https://ollama.com/install.sh | sh
-ollama pull gemma4:e2b        # 一条命令同时拉起模型和 OpenAI 兼容接口
-# → base URL http://127.0.0.1:11434/v1 · API key "ollama"（随便填）· model gemma4:e2b
+ollama pull gemma4:e2b-mxfp8  # 一条命令同时拉起模型和 OpenAI 兼容接口
+# → base URL http://127.0.0.1:11434/v1 · API key "ollama"（随便填）· model gemma4:e2b-mxfp8
 ```
+
+> **用 8-bit 版本**（`gemma4:e2b-mxfp8`），不要用 4-bit 量化 —— 低比特量化会让通用检测器退化到静默返回**空**实体（= 隐私泄露）。已在 **Apple M4 · 16 GB** 上验证。
 
 **vLLM（GPU 机器 —— 快、可复现，A1/A2/A3 eval 路径）：**
 
